@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+*.log
+.env
+
+# Node / Next.js
+node_modules/
+dashboard/.next/
+dashboard/out/
+dashboard/.env.local
+dashboard/.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+*.json.key
+credentials*.json

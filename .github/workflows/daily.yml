@@ -1,0 +1,45 @@
+name: SEO Agent — Daily Run
+
+on:
+  schedule:
+    - cron: '0 11 * * *'   # 11:00 UTC = 06:00 AM Lima (UTC-5)
+  workflow_dispatch:         # permite ejecución manual desde la UI de GitHub
+
+jobs:
+  run-agent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run SEO agent
+        env:
+          GA4_CREDENTIALS_JSON: ${{ secrets.GA4_CREDENTIALS_JSON }}
+          GSC_CREDENTIALS_JSON: ${{ secrets.GSC_CREDENTIALS_JSON }}
+          GA4_PROPERTY_ID:      ${{ secrets.GA4_PROPERTY_ID }}
+          SERPAPI_KEY:          ${{ secrets.SERPAPI_KEY }}
+          SUPABASE_URL:         ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY:         ${{ secrets.SUPABASE_KEY }}
+          TZ: America/Lima
+        run: |
+          cd agent
+          python run.py
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-logs-${{ github.run_id }}
+          path: agent/*.log
+          retention-days: 7

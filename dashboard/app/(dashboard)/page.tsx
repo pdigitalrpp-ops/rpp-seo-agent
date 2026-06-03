@@ -1,0 +1,113 @@
+import { supabase } from "@/lib/supabase"
+
+export const revalidate = 3600
+
+export default async function DashboardHome() {
+  const today = new Date().toISOString().split("T")[0]
+
+  const [{ data: runs }, { data: recs }, { data: alerts }, { data: trends }] = await Promise.all([
+    supabase.from("agent_runs").select("*").order("run_date", { ascending: false }).limit(1),
+    supabase.from("recommendations").select("*").eq("date", today).order("rank"),
+    supabase.from("alerts").select("*").eq("resolved", false).order("created_at", { ascending: false }).limit(10),
+    supabase.from("daily_trends").select("*").eq("date", today).order("rank").limit(5),
+  ])
+
+  const lastRun = runs?.[0]
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-gray-900">Resumen del día</h1>
+        <span className="text-sm text-gray-500">
+          Última actualización:{" "}
+          {lastRun?.finished_at
+            ? new Date(lastRun.finished_at).toLocaleString("es-PE")
+            : "Sin datos"}
+        </span>
+      </div>
+
+      {/* Semáforo SEO */}
+      <div className="bg-white rounded-xl border p-4 flex items-center gap-3">
+        <div className={`w-4 h-4 rounded-full ${
+          !alerts?.length
+            ? "bg-green-500"
+            : alerts.length <= 2
+            ? "bg-yellow-500"
+            : "bg-red-600"
+        }`} />
+        <span className="text-sm font-medium">
+          {!alerts?.length
+            ? "Salud SEO estable — sin alertas activas"
+            : `${alerts.length} alerta(s) activa(s)`}
+        </span>
+      </div>
+
+      {/* Fuentes del último run */}
+      {lastRun && (
+        <div className="bg-white rounded-xl border p-4">
+          <h2 className="text-sm font-semibold text-gray-700 mb-2">Fuentes del último run</h2>
+          <div className="flex flex-wrap gap-2">
+            {lastRun.sources_ok?.map((s: string) => (
+              <span key={s} className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">{s} ✓</span>
+            ))}
+            {lastRun.sources_failed?.map((s: string) => (
+              <span key={s} className="px-2 py-1 bg-red-100 text-red-800 text-xs rounded-full">{s} ✗</span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Top recomendaciones */}
+      <div>
+        <h2 className="text-lg font-semibold text-gray-800 mb-3">Top recomendaciones del día</h2>
+        <div className="grid gap-3">
+          {recs?.slice(0, 3).map((rec: any) => (
+            <div key={rec.id} className="bg-white rounded-xl border p-4">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <span className={`text-xs font-bold px-2 py-0.5 rounded mr-2 ${
+                    rec.urgency === "INMEDIATO" ? "bg-red-100 text-red-700" :
+                    rec.urgency === "HOY"       ? "bg-orange-100 text-orange-700" :
+                    "bg-blue-100 text-blue-700"
+                  }`}>{rec.urgency}</span>
+                  <span className="text-xs text-gray-500">{rec.program}</span>
+                </div>
+                <span className="text-sm font-bold text-gray-700">{rec.score}/10</span>
+              </div>
+              <p className="font-medium text-gray-900 mt-2">{rec.title_suggested}</p>
+              <p className="text-sm text-gray-600 mt-1">{rec.angle}</p>
+              <p className="text-xs text-gray-400 mt-1">📡 {rec.why_now}</p>
+              <p className="text-xs text-gray-400 mt-0.5">🕐 Publicar: {rec.publish_window}</p>
+            </div>
+          ))}
+          {!recs?.length && (
+            <p className="text-sm text-gray-500 bg-white rounded-xl border p-4">
+              Sin recomendaciones para hoy. El agente aún no ha corrido.
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Tendencias del día */}
+      {trends && trends.length > 0 && (
+        <div>
+          <h2 className="text-lg font-semibold text-gray-800 mb-3">Tendencias en Perú ahora</h2>
+          <div className="bg-white rounded-xl border divide-y">
+            {trends.map((t: any) => (
+              <div key={t.id} className="flex items-center justify-between px-4 py-2">
+                <span className="text-sm text-gray-700">#{t.rank} {t.keyword}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500">{t.category}</span>
+                  <span className="text-xs font-semibold text-red-600">
+                    {t.growth_score?.toFixed(1)}/10
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
