@@ -98,6 +98,9 @@ def query(metrics, group_by=None, dates=None, granularity="daily",
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
         timeout=30,
     )
+    if not resp.ok:
+        # Captura el reclamo exacto de la API para depurar el formato del query
+        logger.error(f"Marfeel {resp.status_code} en query | body={body} | resp={resp.text[:800]}")
     resp.raise_for_status()
     return resp.json()
 

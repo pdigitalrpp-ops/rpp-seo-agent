@@ -18,12 +18,16 @@ MARFEEL_MAX_ROWS             = 500
 # ---------------------------------------------------------------------------
 # Competidores monitoreados (RSS, con fallback a sitemap-news.xml)
 # ---------------------------------------------------------------------------
+# El Comercio y Gestión funcionan con su RSS directo. Los otros 3 cambiaron de
+# feed (RSS vacío / sitemap 404-403), así que usan Google News RSS por dominio,
+# que es estable y trae las notas recientes de cada medio.
+_GNEWS = "https://news.google.com/rss/search?q=when:1d%20site:{site}&hl=es-419&gl=PE&ceid=PE:es-419"
 COMPETITOR_SITES = [
     {"name": "El Comercio",  "rss": "https://elcomercio.pe/arcio/rss/"},
-    {"name": "La República", "rss": "https://larepublica.pe/arcio/rss/"},
     {"name": "Gestión",      "rss": "https://gestion.pe/arcio/rss/"},
-    {"name": "Peru21",       "rss": "https://peru21.pe/arcio/rss/"},
-    {"name": "Infobae Perú", "rss": "https://www.infobae.com/feeds/rss/peru/"},
+    {"name": "La República", "rss": _GNEWS.format(site="larepublica.pe")},
+    {"name": "Peru21",       "rss": _GNEWS.format(site="peru21.pe")},
+    {"name": "Infobae Perú", "rss": _GNEWS.format(site="infobae.com/peru")},
 ]
 
 # ---------------------------------------------------------------------------

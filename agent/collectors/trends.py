@@ -1,14 +1,59 @@
 import time
 import logging
+import feedparser
 from pytrends.request import TrendReq
 from tenacity import retry, stop_after_attempt, wait_exponential
 from config import GOOGLE_TRENDS_CATEGORIES
 
 logger = logging.getLogger(__name__)
 
+TRENDS_RSS_URL = "https://trends.google.com/trending/rss?geo={geo}"
+
 
 def _get_pytrends():
     return TrendReq(hl="es-419", tz=-300, timeout=(10, 25))
+
+
+def _parse_traffic(raw):
+    """'20.000+' -> 20000 (en es-PE el punto es separador de miles)."""
+    if not raw:
+        return 0
+    digits = "".join(c for c in raw if c.isdigit())
+    return int(digits) if digits else 0
+
+
+def _traffic_to_score(traffic):
+    """Mapea el tráfico aproximado del trending a un growth_score 0-10."""
+    if traffic >= 50000: return 9.0
+    if traffic >= 20000: return 7.0
+    if traffic >= 10000: return 5.0
+    if traffic >= 5000:  return 4.0
+    if traffic >= 2000:  return 3.0
+    if traffic >= 1000:  return 2.0
+    return 1.5
+
+
+def fetch_trends_rss(geo="PE", limit=20):
+    """
+    Tendencias de hoy desde el feed RSS oficial de Google Trends.
+    Más robusto que pytrends desde CI (pytrends se bloquea por IP de datacenter).
+    """
+    feed = feedparser.parse(TRENDS_RSS_URL.format(geo=geo))
+    results = []
+    for i, entry in enumerate(feed.entries[:limit]):
+        traffic = _parse_traffic(entry.get("ht_approx_traffic", ""))
+        kw = (entry.get("title") or "").strip()
+        if not kw:
+            continue
+        results.append({
+            "keyword":        kw,
+            "rank":           i + 1,
+            "geo":            geo,
+            "approx_traffic": traffic,
+            "growth_score":   _traffic_to_score(traffic),
+        })
+    logger.info(f"Google Trends RSS: {len(results)} tendencias")
+    return results
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=60, max=180))
@@ -113,14 +158,9 @@ def calculate_growth_score(keyword, geo="PE"):
 
 
 def fetch_all_trends(geo="PE"):
-    trending = fetch_trending_now(geo=geo, limit=20)
-    enriched = []
-    for item in trending:
-        kw = item["keyword"]
-        score = calculate_growth_score(kw, geo=geo)
-        time.sleep(2)
-        enriched.append({
-            **item,
-            "growth_score": score,
-        })
-    return enriched
+    """
+    Fuente principal: feed RSS de Google Trends (robusto desde CI).
+    El growth_score sale del tráfico aproximado del propio feed, así que no
+    necesitamos las llamadas extra a pytrends (que se bloquean en datacenters).
+    """
+    return fetch_trends_rss(geo=geo, limit=20)
