@@ -157,12 +157,17 @@ def fetch_traffic_sources(period_days=1):
 
 
 def fetch_realtime_top(limit=100):
-    """Etapa 2 — qué se está leyendo AHORA en rpp.pe."""
+    """
+    Etapa 2 — lo que más tracción tiene en rpp.pe en el día en curso.
+    Usa la misma forma (con `dates`) que los demás queries; el query sin `dates`
+    + granularity 'realtime' devolvía {"msg":"Invalid params"}.
+    """
     payload = query(
-        metrics=["uniqueUsers", "pageViewsTotal"],
+        metrics=["pageViewsTotal", "uniqueUsers"],
         group_by=["url", "title"],
-        granularity="realtime",
-        order={"metric": "uniqueUsers", "sort": "DESC"},
+        dates={"last": {"number": 1, "dimension": "day"}},
+        granularity="daily",
+        order={"metric": "pageViewsTotal", "sort": "DESC"},
         limit=limit,
     )
     return _rows_from_response(payload, key_field="url")
