@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+"""
+Etapas 2 y 3 — Radar en tiempo real + Alertas por sección.
+Corre cada pocos minutos (limitado por Marfeel 1/min y Trends). Cruza el tráfico
+del momento con tendencias y competencia, puntúa temas (0-100) aplicando los
+aprendizajes de la mañana, y dispara alertas a la sección cuando un tema supera
+el umbral. Las recomendaciones se publican en el dashboard.
+"""
+
+import logging
+import sys
+from datetime import datetime, date
+
+from dotenv import load_dotenv
+load_dotenv()
+
+from config import (
+    KNOWN_SECTIONS_FALLBACK, ALERT_SCORE_THRESHOLD, ALERT_MAX_PER_SECTION_PER_HOUR,
+)
+from collectors import marfeel, trends, competitors
+from analyzers import scoring, opportunities
+from notifiers import notify
+from writers.supabase_writer import (
+    save_run_log, save_recommendations, save_alerts,
+    get_scoring_weights, count_recent_alerts,
+)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s — %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger("run_radar")
+
+
+def safe_collect(name, func, run_data, **kwargs):
+    try:
+        result = func(**kwargs)
+        run_data["sources_ok"].append(name)
+        logger.info(f"✅ {name}: OK")
+        return result
+    except Exception as e:
+        logger.error(f"❌ {name} falló: {e}")
+        run_data["sources_failed"].append(name)
+        return None
+
+
+def build_alerts(scored_topics):
+    """Etapa 3 — convierte los temas de score alto en alertas por sección."""
+    alerts = []
+    for topic in scored_topics:
+        if topic["score"] < ALERT_SCORE_THRESHOLD:
+            continue
+        section = topic.get("section") or "actualidad"
+        alerts.append({
+            "type":        "trending_topic",
+            "severity":    "high" if topic["score"] >= 85 else "medium",
+            "section":     section,
+            "title":       topic["keyword"],
+            "description": f"Tendencia fuerte ahora · urgencia {topic['urgency']} · "
+                           f"formato sugerido: {topic['format']}",
+            "score":       topic["score"],
+        })
+    return alerts
+
+
+def run():
+    today = date.today()
+    run_data = {"started_at": datetime.now(), "sources_ok": [], "sources_failed": []}
+    logger.info(f"📡 Radar en tiempo real — {datetime.now():%H:%M}")
+
+    # --- RECOLECCIÓN (ligera) ---
+    realtime       = safe_collect("marfeel_realtime", marfeel.fetch_realtime_top,        run_data)
+    trends_data    = safe_collect("trends",           trends.fetch_all_trends,           run_data)
+    competitor_data = safe_collect("competitors",     competitors.fetch_all_competitors, run_data,
+                                   hours_back=6)
+
+    if not trends_data:
+        logger.info("Sin tendencias; nada que puntuar en este ciclo")
+        run_data["finished_at"] = datetime.now()
+        run_data["status"] = "partial" if run_data["sources_ok"] else "failed"
+        try:
+            save_run_log(run_data)
+        except Exception:
+            pass
+        return
+
+    # --- ANÁLISIS (Etapa 2) ---
+    learning = {}
+    try:
+        learning = get_scoring_weights()   # aprendizajes de la mañana
+    except Exception as e:
+        logger.warning(f"No se pudieron leer los pesos de aprendizaje: {e}")
+
+    # Momentum propio: categorías con tracción en tiempo real (Marfeel)
+    realtime_titles = " ".join((r.get("title") or "") for r in (realtime or [])).lower()
+    for item in trends_data:
+        kw_words = [w for w in item["keyword"].lower().split() if len(w) > 4]
+        item["own_momentum"] = min(sum(1 for w in kw_words if w in realtime_titles) / 2.0, 1.0)
+
+    scored = scoring.score_all_topics(
+        trends_data, competitor_data or [], gsc_data=[],
+        sections=KNOWN_SECTIONS_FALLBACK, learning=learning,
+    )
+
+    recs = opportunities.build_recommendations(scored, gsc_data=[], ga4_data=realtime or [])
+
+    # --- ALERTAS (Etapa 3) con anti-spam ---
+    candidate_alerts = build_alerts(scored)
+    sent_alerts = []
+    for alert in candidate_alerts:
+        section = alert["section"]
+        try:
+            recent = count_recent_alerts(section, minutes=60)
+        except Exception:
+            recent = 0
+        if recent >= ALERT_MAX_PER_SECTION_PER_HOUR:
+            logger.info(f"Anti-spam: '{section}' ya tiene {recent} alertas/hora; se omite")
+            continue
+        notify.dispatch_alert(alert)   # a Teams/WhatsApp si hay responsable
+        sent_alerts.append(alert)
+
+    # --- GUARDAR ---
+    try:
+        save_recommendations(recs, today)
+        save_alerts(sent_alerts)
+        logger.info(f"✅ Radar guardado: {len(recs)} recomendaciones, {len(sent_alerts)} alertas")
+    except Exception as e:
+        logger.error(f"❌ Error guardando en Supabase: {e}")
+        run_data["error_log"] = str(e)
+
+    run_data["finished_at"] = datetime.now()
+    run_data["status"] = (
+        "success" if not run_data["sources_failed"]
+        else "partial" if run_data["sources_ok"] else "failed"
+    )
+    try:
+        save_run_log(run_data)
+    except Exception as e:
+        logger.error(f"No se pudo guardar el run log: {e}")
+
+    if run_data["status"] == "failed":
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    run()

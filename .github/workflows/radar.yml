@@ -1,0 +1,37 @@
+name: SEO Agent — Radar en tiempo real
+
+# Corre cada ~10 min en horario diurno de Lima (05:00–23:59).
+# Nota: el cron de GitHub Actions puede retrasarse bajo carga; ~10 min es el
+# piso viable sin infra dedicada. El límite real lo marca Marfeel (1 req/min).
+on:
+  schedule:
+    - cron: '*/10 10-23 * * *'   # 10:00–23:59 UTC = 05:00–18:59 Lima
+    - cron: '*/10 0-4 * * *'     # 00:00–04:59 UTC = 19:00–23:59 Lima
+  workflow_dispatch:
+
+concurrency:
+  group: seo-radar
+  cancel-in-progress: false
+
+jobs:
+  radar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - name: Run realtime radar
+        env:
+          MARFEEL_EMAIL:    ${{ secrets.MARFEEL_EMAIL }}
+          MARFEEL_PASSWORD: ${{ secrets.MARFEEL_PASSWORD }}
+          SERPAPI_KEY:      ${{ secrets.SERPAPI_KEY }}
+          SUPABASE_URL:     ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY:     ${{ secrets.SUPABASE_KEY }}
+          TZ: America/Lima
+        run: |
+          cd agent
+          python run_radar.py

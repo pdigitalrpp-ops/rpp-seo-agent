@@ -72,6 +72,8 @@ def save_traffic(traffic_rows, run_date):
         "date":                 str(run_date),
         "page_path":            r["page_path"],
         "sessions":             r.get("sessions", 0),
+        "unique_users":         r.get("unique_users"),
+        "title":                r.get("title"),
         "source":               r.get("source"),
         "bounce_rate":          r.get("bounce_rate"),
         "avg_session_duration": r.get("avg_session_duration"),
@@ -110,7 +112,7 @@ def save_recommendations(recs, run_date):
         "data_source":     r.get("data_source"),
         "urgency":         r.get("urgency"),
         "format":          r.get("format"),
-        "program":         r.get("program"),
+        "section":         r.get("section"),
         "score":           r.get("score"),
         "category":        r.get("category"),
         "publish_window":  r.get("publish_window"),
@@ -130,6 +132,8 @@ def save_alerts(alerts):
         "title":       a["title"],
         "description": a.get("description"),
         "url":         a.get("url"),
+        "section":     a.get("section"),
+        "score":       a.get("score"),
     } for a in alerts]
     sb.table("alerts").insert(rows).execute()
     logger.info(f"Guardadas {len(rows)} alertas")
@@ -170,3 +174,78 @@ def get_historical_traffic(days=90):
     cutoff = str((datetime.now() - timedelta(days=days)).date())
     result = sb.table("own_traffic").select("page_path,sessions,date").gte("date", cutoff).execute()
     return result.data if result.data else []
+
+
+# ---------------------------------------------------------------------------
+# v2 — insights del benchmark, pesos de aprendizaje y auditorías on-page
+# ---------------------------------------------------------------------------
+
+def save_daily_insights(insights, run_date):
+    if not insights:
+        return
+    sb = _get_client()
+    sb.table("daily_insights").delete().eq("date", str(run_date)).execute()
+    rows = [{
+        "date":     str(run_date),
+        "section":  i.get("section"),
+        "category": i.get("category"),
+        "headline": i["headline"],
+        "detail":   i.get("detail"),
+        "evidence": i.get("evidence"),
+    } for i in insights]
+    sb.table("daily_insights").insert(rows).execute()
+    logger.info(f"Guardados {len(rows)} insights del día")
+
+
+def save_scoring_weights(weights, run_date):
+    """weights: dict {dimension: {"multiplier": float, "rationale": str}} o {dimension: float}."""
+    if not weights:
+        return
+    sb = _get_client()
+    sb.table("scoring_weights").delete().eq("date", str(run_date)).execute()
+    rows = []
+    for dim, val in weights.items():
+        if isinstance(val, dict):
+            rows.append({"date": str(run_date), "dimension": dim,
+                         "multiplier": val.get("multiplier", 1.0), "rationale": val.get("rationale")})
+        else:
+            rows.append({"date": str(run_date), "dimension": dim, "multiplier": val})
+    sb.table("scoring_weights").insert(rows).execute()
+    logger.info(f"Guardados {len(rows)} pesos de aprendizaje")
+
+
+def get_scoring_weights(run_date=None):
+    """Devuelve {dimension: multiplier} de la fecha dada (o la más reciente)."""
+    sb = _get_client()
+    q = sb.table("scoring_weights").select("dimension,multiplier")
+    if run_date:
+        q = q.eq("date", str(run_date))
+    else:
+        q = q.order("date", desc=True).limit(20)
+    result = q.execute()
+    return {r["dimension"]: r["multiplier"] for r in (result.data or [])}
+
+
+def count_recent_alerts(section, minutes=60):
+    """Anti-spam: cuántas alertas se enviaron a una sección en los últimos N minutos."""
+    sb = _get_client()
+    cutoff = (datetime.now() - timedelta(minutes=minutes)).isoformat()
+    result = (sb.table("alerts").select("id", count="exact")
+              .eq("section", section).gte("created_at", cutoff).execute())
+    return result.count or 0
+
+
+def save_onpage_audits(audits, run_date):
+    if not audits:
+        return
+    sb = _get_client()
+    rows = [{
+        "audited_date":   str(run_date),
+        "url":            a["url"],
+        "title":          a.get("title"),
+        "target_keyword": a.get("target_keyword"),
+        "score":          a.get("score"),
+        "issues":         a.get("issues"),
+    } for a in audits]
+    sb.table("onpage_audits").insert(rows).execute()
+    logger.info(f"Guardadas {len(rows)} auditorías on-page")

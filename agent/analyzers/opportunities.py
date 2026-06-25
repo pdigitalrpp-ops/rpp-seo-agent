@@ -78,7 +78,7 @@ def build_recommendations(scored_topics, gsc_data, ga4_data, decay_list=None, pa
             "data_source":     "trends+competition" if topic.get("competition_coverage", 0) > 0 else "trends",
             "urgency":         topic["urgency"],
             "format":          topic["format"],
-            "program":         topic["program"],
+            "section":         topic.get("section"),
             "score":           topic["score"],
             "category":        topic["category"],
             "publish_window":  _get_publish_window(topic["category"]),
@@ -97,13 +97,13 @@ def _suggest_angle(keyword, category, quick_wins, paa_data):
                     return f"Responder: {questions[0]}"
 
     ANGLES_BY_CATEGORY = {
-        "política":        "enfoque en impacto para los ciudadanos peruanos",
-        "economía":        "implicancias para el bolsillo del peruano promedio",
+        "politica":        "enfoque en impacto para los ciudadanos peruanos",
+        "economia":        "implicancias para el bolsillo del peruano promedio",
         "deportes":        "perspectiva desde los protagonistas nacionales",
         "entretenimiento": "ángulo de interés humano y conexión local",
-        "tecnología":      "qué significa esto para el usuario peruano",
+        "tecnologia":      "qué significa esto para el usuario peruano",
         "salud":           "qué hacer y a dónde ir para peruanos",
-        "internacional":   "cómo afecta esto a Perú directamente",
+        "mundo":           "cómo afecta esto a Perú directamente",
     }
     return ANGLES_BY_CATEGORY.get(category, "perspectiva local y de servicio para el lector peruano")
 
@@ -123,12 +123,12 @@ def _generate_title(keyword, category, format_type):
 
 def _get_publish_window(category):
     WINDOWS = {
-        "política":        "07:00–09:00",
-        "economía":        "07:00–08:30",
+        "politica":        "07:00–09:00",
+        "economia":        "07:00–08:30",
         "deportes":        "10:00–12:00 o 19:00–21:00",
         "entretenimiento": "12:00–14:00",
-        "tecnología":      "09:00–11:00",
+        "tecnologia":      "09:00–11:00",
         "salud":           "08:00–10:00",
-        "internacional":   "07:00–09:00",
+        "mundo":           "07:00–09:00",
     }
     return WINDOWS.get(category, "07:00–09:00")

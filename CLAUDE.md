@@ -1,5 +1,14 @@
 # RPP SEO Agent — Contexto para Claude Code
 
+> **⚠️ ACTUALIZACIÓN v2 (2026-06-24):** el core fue replanteado a un agente de
+> **3 etapas** (benchmark de la mañana → radar en tiempo real → alertas por
+> sección) + **auditoría SEO on-page** de notas publicadas. **Marfeel reemplaza
+> a GA4.** `run.py` se partió en `run_morning.py` (Etapa 1) y `run_radar.py`
+> (Etapas 2-3). Las "secciones" reemplazan a los "programas" y salen de la
+> dimensión `section` de Marfeel. Parte de las secciones de abajo describen el
+> diseño v1 y están desactualizadas — la fuente de verdad del diseño v2 está en
+> la memoria del proyecto (`diseno_core_agente_v2.md`).
+
 ## Qué es este proyecto
 
 Agente SEO de contenidos para RPP Noticias. Corre automáticamente cada mañana a las **06:00 AM Lima (11:00 UTC)** vía GitHub Actions, recopila señales de 5 fuentes, las analiza y genera recomendaciones editoriales que aparecen en un dashboard web.
@@ -111,11 +120,11 @@ Si un RSS falla, `_parse_sitemap()` intenta el `sitemap-news.xml` del dominio co
 
 ### Agente Python (GitHub Secrets)
 ```
-GA4_CREDENTIALS_JSON   → JSON completo de service account (string)
-GSC_CREDENTIALS_JSON   → ídem (puede ser la misma service account)
-GA4_PROPERTY_ID        → número ej. 123456789
+MARFEEL_EMAIL          → pdigitalrpp@gmail.com (usuario con API role)   [✅ configurado]
+MARFEEL_PASSWORD       → password de API de Marfeel                     [✅ configurado]
+GSC_CREDENTIALS_JSON   → JSON completo de service account de Google
 SERPAPI_KEY            → clave de serpapi.com
-SUPABASE_URL           → https://xxxx.supabase.co
+SUPABASE_URL           → https://tfrnpjbvxulswvqtosoq.supabase.co
 SUPABASE_KEY           → service_role key (NO la anon key)
 ```
 

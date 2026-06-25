@@ -140,3 +140,60 @@ CREATE POLICY "public_read" ON alerts              FOR SELECT USING (true);
 CREATE POLICY "public_read" ON content_decay       FOR SELECT USING (true);
 CREATE POLICY "public_read" ON publishing_windows  FOR SELECT USING (true);
 CREATE POLICY "public_read" ON agent_runs          FOR SELECT USING (true);
+
+-- ===========================================================================
+-- v2 (Marfeel + auditoría on-page + ciclo de aprendizaje) — 2026-06
+-- Ejecutar este bloque en Supabase SQL Editor sobre la base ya existente.
+-- ===========================================================================
+
+ALTER TABLE recommendations ADD COLUMN IF NOT EXISTS section text;
+ALTER TABLE alerts          ADD COLUMN IF NOT EXISTS section text;
+ALTER TABLE alerts          ADD COLUMN IF NOT EXISTS score float;
+ALTER TABLE own_traffic     ADD COLUMN IF NOT EXISTS unique_users integer;
+ALTER TABLE own_traffic     ADD COLUMN IF NOT EXISTS title text;
+
+-- Insights del benchmark de la mañana (narrativa para el dashboard)
+CREATE TABLE IF NOT EXISTS daily_insights (
+  id         uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  date       date NOT NULL,
+  section    text,
+  category   text,
+  headline   text NOT NULL,
+  detail     text,
+  evidence   jsonb,
+  created_at timestamptz DEFAULT now()
+);
+
+-- Pesos de aprendizaje que ajustan el scoring del día (ciclo de aprendizaje)
+CREATE TABLE IF NOT EXISTS scoring_weights (
+  id         uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  date       date NOT NULL,
+  dimension  text NOT NULL,
+  multiplier float NOT NULL DEFAULT 1.0,
+  rationale  text,
+  created_at timestamptz DEFAULT now()
+);
+
+-- Auditorías SEO on-page de notas publicadas
+CREATE TABLE IF NOT EXISTS onpage_audits (
+  id             uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  audited_date   date NOT NULL,
+  url            text NOT NULL,
+  title          text,
+  target_keyword text,
+  score          integer,
+  issues         jsonb,
+  created_at     timestamptz DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_daily_insights_date  ON daily_insights(date DESC);
+CREATE INDEX IF NOT EXISTS idx_scoring_weights_date ON scoring_weights(date DESC);
+CREATE INDEX IF NOT EXISTS idx_onpage_audits_date   ON onpage_audits(audited_date DESC);
+
+ALTER TABLE daily_insights  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE scoring_weights ENABLE ROW LEVEL SECURITY;
+ALTER TABLE onpage_audits   ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "public_read" ON daily_insights  FOR SELECT USING (true);
+CREATE POLICY "public_read" ON scoring_weights FOR SELECT USING (true);
+CREATE POLICY "public_read" ON onpage_audits   FOR SELECT USING (true);

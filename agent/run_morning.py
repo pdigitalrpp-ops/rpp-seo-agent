@@ -1,0 +1,173 @@
+#!/usr/bin/env python3
+"""
+Etapa 1 — Benchmark de la mañana.
+Corre 1 vez al día (~6-7 AM Lima). Revisa el rendimiento de AYER, lo cruza con
+la competencia, audita las notas publicadas y destila aprendizajes (pesos de
+scoring) que el radar de tiempo real usa el resto del día.
+"""
+
+import logging
+import sys
+from datetime import datetime, date
+
+from dotenv import load_dotenv
+load_dotenv()
+
+from collectors import marfeel, gsc, competitors
+from collectors.rpp_articles import parse_article
+from analyzers import decay, onpage_audit, opportunities
+from writers.supabase_writer import (
+    save_run_log, save_traffic, save_gsc_data, save_competitor_articles,
+    save_decay, save_daily_insights, save_scoring_weights, save_onpage_audits,
+    get_historical_traffic,
+)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s — %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger("run_morning")
+
+
+def safe_collect(name, func, run_data, **kwargs):
+    try:
+        result = func(**kwargs)
+        run_data["sources_ok"].append(name)
+        logger.info(f"✅ {name}: OK")
+        return result
+    except Exception as e:
+        logger.error(f"❌ {name} falló: {e}")
+        run_data["sources_failed"].append(name)
+        return None
+
+
+def _clamp(x, lo=0.7, hi=1.5):
+    return max(lo, min(hi, x))
+
+
+def compute_insights_and_weights(marfeel_perf, traffic_sources, quick_wins):
+    """
+    Rules-first: deriva insights narrativos + pesos de aprendizaje (multiplicadores
+    por dimensión) a partir de qué funcionó ayer. Cuando entre Claude, este paso
+    pasa a ser razonamiento real.
+    """
+    insights, weights = [], {}
+
+    total_pv = sum((r.get("pageViewsTotal") or 0) for r in (traffic_sources or []))
+    discover_pv = sum((r.get("pageViewsTotal") or 0)
+                      for r in (traffic_sources or [])
+                      if "discover" in (r.get("label") or "").lower())
+    if total_pv:
+        share = discover_pv / total_pv
+        insights.append({
+            "headline": f"Discover trajo {share*100:.0f}% del tráfico de ayer",
+            "detail":   "Si Discover pesa mucho, conviene priorizar temas con potencial de Discover.",
+            "evidence": {"discover_pv": discover_pv, "total_pv": total_pv},
+        })
+        weights["discover_potential"] = _clamp(1.0 + (share - 0.15) * 1.5)
+
+    if marfeel_perf:
+        top = max(marfeel_perf, key=lambda r: r.get("pageViewsTotal") or 0)
+        insights.append({
+            "headline": f"Nota más leída de ayer: {top.get('title') or top.get('label')}",
+            "detail":   f"{top.get('pageViewsTotal', 0)} page views.",
+            "evidence": {"url": top.get("label")},
+        })
+
+    if quick_wins:
+        insights.append({
+            "headline": f"{len(quick_wins)} quick wins en Search Console (posición 4-10)",
+            "detail":   "Notas a un empujón de la página 1; priorizar su optimización on-page.",
+            "evidence": {"count": len(quick_wins)},
+        })
+
+    return insights, weights
+
+
+def run():
+    today = date.today()
+    run_data = {"started_at": datetime.now(), "sources_ok": [], "sources_failed": []}
+    logger.info(f"🌅 Benchmark de la mañana — {today}")
+
+    # --- RECOLECCIÓN ---
+    marfeel_perf    = safe_collect("marfeel_yesterday", marfeel.fetch_yesterday_performance, run_data)
+    traffic_sources = safe_collect("marfeel_sources",   marfeel.fetch_traffic_sources,       run_data)
+    gsc_search      = safe_collect("gsc_search",        gsc.fetch_search_performance,        run_data)
+    gsc_drops       = safe_collect("gsc_drops",         gsc.find_position_drops,             run_data)
+    competitor_data = safe_collect("competitors",       competitors.fetch_all_competitors,   run_data)
+
+    # --- ANÁLISIS ---
+    quick_wins = opportunities.find_gsc_quick_wins(gsc_search or [])
+    insights, weights = compute_insights_and_weights(marfeel_perf or [], traffic_sources or [], quick_wins)
+
+    # Content decay (tráfico de Marfeel vs histórico en Supabase)
+    decay_list = []
+    try:
+        historical = get_historical_traffic(days=90)
+        ga4_like = [{"page_path": r.get("label"), "sessions": r.get("pageViewsTotal", 0)}
+                    for r in (marfeel_perf or [])]
+        if historical:
+            raw = decay.detect_content_decay(ga4_like, historical)
+            decay_list = decay.prioritize_decay_articles(raw, gsc_search)
+    except Exception as e:
+        logger.warning(f"Decay analysis falló: {e}")
+
+    # Auditoría on-page: quick wins (con su keyword) + top notas de ayer
+    audits = []
+    audit_targets = []
+    for qw in quick_wins[:5]:
+        audit_targets.append((qw["page"], qw.get("query")))
+    for r in (marfeel_perf or [])[:3]:
+        if r.get("label"):
+            audit_targets.append((r["label"], None))
+    seen = set()
+    for url, kw in audit_targets:
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        parsed = parse_article(url)
+        result = onpage_audit.audit_article(parsed, target_keyword=kw)
+        result["target_keyword"] = kw
+        result["title"] = parsed.get("title_tag")
+        audits.append(result)
+
+    # --- GUARDAR ---
+    try:
+        traffic_rows = [{
+            "page_path":    r.get("label"),
+            "sessions":     r.get("pageViewsTotal", 0),
+            "unique_users": r.get("uniqueUsers"),
+            "title":        r.get("title"),
+            "source":       "marfeel",
+        } for r in (marfeel_perf or []) if r.get("label")]
+        save_traffic(traffic_rows, today)
+        save_gsc_data(gsc_search or [], today)
+        save_competitor_articles(competitor_data or [])
+        save_decay(decay_list, today)
+        save_daily_insights(insights, today)
+        save_scoring_weights(weights, today)
+        save_onpage_audits(audits, today)
+        logger.info("✅ Benchmark guardado en Supabase")
+    except Exception as e:
+        logger.error(f"❌ Error guardando en Supabase: {e}")
+        run_data["error_log"] = str(e)
+
+    # --- LOG ---
+    run_data["finished_at"] = datetime.now()
+    run_data["status"] = (
+        "success" if not run_data["sources_failed"]
+        else "partial" if run_data["sources_ok"] else "failed"
+    )
+    try:
+        save_run_log(run_data)
+    except Exception as e:
+        logger.error(f"No se pudo guardar el run log: {e}")
+
+    logger.info(f"🏁 Benchmark OK: {run_data['sources_ok']} | FAIL: {run_data['sources_failed']}")
+    if run_data["status"] == "failed":
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    run()
