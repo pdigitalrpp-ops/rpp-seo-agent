@@ -7,6 +7,7 @@ const NAV_ITEMS = [
   { href: "/competencia",     label: "Competencia" },
   { href: "/trafico",         label: "Tráfico" },
   { href: "/search-console",  label: "Search Console" },
+  { href: "/auditoria",       label: "Auditoría" },
   { href: "/alertas",         label: "Alertas" },
 ]
 

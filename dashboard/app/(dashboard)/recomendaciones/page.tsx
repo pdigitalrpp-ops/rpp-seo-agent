@@ -1,6 +1,6 @@
 import { supabase } from "@/lib/supabase"
 
-export const revalidate = 3600
+export const revalidate = 60
 
 const URGENCY_COLORS: Record<string, string> = {
   INMEDIATO:    "bg-red-100 text-red-700 border-red-200",
@@ -41,11 +41,13 @@ export default async function RecomendacionesPage() {
                   {rec.urgency}
                 </span>
                 <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{rec.format}</span>
-                <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">{rec.program}</span>
+                {rec.section && (
+                  <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">📂 {rec.section}</span>
+                )}
               </div>
               <div className="text-right shrink-0">
                 <span className="text-xl font-bold text-red-600">{rec.score}</span>
-                <span className="text-xs text-gray-400">/10</span>
+                <span className="text-xs text-gray-400">/100</span>
               </div>
             </div>
 

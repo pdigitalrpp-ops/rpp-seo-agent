@@ -1,15 +1,15 @@
 import { supabase } from "@/lib/supabase"
 
-export const revalidate = 3600
+export const revalidate = 60
 
 const CATEGORY_COLORS: Record<string, string> = {
-  política:        "bg-blue-100 text-blue-700",
-  economía:        "bg-green-100 text-green-700",
+  politica:        "bg-blue-100 text-blue-700",
+  economia:        "bg-green-100 text-green-700",
   deportes:        "bg-yellow-100 text-yellow-700",
   entretenimiento: "bg-pink-100 text-pink-700",
-  tecnología:      "bg-purple-100 text-purple-700",
+  tecnologia:      "bg-purple-100 text-purple-700",
   salud:           "bg-teal-100 text-teal-700",
-  internacional:   "bg-orange-100 text-orange-700",
+  mundo:           "bg-orange-100 text-orange-700",
   otros:           "bg-gray-100 text-gray-600",
 }
 

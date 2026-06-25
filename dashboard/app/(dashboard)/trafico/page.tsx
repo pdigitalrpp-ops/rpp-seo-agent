@@ -1,15 +1,14 @@
 import { supabase } from "@/lib/supabase"
 
-export const revalidate = 3600
+export const revalidate = 60
 
 export default async function TraficoPage() {
   const today = new Date().toISOString().split("T")[0]
-  const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0]
 
   const { data: topArticles } = await supabase
     .from("own_traffic")
     .select("*")
-    .eq("date", yesterday)
+    .eq("date", today)
     .order("sessions", { ascending: false })
     .limit(20)
 
@@ -29,8 +28,8 @@ export default async function TraficoPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Tráfico</h1>
-        <span className="text-sm text-gray-500">Ayer: {yesterday}</span>
+        <h1 className="text-2xl font-bold text-gray-900">Tráfico (Marfeel)</h1>
+        <span className="text-sm text-gray-500">{today}</span>
       </div>
 
       {/* Distribución por fuente */}
@@ -69,14 +68,12 @@ export default async function TraficoPage() {
             <div key={row.id} className="px-4 py-3 flex items-start gap-3">
               <span className="text-sm font-bold text-gray-300 w-6 shrink-0">{i + 1}</span>
               <div className="flex-1 min-w-0">
-                <p className="text-sm text-gray-800 truncate">{row.page_path}</p>
+                <p className="text-sm text-gray-800 truncate">{row.title ?? row.page_path}</p>
                 <div className="flex gap-3 mt-0.5">
-                  <span className="text-xs text-gray-500">
-                    {row.source ?? "—"}
-                  </span>
-                  {row.bounce_rate != null && (
-                    <span className="text-xs text-gray-400">
-                      rebote: {(row.bounce_rate * 100).toFixed(0)}%
+                  <p className="text-xs text-gray-400 truncate font-mono">{row.page_path}</p>
+                  {row.unique_users != null && (
+                    <span className="text-xs text-gray-400 shrink-0">
+                      {(row.unique_users).toLocaleString()} usuarios
                     </span>
                   )}
                 </div>

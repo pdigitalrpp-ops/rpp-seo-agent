@@ -1,15 +1,16 @@
 import { supabase } from "@/lib/supabase"
 
-export const revalidate = 3600
+export const revalidate = 60
 
 export default async function DashboardHome() {
   const today = new Date().toISOString().split("T")[0]
 
-  const [{ data: runs }, { data: recs }, { data: alerts }, { data: trends }] = await Promise.all([
+  const [{ data: runs }, { data: recs }, { data: alerts }, { data: trends }, { data: insights }] = await Promise.all([
     supabase.from("agent_runs").select("*").order("run_date", { ascending: false }).limit(1),
     supabase.from("recommendations").select("*").eq("date", today).order("rank"),
     supabase.from("alerts").select("*").eq("resolved", false).order("created_at", { ascending: false }).limit(10),
     supabase.from("daily_trends").select("*").eq("date", today).order("rank").limit(5),
+    supabase.from("daily_insights").select("*").eq("date", today).order("created_at").limit(6),
   ])
 
   const lastRun = runs?.[0]
@@ -58,6 +59,21 @@ export default async function DashboardHome() {
         </div>
       )}
 
+      {/* Insights del benchmark de la mañana */}
+      {insights && insights.length > 0 && (
+        <div>
+          <h2 className="text-lg font-semibold text-gray-800 mb-3">Aprendizajes de hoy</h2>
+          <div className="grid gap-3 md:grid-cols-2">
+            {insights.map((ins: any) => (
+              <div key={ins.id} className="bg-white rounded-xl border p-4">
+                <p className="font-medium text-gray-900 text-sm">{ins.headline}</p>
+                {ins.detail && <p className="text-xs text-gray-500 mt-1">{ins.detail}</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Top recomendaciones */}
       <div>
         <h2 className="text-lg font-semibold text-gray-800 mb-3">Top recomendaciones del día</h2>
@@ -71,9 +87,9 @@ export default async function DashboardHome() {
                     rec.urgency === "HOY"       ? "bg-orange-100 text-orange-700" :
                     "bg-blue-100 text-blue-700"
                   }`}>{rec.urgency}</span>
-                  <span className="text-xs text-gray-500">{rec.program}</span>
+                  {rec.section && <span className="text-xs text-gray-500">📂 {rec.section}</span>}
                 </div>
-                <span className="text-sm font-bold text-gray-700">{rec.score}/10</span>
+                <span className="text-sm font-bold text-gray-700">{rec.score}/100</span>
               </div>
               <p className="font-medium text-gray-900 mt-2">{rec.title_suggested}</p>
               <p className="text-sm text-gray-600 mt-1">{rec.angle}</p>

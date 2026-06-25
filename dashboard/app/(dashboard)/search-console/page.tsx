@@ -1,6 +1,6 @@
 import { supabase } from "@/lib/supabase"
 
-export const revalidate = 3600
+export const revalidate = 60
 
 export default async function SearchConsolePage() {
   const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0]

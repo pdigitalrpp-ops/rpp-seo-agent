@@ -1,6 +1,6 @@
 import { supabase } from "@/lib/supabase"
 
-export const revalidate = 1800
+export const revalidate = 60
 
 const SEVERITY_STYLES: Record<string, string> = {
   high:   "border-l-4 border-red-500 bg-red-50",
@@ -15,9 +15,10 @@ const SEVERITY_BADGE: Record<string, string> = {
 }
 
 const TYPE_LABEL: Record<string, string> = {
-  traffic_drop: "Caída de tráfico",
-  decay:        "Content decay",
-  position_drop: "Caída de posición",
+  traffic_drop:   "Caída de tráfico",
+  decay:          "Content decay",
+  position_drop:  "Caída de posición",
+  trending_topic: "Tema en tendencia",
 }
 
 export default async function AlertasPage() {
@@ -66,6 +67,12 @@ export default async function AlertasPage() {
                 <span className="text-xs text-gray-500">
                   {TYPE_LABEL[alert.type] ?? alert.type}
                 </span>
+                {alert.section && (
+                  <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">📂 {alert.section}</span>
+                )}
+                {alert.score != null && (
+                  <span className="text-xs font-bold text-red-600">{alert.score}/100</span>
+                )}
               </div>
               <span className="text-xs text-gray-400 shrink-0">
                 {alert.date}

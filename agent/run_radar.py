@@ -21,8 +21,8 @@ from collectors import marfeel, trends, competitors
 from analyzers import scoring, opportunities
 from notifiers import notify
 from writers.supabase_writer import (
-    save_run_log, save_recommendations, save_alerts,
-    get_scoring_weights, count_recent_alerts,
+    save_run_log, save_recommendations, save_alerts, save_trends,
+    save_competitor_articles, get_scoring_weights, count_recent_alerts,
 )
 
 logging.basicConfig(
@@ -97,6 +97,7 @@ def run():
     for item in trends_data:
         kw_words = [w for w in item["keyword"].lower().split() if len(w) > 4]
         item["own_momentum"] = min(sum(1 for w in kw_words if w in realtime_titles) / 2.0, 1.0)
+        item["category"] = scoring._infer_category_from_keyword(item["keyword"])
 
     scored = scoring.score_all_topics(
         trends_data, competitor_data or [], gsc_data=[],
@@ -122,6 +123,8 @@ def run():
 
     # --- GUARDAR ---
     try:
+        save_trends(trends_data, today)
+        save_competitor_articles(competitor_data or [])
         save_recommendations(recs, today)
         save_alerts(sent_alerts)
         logger.info(f"✅ Radar guardado: {len(recs)} recomendaciones, {len(sent_alerts)} alertas")

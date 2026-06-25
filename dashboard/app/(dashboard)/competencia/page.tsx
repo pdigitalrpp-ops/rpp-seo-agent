@@ -1,6 +1,6 @@
 import { supabase } from "@/lib/supabase"
 
-export const revalidate = 3600
+export const revalidate = 60
 
 const SITES = ["El Comercio", "La República", "Gestión", "Peru21", "Infobae Perú"]
 
