@@ -102,7 +102,10 @@ def query(metrics, group_by=None, dates=None, granularity="daily",
         # Captura el reclamo exacto de la API para depurar el formato del query
         logger.error(f"Marfeel {resp.status_code} en query | body={body} | resp={resp.text[:800]}")
     resp.raise_for_status()
-    return resp.json()
+    payload = resp.json()
+    # DEBUG temporal: ver la estructura real de la respuesta agrupada
+    logger.info(f"Marfeel DEBUG groupBy={body.get('groupBy')} -> {str(payload)[:1200]}")
+    return payload
 
 
 def _rows_from_response(payload, key_field, value_field=None):
