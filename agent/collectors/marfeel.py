@@ -102,31 +102,36 @@ def query(metrics, group_by=None, dates=None, granularity="daily",
         # Captura el reclamo exacto de la API para depurar el formato del query
         logger.error(f"Marfeel {resp.status_code} en query | body={body} | resp={resp.text[:800]}")
     resp.raise_for_status()
-    payload = resp.json()
-    # DEBUG temporal: ver la estructura real de la respuesta agrupada
-    logger.info(f"Marfeel DEBUG groupBy={body.get('groupBy')} -> {str(payload)[:1200]}")
-    return payload
+    return resp.json()
 
 
 def _rows_from_response(payload, key_field, value_field=None):
     """
-    Normaliza la respuesta de Marfeel a una lista de dicts {label, ...metrics}.
-    La respuesta es una lista de bloques por métrica; cada bloque trae
-    actualData.data = [{"label": ..., "<dimension>": valor}].
+    Normaliza la respuesta AGRUPADA de Marfeel a una lista de dicts.
+    Estructura real: cada bloque (por métrica) trae
+      actualData.values = [{"key": hash, "total": N,
+                            "items": [{"id","value","type"}]}]
+    donde `items` contiene el valor de cada dimensión del groupBy
+    (type = nombre de la dimensión: "url", "title", "section", "source"...).
+    Devuelve filas {label, <dim>: valor, <metric>: total}, fusionando los
+    bloques de distintas métricas por el valor de `key_field`.
     """
     out = {}
     for block in (payload or []):
         metric = block.get("metric")
-        data = (block.get("actualData") or {}).get("data") or []
-        for row in data:
-            label = row.get("label") or row.get(key_field)
+        values = (block.get("actualData") or {}).get("values") or []
+        for entry in values:
+            dims = {
+                it.get("type"): it.get("value")
+                for it in (entry.get("items") or []) if it.get("type")
+            }
+            label = dims.get(key_field) or dims.get("url") or entry.get("key")
             if label is None:
                 continue
-            entry = out.setdefault(label, {"label": label})
-            # el valor de la métrica es el otro campo del row (no "label")
-            for k, v in row.items():
-                if k != "label":
-                    entry[metric or k] = v
+            row = out.setdefault(label, {"label": label})
+            row.update(dims)
+            if metric:
+                row[metric] = entry.get("total")
     return list(out.values())
 
 
