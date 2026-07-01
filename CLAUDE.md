@@ -1,102 +1,151 @@
 # RPP SEO Agent — Contexto para Claude Code
 
-> **⚠️ ACTUALIZACIÓN v2 (2026-06-24):** el core fue replanteado a un agente de
-> **3 etapas** (benchmark de la mañana → radar en tiempo real → alertas por
-> sección) + **auditoría SEO on-page** de notas publicadas. **Marfeel reemplaza
-> a GA4.** `run.py` se partió en `run_morning.py` (Etapa 1) y `run_radar.py`
-> (Etapas 2-3). Las "secciones" reemplazan a los "programas" y salen de la
-> dimensión `section` de Marfeel. Parte de las secciones de abajo describen el
-> diseño v1 y están desactualizadas — la fuente de verdad del diseño v2 está en
-> la memoria del proyecto (`diseno_core_agente_v2.md`).
+Agente SEO de contenidos para RPP Noticias (rpp.pe). Un agente de **3 etapas**
+que recopila señales, las puntúa y genera recomendaciones editoriales en un
+dashboard web.
 
-## Qué es este proyecto
-
-Agente SEO de contenidos para RPP Noticias. Corre automáticamente cada mañana a las **06:00 AM Lima (11:00 UTC)** vía GitHub Actions, recopila señales de 5 fuentes, las analiza y genera recomendaciones editoriales que aparecen en un dashboard web.
-
-**Stack:** Python 3.11 + GitHub Actions + Supabase + Next.js 14 en Vercel  
-**Costo:** $0/mes (todos los servicios en free tier)
+**Stack:** Python 3.11 + GitHub Actions + Supabase + Next.js 14 en Vercel
+**Costo:** $0/mes (free tier). Repo público → minutos de Actions ilimitados.
 
 ---
 
-## Estado actual del proyecto
+## Estado actual
 
-**Fecha último avance:** 2026-06-04  
-**Estado:** Código 100% completo y committeado en git local. Pendiente: subir a GitHub y configurar credenciales de servicios externos.
+**Fecha último avance:** 2026-06-30
+**Estado:** v2 en producción y **funcionando end-to-end**. El radar corre en
+GitHub Actions, recolecta de Marfeel + Google Trends + competencia, puntúa y
+guarda recomendaciones en Supabase; el dashboard las muestra en vivo.
 
-### Archivos creados (39 archivos, ~2800 líneas)
+- **Repo:** `https://github.com/pdigitalrpp-ops/rpp-seo-agent` (rama `master`)
+- **Dashboard:** `https://rpp-seo-agent.vercel.app` (Vercel, team PDIGITAL RPP)
+- **Supabase:** project ref `tfrnpjbvxulswvqtosoq`
+- Git local del usuario autentica como `pdigitalrpp-ops` vía Git Credential Manager.
+
+### Pendientes
+- **Alertas Etapa 3 (Teams/WhatsApp):** definir `SECTION_RESPONSIBLES` (canal por
+  sección). Hasta entonces las alertas quedan solo en Supabase/dashboard. (El
+  usuario lo dejó para el final.)
+- **Secretos opcionales:** `GSC_CREDENTIALS_JSON` (posiciones SEO) y `SERPAPI_KEY`.
+  El agente ya funciona sin ellos (esas fuentes fallan de forma controlada).
+- **Benchmark matutino (run_morning):** corre 06:00 Lima; poblaría own_traffic,
+  gsc, decay, insights y auditorías on-page. Verificar su salida real.
+- **Fase 2 — capa LLM (Claude):** ver más abajo. Es lo que corrige la calidad.
+
+---
+
+## Arquitectura de 3 etapas
+
+```
+🌅 Etapa 1 — Benchmark de la mañana   (run_morning.py, cron 11:00 UTC = 06:00 Lima)
+   Marfeel (ayer) + GSC + competencia → rendimiento de ayer, por qué funcionó,
+   auditoría on-page de notas, aprendizajes (scoring_weights) para el día.
+
+📡 Etapa 2 — Radar en tiempo real      (run_radar.py, cron cada ~10 min diurno Lima)
+   Marfeel (hoy) + Trends + "más leídas" competencia → temas con score 0-100,
+   mapeados a sección, aplicando los aprendizajes de la mañana.
+
+🚨 Etapa 3 — Alertas por sección       (dentro de run_radar.py)
+   Temas con score ≥ umbral → alerta al equipo de la sección (Teams/WhatsApp).
+   Con anti-spam. PENDIENTE: canal por sección (SECTION_RESPONSIBLES).
+```
+
+El **ciclo de aprendizaje**: cada mañana mide qué funcionó y ajusta los pesos del
+scoring que usa el radar el resto del día. Rules-first hoy; con Claude (fase 2)
+sería razonamiento real.
+
+---
+
+## Estructura de archivos
 
 ```
 rpp-seo-agent/
-├── .github/workflows/daily.yml         ← cron GitHub Actions
+├── .github/workflows/
+│   ├── morning.yml                 ← cron 11:00 UTC → run_morning.py
+│   └── radar.yml                   ← cron */10 (horario Lima) → run_radar.py
 ├── agent/
-│   ├── config.py                       ← configuración central (sitios, categorías, umbrales)
-│   ├── run.py                          ← orquestador principal
+│   ├── config.py                   ← Marfeel, SECTION_MAP, SCORE_WEIGHTS, umbrales, ONPAGE
+│   ├── run_morning.py              ← Etapa 1 (benchmark + insights + auditoría)
+│   ├── run_radar.py                ← Etapas 2-3 (radar + alertas)
 │   ├── collectors/
-│   │   ├── ga4.py                      ← Google Analytics 4 (tráfico, patrones horarios)
-│   │   ├── gsc.py                      ← Google Search Console (posiciones, CTR, drops)
-│   │   ├── trends.py                   ← Google Trends Perú (tendencias + growth score)
-│   │   ├── competitors.py              ← RSS/sitemap de 5 competidores
-│   │   └── serpapi.py                  ← rankings y SERP features (cuota: 15 calls/día)
+│   │   ├── marfeel.py              ← tráfico/audiencia (REEMPLAZA a GA4)
+│   │   ├── gsc.py                  ← Google Search Console (posiciones, CTR, drops)
+│   │   ├── trends.py               ← Google Trends vía RSS (NO pytrends en CI)
+│   │   ├── competitors.py          ← RSS de competencia
+│   │   ├── rpp_articles.py         ← descarga+parseo HTML de notas (auditor on-page)
+│   │   └── serpapi.py              ← rankings/SERP (cuota escasa)
 │   ├── analyzers/
-│   │   ├── scoring.py                  ← score 0-10 por tema, urgencia, formato, programa
-│   │   ├── opportunities.py            ← quick wins GSC, CTR bajo, recomendaciones finales
-│   │   ├── decay.py                    ← content decay vs pico histórico (umbral 20%)
-│   │   └── signals.py                  ← early signals, cross-reference, ventanas de publicación
-│   ├── writers/supabase_writer.py      ← guarda en todas las tablas de Supabase
-│   └── db/schema.sql                   ← 9 tablas con RLS, índices, políticas de lectura pública
-├── dashboard/
-│   ├── app/(auth)/login/page.tsx       ← login con NextAuth (3 roles)
-│   ├── app/(dashboard)/
-│   │   ├── layout.tsx                  ← nav lateral con 7 secciones
-│   │   ├── page.tsx                    ← resumen ejecutivo del día
-│   │   ├── recomendaciones/page.tsx    ← top 5 temas con score, ángulo, ventana
-│   │   ├── trends/page.tsx             ← tendencias Google Trends Perú
-│   │   ├── competencia/page.tsx        ← artículos de 5 competidores agrupados por sitio
-│   │   ├── trafico/page.tsx            ← top artículos GA4 + distribución por canal
-│   │   ├── search-console/page.tsx     ← quick wins + low CTR + top queries
-│   │   └── alertas/page.tsx            ← alertas activas + content decay
-│   ├── app/api/auth/[...nextauth]/route.ts
-│   ├── lib/supabase.ts
-│   ├── package.json                    ← next@14.1, next-auth, recharts, supabase-js
-│   └── [tailwind, tsconfig, postcss, next.config.js]
+│   │   ├── scoring.py              ← score 0-100 con pesos de aprendizaje; assign_section
+│   │   ├── opportunities.py        ← quick wins, CTR bajo, build_recommendations
+│   │   ├── decay.py                ← content decay vs pico histórico
+│   │   ├── signals.py              ← early signals, ventanas (reusable)
+│   │   └── onpage_audit.py         ← auditoría SEO on-page de una nota
+│   ├── notifiers/notify.py         ← dispatch de alertas a Teams/WhatsApp (WhatsApp = stub)
+│   ├── writers/supabase_writer.py  ← escribe todas las tablas
+│   └── db/schema.sql               ← 12 tablas (9 v1 + v2: daily_insights, scoring_weights, onpage_audits)
+├── dashboard/app/(dashboard)/      ← Next.js: page, recomendaciones, trends, competencia,
+│                                       trafico, search-console, auditoria, alertas
 ├── requirements.txt
-├── .env.example
-└── .gitignore
+└── .env.example
 ```
 
+`ga4.py` y `run.py` (v1) fueron **eliminados**.
+
 ---
 
-## Decisiones de diseño importantes
+## Decisiones de diseño y "gotchas" importantes
 
-### Python / Agente
+### Marfeel (fuente de tráfico — reemplaza a GA4)
+- Auth: `POST https://api.newsroom.bi/api/user/signin` con `{email, password}` →
+  bearer token (válido ~14 días, se cachea en `marfeel.py`).
+- Datos: `POST https://api.newsroom.bi/api/dashboard/query`.
+- **LÍMITE DURO: 1 request/minuto.** `marfeel.py` tiene un rate-limiter global.
+- **El query DEBE llevar `dates`.** Sin `dates` + `granularity:"realtime"` devuelve
+  `{"msg":"Invalid params"}`. Se usa `granularity:"daily"` + `dates:{last:{number:1,dimension:"day"}}`.
+- **Estructura de la respuesta agrupada (clave):** los datos por dimensión están en
+  `actualData.values[]`, NO en `actualData.data[]` (esa es la serie temporal por fecha).
+  Cada entry: `{"key": hash, "total": N, "items": [{"id","value","type"}]}` donde
+  `type` = nombre de la dimensión (`url`, `title`, `section`, `source`). `_rows_from_response`
+  en `marfeel.py` parsea esto. (Bug histórico: leía `data[]` → guardaba fechas como page_path.)
+- Secretos: `MARFEEL_EMAIL`, `MARFEEL_PASSWORD`.
 
-- **`safe_collect(name, func, run_data, **kwargs)`** — patrón estándar para todos los colectores; nunca bloquea el pipeline si falla una fuente. Los fallos se loggean y van a `sources_failed` en Supabase.
-- **Google Trends** usa `pytrends` con `@retry(stop_after_attempt(3), wait_exponential(min=60, max=180))` — es propenso a 429. Los sleeps de 2-5s entre llamadas son intencionales.
-- **GSC** tiene latencia de ~2 días. Siempre usar `days_back >= 3`. El parámetro `dataState: "all"` incluye datos frescos no consolidados.
-- **SerpAPI** limitado a 15 llamadas/día (`SERPAPI_DAILY_LIMIT`). El contador `_call_count` es un módulo-global; se resetea con cada ejecución del agente.
-- **Content decay** compara el tráfico actual vs promedio de los 30 días de mayor tráfico histórico (leídos de Supabase, no de GA4). El primer mes de operación no habrá datos históricos suficientes → normal que decay esté vacío.
-- **Scoring** funciona en 5 dimensiones: growth score (0-3 pts), cobertura competidores (0-2), relevancia RPP (0-2), potencial Discover (0-2), urgencia temporal (0-1). Máximo 10.
+### Google Trends
+- **pytrends NO funciona desde GitHub Actions** (bloqueo por IP de datacenter).
+- Se usa el feed RSS oficial **`https://trends.google.com/trending/rss?geo=PE`**
+  (el endpoint clásico `/trends/trendingsearches/daily/rss` da 404). Devuelve ~10
+  tendencias con `ht:approx_traffic`. El `growth_score` (0-10) sale de ese tráfico.
+
+### Competencia
+- El Comercio y Gestión usan su RSS `arcio` directo. La República, Peru21 e Infobae
+  usan **Google News RSS por dominio** (`news.google.com/rss/search?q=when:1d site:...`)
+  porque sus feeds propios cambiaron/fallan.
+
+### Scoring 0-100
+- `SCORE_WEIGHTS` (suman 100): market_trend 30, competition_gap 20, rpp_relevance 15,
+  discover_potential 15, time_sensitivity 10, own_momentum 10.
+- Cada dimensión se normaliza 0-1 y se pondera. `learning` = multiplicadores por
+  dimensión (de `scoring_weights`, aprendizajes de la mañana).
+- Urgencia: INMEDIATO ≥80, HOY ≥60, ESTA SEMANA ≥40, si <40 → DESCARTAR (se filtra).
+- **Secciones reemplazan a "programas".** `assign_section(category, sections)` mapea la
+  categoría a una sección real de rpp.pe (dimensión `section` de Marfeel).
+
+### Supabase
+- **Usar `supabase==2.31.0` + `httpx>=0.26`.** Versiones viejas dan
+  `Client.__init__() got an unexpected keyword argument 'proxy'` y bloquean la escritura.
+- Tablas con RLS + política `public_read` (`SELECT USING true`). Dashboard usa anon key
+  (lectura), agente usa service_role (escritura).
 
 ### Dashboard Next.js
+- App Router + RSC. `export const revalidate = 60` en todas las páginas (el radar
+  actualiza cada ~10 min; 1h de ISR era demasiado stale).
+- Nueva página `/auditoria` (onpage_audits). Home muestra "Aprendizajes de hoy"
+  (daily_insights). recomendaciones/home usan `section` y score `/100`.
 
-- **App Router** con React Server Components. Todas las páginas usan `export const revalidate = 3600` (1h ISR).
-- **Supabase anon key** en el cliente — las tablas solo tienen política `SELECT USING (true)`. El agente Python usa `service_role key` para escritura.
-- **NextAuth** con `CredentialsProvider`. 3 usuarios hardcodeados en `route.ts`, contraseñas en variables de entorno de Vercel.
-- No hay estado global ni Context. Cada página hace sus propias queries a Supabase en el servidor.
-
----
-
-## Competidores monitoreados
-
-| Nombre | RSS |
-|--------|-----|
-| El Comercio | https://elcomercio.pe/arcio/rss/ |
-| La República | https://larepublica.pe/arcio/rss/ |
-| Gestión | https://gestion.pe/arcio/rss/ |
-| Peru21 | https://peru21.pe/arcio/rss/ |
-| Infobae Perú | https://www.infobae.com/feeds/rss/peru/ |
-
-Si un RSS falla, `_parse_sitemap()` intenta el `sitemap-news.xml` del dominio como fallback.
+### GitHub Actions
+- **El cron se retrasa/saltea mucho** en repos de poca actividad (hoy corrió ~3 veces,
+  no cada 10 min). Para tiempo real de verdad haría falta un worker dedicado.
+- `run_radar.py` sólo escribe `daily_trends`, `competitor_articles`, `recommendations`,
+  `alerts`, `agent_runs`. `run_morning.py` escribe `own_traffic`, `gsc_daily`,
+  `content_decay`, `daily_insights`, `scoring_weights`, `onpage_audits`.
 
 ---
 
@@ -104,15 +153,18 @@ Si un RSS falla, `_parse_sitemap()` intenta el `sitemap-news.xml` del dominio co
 
 | Tabla | Escribe | Lee |
 |-------|---------|-----|
-| `daily_trends` | agente Python | dashboard trends |
-| `gsc_daily` | agente Python | dashboard search-console |
-| `own_traffic` | agente Python | dashboard trafico, decay |
-| `competitor_articles` | agente Python (upsert por URL) | dashboard competencia |
-| `recommendations` | agente (borra y reinserta por fecha) | dashboard recomendaciones, home |
-| `alerts` | agente Python | dashboard alertas |
-| `content_decay` | agente (upsert por page_path) | dashboard alertas |
-| `publishing_windows` | agente (upsert por fecha) | dashboard home |
-| `agent_runs` | agente Python | dashboard home (semáforo) |
+| `daily_trends` | radar | dashboard trends, home |
+| `competitor_articles` | radar (upsert por url) | dashboard competencia |
+| `recommendations` | radar (borra+reinserta por fecha) | dashboard recomendaciones, home |
+| `alerts` | radar | dashboard alertas |
+| `own_traffic` | morning | dashboard trafico, decay |
+| `gsc_daily` | morning | dashboard search-console |
+| `content_decay` | morning (upsert page_path) | dashboard alertas |
+| `daily_insights` | morning (borra+reinserta) | dashboard home |
+| `scoring_weights` | morning | radar (lee aprendizajes) |
+| `onpage_audits` | morning | dashboard auditoria |
+| `publishing_windows` | (reusable) | dashboard home |
+| `agent_runs` | ambos | dashboard home (semáforo) |
 
 ---
 
@@ -120,119 +172,42 @@ Si un RSS falla, `_parse_sitemap()` intenta el `sitemap-news.xml` del dominio co
 
 ### Agente Python (GitHub Secrets)
 ```
-MARFEEL_EMAIL          → pdigitalrpp@gmail.com (usuario con API role)   [✅ configurado]
-MARFEEL_PASSWORD       → password de API de Marfeel                     [✅ configurado]
-GSC_CREDENTIALS_JSON   → JSON completo de service account de Google
-SERPAPI_KEY            → clave de serpapi.com
-SUPABASE_URL           → https://tfrnpjbvxulswvqtosoq.supabase.co
-SUPABASE_KEY           → service_role key (NO la anon key)
+MARFEEL_EMAIL          → pdigitalrpp@gmail.com                 [✅ configurado]
+MARFEEL_PASSWORD       → password de API de Marfeel            [✅ configurado]
+SUPABASE_URL           → https://tfrnpjbvxulswvqtosoq.supabase.co  [✅ configurado]
+SUPABASE_KEY           → service_role key (NO la anon)         [✅ configurado]
+GSC_CREDENTIALS_JSON   → service account de Google             [⏳ pendiente, opcional]
+SERPAPI_KEY            → clave de serpapi.com                  [⏳ pendiente, opcional]
 ```
 
-### Dashboard (Vercel)
+### Dashboard (Vercel) — todas ✅ configuradas
 ```
-NEXTAUTH_URL           → https://tu-app.vercel.app
-NEXTAUTH_SECRET        → openssl rand -base64 32
-NEXT_PUBLIC_SUPABASE_URL       → mismo que agente
-NEXT_PUBLIC_SUPABASE_ANON_KEY  → anon key (distinta al service_role)
-PASS_EDITORIAL         → contraseña para redacción
-PASS_DIRECCION         → contraseña para dirección/c-levels
-PASS_ADMIN             → contraseña admin
+NEXTAUTH_URL, NEXTAUTH_SECRET
+NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY
+PASS_EDITORIAL / PASS_DIRECCION / PASS_ADMIN   (contraseñas temporales: <rol>2026)
 ```
 
 ---
 
-## Pasos pendientes (requieren credenciales humanas)
+## Fase 2 — capa agéntica LLM (pendiente, decidida)
 
-### 1. GitHub
-```bash
-# En el directorio del repo:
-git remote add origin https://github.com/TU_ORG/rpp-seo-agent.git
-git push -u origin master
-```
-Luego en GitHub → Settings → Secrets → Actions → añadir los 6 secrets.
+El agente actual es **rules-first**. La categorización por keywords falla notoriamente:
+nombres de jugadores ("erling haaland", "lebron james", "van gaal") caen en "otros"
+en vez de "deportes" → baja relevancia → se filtran → se pierde señal. Los títulos son
+templados ("todo lo que necesitas saber").
 
-### 2. Supabase
-1. Crear proyecto en supabase.com
-2. Ir a SQL Editor → pegar y ejecutar `agent/db/schema.sql`
-3. Copiar URL y service_role key para GitHub Secrets
-4. Copiar URL y anon key para Vercel
-
-### 3. Google Service Account
-1. Google Cloud Console → crear proyecto o usar el existente de RPP
-2. Habilitar: "Google Analytics Data API" y "Google Search Console API"
-3. Crear Service Account → descargar JSON de credenciales
-4. En GA4: Administrador → Propiedad → Control de acceso → añadir el email de la service account como "Lector"
-5. En Search Console: rpp.pe → Configuración → Usuarios y permisos → Añadir usuario (mismo email, permiso Restringido)
-
-### 4. SerpAPI
-- Registrar en serpapi.com → free tier incluye 100 búsquedas/mes
-- El agente usa máximo 15/día → ~450/mes → excede free tier si corre todos los días
-- Considerar reducir `SERPAPI_DAILY_LIMIT` a 10 o usar plan de pago
-
-### 5. Vercel
-```bash
-cd dashboard
-npm install
-# Verificar que compila localmente:
-npm run build
-```
-Luego conectar el repo en vercel.com → seleccionar carpeta `dashboard` como root → configurar las 7 variables de entorno.
-
-### 6. Test manual del agente
-```bash
-cd agent
-cp ../.env.example .env
-# Rellenar .env con credenciales reales
-pip install -r ../requirements.txt
-python run.py
-```
-
-### 7. Test manual de GitHub Actions
-En el repo de GitHub → Actions → "SEO Agent — Daily Run" → "Run workflow"
-
----
-
-## Flujo de datos completo
-
-```
-GitHub Actions (06:00 AM Lima)
-    │
-    ▼
-agent/run.py
-    ├── collectors/ga4.py        → sesiones, bounce rate, patrón horario
-    ├── collectors/gsc.py        → posiciones, CTR, drops, Discover
-    ├── collectors/trends.py     → trending Perú + growth score
-    ├── collectors/competitors.py → artículos RSS/sitemap de 5 medios
-    └── collectors/serpapi.py    → rankings y PAA
-    │
-    ▼
-analyzers/
-    ├── scoring.py      → score 0-10 por tema
-    ├── opportunities.py → top 5 recomendaciones + ángulos
-    ├── decay.py        → artículos cuyo tráfico cayó >20%
-    └── signals.py      → early signals + ventanas óptimas
-    │
-    ▼
-writers/supabase_writer.py → guarda todo en Supabase
-    │
-    ▼
-Dashboard Vercel (Next.js) → 7 páginas con login
-```
+**Fase 2 = agregar Claude** que: (1) categorice/razone los temas de verdad, (2) redacte
+titulares y ángulos reales, (3) explique en lenguaje natural por qué funcionó el contenido.
+Los datos ya limpios en Supabase son la base. Enchufar en costuras marcadas. **Rules-first
+primero (ya hecho), IA después.**
 
 ---
 
 ## Contexto RPP
 
-- **SITE_URL:** `https://rpp.pe/`
-- **Zona horaria:** America/Lima (UTC-5, sin DST)
-- **Programas afines por categoría:**
-  - Política → Ampliación de Noticias
-  - Economía → Economía al Día
-  - Deportes → RPP Deportes
-  - Entretenimiento → Trome TV
-  - Tecnología → Tech y Más
-  - Salud → Vida Saludable
-- **Umbral decay:** 20% de caída respecto al pico histórico
-- **Umbral alerta GSC:** 30% de caída de clics vs semana anterior
-- **Quick wins GSC:** posición 4-10 con ≥200 impresiones
-- **Low CTR:** CTR ≤2% con ≥500 impresiones
+- **SITE_URL:** `https://rpp.pe/` · **Zona horaria:** America/Lima (UTC-5, sin DST)
+- **Categorías** (sin tilde, claves de `CATEGORY_KEYWORDS`): politica, economia, deportes,
+  entretenimiento, tecnologia, salud, mundo, otros.
+- **Secciones** reales salen de la dimensión `section` de Marfeel (fallback en `KNOWN_SECTIONS_FALLBACK`).
+- Umbral decay 20%, alerta GSC 30%, quick wins pos 4-10 con ≥200 impresiones, low CTR ≤2% con ≥500.
+```
