@@ -12,8 +12,8 @@ export type ChannelRow = {
 
 const TODOS = "Todos"
 
-/** Deriva el "folder" (primer segmento del path) desde la URL del artículo. */
-function folderOf(pagePath: string): string {
+/** Deriva la "sección" (primer segmento del path) desde la URL del artículo. */
+function sectionOf(pagePath: string): string {
   try {
     const u = new URL(pagePath)
     const host = u.hostname.replace(/^www\./, "")
@@ -39,35 +39,41 @@ export default function TraficoClient({
   hasChannelData: boolean
   date: string
 }) {
-  // Canales presentes, ordenados por page views total (desc)
+  const sections = useMemo(() => {
+    const set = new Set<string>()
+    for (const r of rows) set.add(sectionOf(r.page_path))
+    return Array.from(set).sort()
+  }, [rows])
+
+  // Canales por page views total; se limita a la sección seleccionada (requisito 4)
+  const [section, setSection] = useState<string>(TODOS)
+
   const channels = useMemo(() => {
     const acc: Record<string, number> = {}
     for (const r of rows) {
+      if (section !== TODOS && sectionOf(r.page_path) !== section) continue
       const c = r.channel || "Otros"
       acc[c] = (acc[c] ?? 0) + (r.pageviews ?? 0)
     }
     return Object.entries(acc).sort((a, b) => b[1] - a[1])
-  }, [rows])
-
-  const folders = useMemo(() => {
-    const set = new Set<string>()
-    for (const r of rows) set.add(folderOf(r.page_path))
-    return Array.from(set).sort()
-  }, [rows])
+  }, [rows, section])
 
   // Default: canal Google si existe; si no, Todos
-  const defaultChannel = hasChannelData && channels.some(([c]) => c === "Google") ? "Google" : TODOS
+  const defaultChannel =
+    hasChannelData && channels.some(([c]) => c === "Google") ? "Google" : TODOS
   const [channel, setChannel] = useState<string>(defaultChannel)
-  const [folder, setFolder] = useState<string>(TODOS)
 
-  // Filas filtradas por canal + folder
+  const totalChannelPv = channels.reduce((s, [, v]) => s + v, 0)
+  const maxChannelPv = channels.length ? channels[0][1] : 0
+
+  // Filas filtradas por canal + sección
   const filtered = useMemo(() => {
     return rows.filter((r) => {
       if (channel !== TODOS && (r.channel || "Otros") !== channel) return false
-      if (folder !== TODOS && folderOf(r.page_path) !== folder) return false
+      if (section !== TODOS && sectionOf(r.page_path) !== section) return false
       return true
     })
-  }, [rows, channel, folder])
+  }, [rows, channel, section])
 
   // Agrega por artículo (suma canales cuando channel = Todos)
   const articles = useMemo(() => {
@@ -91,20 +97,8 @@ export default function TraficoClient({
     return Object.values(acc).sort((a, b) => b.pageviews - a.pageviews)
   }, [filtered])
 
-  // Distribución de canales dentro del folder seleccionado (ignora el filtro de canal)
-  const channelDist = useMemo(() => {
-    const acc: Record<string, number> = {}
-    for (const r of rows) {
-      if (folder !== TODOS && folderOf(r.page_path) !== folder) continue
-      const c = r.channel || "Otros"
-      acc[c] = (acc[c] ?? 0) + (r.pageviews ?? 0)
-    }
-    return Object.entries(acc).sort((a, b) => b[1] - a[1])
-  }, [rows, folder])
-
   const totalPv = articles.reduce((s, a) => s + a.pageviews, 0)
   const totalUsers = articles.reduce((s, a) => s + a.unique_users, 0)
-  const distTotal = channelDist.reduce((s, [, v]) => s + v, 0)
 
   return (
     <div className="space-y-6">
@@ -116,9 +110,34 @@ export default function TraficoClient({
       {!hasChannelData && (
         <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
           Aún no hay datos por canal (se poblan en la próxima corrida del benchmark matutino).
-          Mientras tanto puedes filtrar por <b>Folder</b>; el filtro por canal se activará solo.
+          Mientras tanto puedes filtrar por <b>Sección</b>; el filtro por canal se activará solo.
         </div>
       )}
+
+      {/* Filtro de Sección (arriba) */}
+      <div className="bg-white rounded-xl border p-4 flex items-center gap-3">
+        <label className="text-xs font-bold uppercase tracking-wide text-gray-500">Sección</label>
+        <select
+          value={section}
+          onChange={(e) => setSection(e.target.value)}
+          className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-red-200"
+        >
+          <option value={TODOS}>Todas</option>
+          {sections.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+        {section !== TODOS && (
+          <button
+            onClick={() => setSection(TODOS)}
+            className="text-xs text-gray-400 hover:text-gray-600"
+          >
+            limpiar
+          </button>
+        )}
+      </div>
 
       {/* Tarjetas resumen (según filtro activo) */}
       <div className="grid grid-cols-3 gap-4">
@@ -127,125 +146,71 @@ export default function TraficoClient({
         <Card label="Artículos" value={fmt(articles.length)} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-6">
-        {/* Sidebar: canal + folder */}
-        <div className="space-y-6">
-          {/* Canal de adquisición */}
-          <div className="bg-white rounded-xl border p-4">
-            <h2 className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-3">
-              Canal de adquisición
-            </h2>
-            <ul className="space-y-1">
+      <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-6">
+        {/* Sidebar: canal de adquisición (reacciona a la sección) */}
+        <div className="bg-white rounded-xl border p-4 self-start">
+          <h2 className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-3">
+            Canal de adquisición
+          </h2>
+          <ul className="space-y-1.5">
+            <ChannelItem
+              label={TODOS}
+              pv={totalChannelPv}
+              pct={0}
+              showBar={false}
+              active={channel === TODOS}
+              onClick={() => setChannel(TODOS)}
+              disabled={false}
+            />
+            {channels.map(([c, pv]) => (
               <ChannelItem
-                label={TODOS}
-                pv={channels.reduce((s, [, v]) => s + v, 0)}
-                active={channel === TODOS}
-                onClick={() => setChannel(TODOS)}
-                disabled={false}
+                key={c}
+                label={c}
+                pv={pv}
+                pct={maxChannelPv > 0 ? Math.round((pv / maxChannelPv) * 100) : 0}
+                showBar
+                active={channel === c}
+                onClick={() => setChannel(c)}
+                disabled={!hasChannelData}
               />
-              {channels.map(([c, pv]) => (
-                <ChannelItem
-                  key={c}
-                  label={c}
-                  pv={pv}
-                  active={channel === c}
-                  onClick={() => setChannel(c)}
-                  disabled={!hasChannelData}
-                />
-              ))}
-              {channels.length === 0 && (
-                <li className="text-xs text-gray-400 py-1">Sin canales.</li>
-              )}
-            </ul>
-          </div>
-
-          {/* Folder */}
-          <div className="bg-white rounded-xl border p-4">
-            <h2 className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-3">Folder</h2>
-            <select
-              value={folder}
-              onChange={(e) => setFolder(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-red-200"
-            >
-              <option value={TODOS}>Todos</option>
-              {folders.map((f) => (
-                <option key={f} value={f}>
-                  {f}
-                </option>
-              ))}
-            </select>
-          </div>
+            ))}
+            {channels.length === 0 && (
+              <li className="text-xs text-gray-400 py-1">Sin canales.</li>
+            )}
+          </ul>
         </div>
 
-        {/* Main */}
-        <div className="space-y-6">
-          {/* Distribución por canal */}
-          <div className="bg-white rounded-xl border p-4">
-            <h2 className="text-sm font-semibold text-gray-700 mb-3">
-              Distribución por canal{folder !== TODOS ? ` — ${folder}` : ""}
+        {/* Lista de artículos */}
+        <div className="bg-white rounded-xl border overflow-hidden self-start">
+          <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-gray-700">
+              Artículos
+              {channel !== TODOS ? ` · ${channel}` : ""}
+              {section !== TODOS ? ` · ${section}` : ""}
             </h2>
-            <div className="space-y-2">
-              {channelDist.map(([c, pv]) => {
-                const pct = distTotal > 0 ? Math.round((pv / distTotal) * 100) : 0
-                return (
-                  <button
-                    key={c}
-                    onClick={() => hasChannelData && setChannel(channel === c ? TODOS : c)}
-                    className="flex w-full items-center gap-3 text-left"
-                  >
-                    <span
-                      className={`text-xs w-32 shrink-0 truncate ${
-                        channel === c ? "font-bold text-red-600" : "text-gray-600"
-                      }`}
-                    >
-                      {c}
-                    </span>
-                    <div className="flex-1 bg-gray-100 rounded-full h-2">
-                      <div className="bg-red-500 h-2 rounded-full" style={{ width: `${pct}%` }} />
-                    </div>
-                    <span className="text-xs font-semibold text-gray-700 w-10 text-right">{pct}%</span>
-                    <span className="text-xs text-gray-400 w-20 text-right">{fmt(pv)} pv</span>
-                  </button>
-                )
-              })}
-              {channelDist.length === 0 && (
-                <p className="text-xs text-gray-400">Sin datos.</p>
-              )}
-            </div>
+            <span className="text-xs text-gray-400">Por page views</span>
           </div>
-
-          {/* Lista de artículos */}
-          <div className="bg-white rounded-xl border overflow-hidden">
-            <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-gray-700">
-                Artículos
-                {channel !== TODOS ? ` · ${channel}` : ""}
-                {folder !== TODOS ? ` · ${folder}` : ""}
-              </h2>
-              <span className="text-xs text-gray-400">Por page views</span>
-            </div>
-            <div className="divide-y">
-              {articles.map((a, i) => (
-                <div key={a.page_path} className="px-4 py-3 flex items-start gap-3">
-                  <span className="text-sm font-bold text-gray-300 w-6 shrink-0">{i + 1}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-gray-800 truncate">{a.title ?? a.page_path}</p>
-                    <div className="flex gap-3 mt-0.5">
-                      <p className="text-xs text-gray-400 truncate font-mono">{a.page_path}</p>
-                      {a.unique_users > 0 && (
-                        <span className="text-xs text-gray-400 shrink-0">{fmt(a.unique_users)} usuarios</span>
-                      )}
-                    </div>
+          <div className="divide-y">
+            {articles.map((a, i) => (
+              <div key={a.page_path} className="px-4 py-3 flex items-start gap-3">
+                <span className="text-sm font-bold text-gray-300 w-6 shrink-0">{i + 1}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-gray-800 truncate">{a.title ?? a.page_path}</p>
+                  <div className="flex gap-3 mt-0.5">
+                    <p className="text-xs text-gray-400 truncate font-mono">{a.page_path}</p>
+                    {a.unique_users > 0 && (
+                      <span className="text-xs text-gray-400 shrink-0">{fmt(a.unique_users)} usuarios</span>
+                    )}
                   </div>
-                  <span className="text-sm font-semibold text-gray-700 shrink-0">{fmt(a.pageviews)}</span>
                 </div>
-              ))}
-              {articles.length === 0 && (
-                <p className="px-4 py-6 text-sm text-gray-500 text-center">
-                  Sin artículos para este filtro.
-                </p>
-              )}
-            </div>
+                <span className="text-sm font-semibold text-gray-700 shrink-0">{fmt(a.pageviews)}</span>
+              </div>
+            ))}
+            {articles.length === 0 && (
+              <p className="px-4 py-6 text-sm text-gray-500 text-center">
+                Sin artículos para este filtro.
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -265,12 +230,16 @@ function Card({ label, value }: { label: string; value: string }) {
 function ChannelItem({
   label,
   pv,
+  pct,
+  showBar,
   active,
   onClick,
   disabled,
 }: {
   label: string
   pv: number
+  pct: number
+  showBar: boolean
   active: boolean
   onClick: () => void
   disabled: boolean
@@ -280,12 +249,33 @@ function ChannelItem({
       <button
         onClick={onClick}
         disabled={disabled}
-        className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-sm transition ${
-          active ? "bg-red-50 text-red-700 font-semibold" : "text-gray-700 hover:bg-gray-50"
+        className={`w-full rounded-lg px-2 py-1.5 text-left transition ${
+          active ? "bg-red-50" : "hover:bg-gray-50"
         } ${disabled ? "opacity-40 cursor-not-allowed" : ""}`}
       >
-        <span className="truncate">{label}</span>
-        <span className="text-xs text-gray-400 shrink-0 ml-2">{fmt(pv)}</span>
+        <div className="flex items-center justify-between gap-2">
+          <span
+            className={`truncate text-sm ${
+              active ? "text-red-700 font-semibold" : "text-gray-700"
+            }`}
+          >
+            {label}
+          </span>
+          <span
+            className={`shrink-0 text-xs ${active ? "text-red-700 font-semibold" : "text-gray-500"}`}
+          >
+            {fmt(pv)}
+          </span>
+        </div>
+        {/* Minibarra de volumen bajo el número */}
+        {showBar && (
+          <div className="mt-1 h-1 w-full rounded-full bg-gray-100">
+            <div
+              className={`h-1 rounded-full ${active ? "bg-red-600" : "bg-red-400"}`}
+              style={{ width: `${Math.max(pct, 2)}%` }}
+            />
+          </div>
+        )}
       </button>
     </li>
   )
