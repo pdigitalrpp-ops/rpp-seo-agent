@@ -28,10 +28,12 @@ benchmark matutino también quedó **verificado escribiendo data real** (ver aba
   usuario lo dejó para el final.)
 - **Secretos opcionales:** `GSC_CREDENTIALS_JSON` (posiciones SEO) y `SERPAPI_KEY`.
   El agente ya funciona sin ellos (esas fuentes fallan de forma controlada).
-- **Filtrar no-artículos del benchmark:** own_traffic incluye filas que no son notas
-  editoriales (home `rpp.pe`, `/audio/en-vivo`, y el widget `experiences.mrf.io/...`
-  del recomendador de Marfeel). Conviene excluir en run_morning los page_path que no
-  sean rutas de artículo de rpp.pe / dominios ajenos (mrf.io). No implementado aún.
+- **Filtrar no-artículos del benchmark:** own_traffic / own_traffic_channels incluyen
+  filas que no son notas editoriales (home `rpp.pe`, `/audio/en-vivo`, y el widget
+  `experiences.mrf.io/...` del recomendador de Marfeel). El dashboard `/trafico` ya los
+  excluye en cliente (`isRealArticle` en `TraficoClient.tsx`: descarta `*.mrf.io` y
+  `/audio/en-vivo`). PENDIENTE: filtrar también en `run_morning` para que decay/insights
+  (que leen own_traffic) no los cuenten; y decidir si excluir la home `rpp.pe`.
 - **Fase 2 — capa LLM (Claude):** ver más abajo. Es lo que corrige la calidad.
 
 ---

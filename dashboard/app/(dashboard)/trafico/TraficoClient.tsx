@@ -12,6 +12,23 @@ export type ChannelRow = {
 
 const TODOS = "Todos"
 
+/**
+ * Descarta filas que NO son notas editoriales:
+ *  - widget del recomendador de Marfeel (experiences.mrf.io / *.mrf.io)
+ *  - reproductor de audio en vivo (/audio/en-vivo)
+ */
+function isRealArticle(pagePath: string): boolean {
+  try {
+    const u = new URL(pagePath)
+    const host = u.hostname.replace(/^www\./, "")
+    if (host === "mrf.io" || host.endsWith(".mrf.io")) return false
+    if (u.pathname.replace(/\/$/, "").startsWith("/audio/en-vivo")) return false
+    return true
+  } catch {
+    return true
+  }
+}
+
 /** Deriva la "sección" (primer segmento del path) desde la URL del artículo. */
 function sectionOf(pagePath: string): string {
   try {
@@ -39,24 +56,27 @@ export default function TraficoClient({
   hasChannelData: boolean
   date: string
 }) {
+  // Solo notas editoriales (fuera widget mrf.io y audio en vivo)
+  const cleanRows = useMemo(() => rows.filter((r) => isRealArticle(r.page_path)), [rows])
+
   const sections = useMemo(() => {
     const set = new Set<string>()
-    for (const r of rows) set.add(sectionOf(r.page_path))
+    for (const r of cleanRows) set.add(sectionOf(r.page_path))
     return Array.from(set).sort()
-  }, [rows])
+  }, [cleanRows])
 
   // Canales por page views total; se limita a la sección seleccionada (requisito 4)
   const [section, setSection] = useState<string>(TODOS)
 
   const channels = useMemo(() => {
     const acc: Record<string, number> = {}
-    for (const r of rows) {
+    for (const r of cleanRows) {
       if (section !== TODOS && sectionOf(r.page_path) !== section) continue
       const c = r.channel || "Otros"
       acc[c] = (acc[c] ?? 0) + (r.pageviews ?? 0)
     }
     return Object.entries(acc).sort((a, b) => b[1] - a[1])
-  }, [rows, section])
+  }, [cleanRows, section])
 
   // Default: canal Google si existe; si no, Todos
   const defaultChannel =
@@ -68,12 +88,12 @@ export default function TraficoClient({
 
   // Filas filtradas por canal + sección
   const filtered = useMemo(() => {
-    return rows.filter((r) => {
+    return cleanRows.filter((r) => {
       if (channel !== TODOS && (r.channel || "Otros") !== channel) return false
       if (section !== TODOS && sectionOf(r.page_path) !== section) return false
       return true
     })
-  }, [rows, channel, section])
+  }, [cleanRows, channel, section])
 
   // Agrega por artículo (suma canales cuando channel = Todos)
   const articles = useMemo(() => {
