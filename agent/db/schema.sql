@@ -197,3 +197,27 @@ ALTER TABLE onpage_audits   ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "public_read" ON daily_insights  FOR SELECT USING (true);
 CREATE POLICY "public_read" ON scoring_weights FOR SELECT USING (true);
 CREATE POLICY "public_read" ON onpage_audits   FOR SELECT USING (true);
+
+-- ===========================================================================
+-- Tráfico por canal de adquisición (grano: fecha × artículo × canal).
+-- Alimenta la página /trafico (filtro por canal + folder, estilo Marfeel).
+-- Se mantiene APARTE de own_traffic (que sigue con grano 1 fila/artículo/día
+-- para no alterar decay ni insights, que suman totales por artículo).
+-- Ejecutar en Supabase SQL Editor sobre la base existente.
+-- ===========================================================================
+CREATE TABLE IF NOT EXISTS own_traffic_channels (
+  id           uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  date         date NOT NULL,
+  page_path    text NOT NULL,
+  title        text,
+  channel      text NOT NULL,           -- fuente de Marfeel: Google, Google Discover, Direct, Internal, Home, Social...
+  pageviews    integer,
+  unique_users integer,
+  created_at   timestamptz DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_own_traffic_channels_date    ON own_traffic_channels(date DESC);
+CREATE INDEX IF NOT EXISTS idx_own_traffic_channels_channel ON own_traffic_channels(channel);
+
+ALTER TABLE own_traffic_channels ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "public_read" ON own_traffic_channels FOR SELECT USING (true);

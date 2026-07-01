@@ -82,6 +82,25 @@ def save_traffic(traffic_rows, run_date):
     logger.info(f"Guardadas {len(rows)} filas de tráfico")
 
 
+def save_traffic_channels(channel_rows, run_date):
+    """Tráfico por (artículo × canal). Borra+reinserta la fecha (idempotente)."""
+    sb = _get_client()
+    sb.table("own_traffic_channels").delete().eq("date", str(run_date)).execute()
+    if not channel_rows:
+        return
+    rows = [{
+        "date":         str(run_date),
+        "page_path":    r["page_path"],
+        "title":        r.get("title"),
+        "channel":      r.get("channel") or "Otros",
+        "pageviews":    r.get("pageviews", 0),
+        "unique_users": r.get("unique_users"),
+    } for r in channel_rows if r.get("page_path")]
+    if rows:
+        sb.table("own_traffic_channels").insert(rows).execute()
+    logger.info(f"Guardadas {len(rows)} filas de tráfico por canal")
+
+
 def save_competitor_articles(articles):
     if not articles:
         return

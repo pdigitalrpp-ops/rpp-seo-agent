@@ -152,6 +152,60 @@ def fetch_yesterday_performance(limit=200):
     return _rows_from_response(payload, key_field="url")
 
 
+def fetch_yesterday_by_channel(limit=MARFEEL_MAX_ROWS):
+    """
+    Etapa 1 — rendimiento por (artículo × canal de adquisición) del día anterior.
+    Agrupa por url + title + source, de modo que cada fila trae qué canal
+    (Google, Google Discover, Direct, Internal, Home, Social...) aportó cuántos
+    page views a esa nota. Alimenta la tabla own_traffic_channels y el filtro por
+    canal/folder del dashboard.
+
+    OJO al tope de 500 filas: al ordenar por pageViewsTotal DESC quedan los pares
+    (nota, canal) de mayor tráfico, que es justo lo relevante.
+    """
+    payload = query(
+        metrics=["pageViewsTotal", "uniqueUsers"],
+        group_by=["url", "title", "source"],
+        dates={"last": {"number": 1, "dimension": "day"}},
+        granularity="daily",
+        order={"metric": "pageViewsTotal", "sort": "DESC"},
+        limit=limit,
+    )
+    rows = _rows_from_response(payload, key_field="url")
+    # _rows_from_response fusiona por key_field (url), colapsando los canales de
+    # una misma nota. Aquí necesitamos una fila por (url, source), así que
+    # parseamos las entries crudas conservando el canal.
+    out = []
+    for block in (payload or []):
+        metric = block.get("metric")
+        for entry in (block.get("actualData") or {}).get("values") or []:
+            dims = {it.get("type"): it.get("value")
+                    for it in (entry.get("items") or []) if it.get("type")}
+            url = dims.get("url")
+            if not url:
+                continue
+            out.append({
+                "page_path": url,
+                "title":     dims.get("title"),
+                "channel":   dims.get("source") or "Otros",
+                "metric":    metric,
+                "total":     entry.get("total"),
+            })
+    # Fusiona las métricas (pageViewsTotal, uniqueUsers) por (url, channel).
+    merged = {}
+    for r in out:
+        key = (r["page_path"], r["channel"])
+        row = merged.setdefault(key, {
+            "page_path": r["page_path"], "title": r["title"], "channel": r["channel"],
+            "pageviews": 0, "unique_users": None,
+        })
+        if r["metric"] == "pageViewsTotal":
+            row["pageviews"] = r["total"] or 0
+        elif r["metric"] == "uniqueUsers":
+            row["unique_users"] = r["total"]
+    return list(merged.values())
+
+
 def fetch_traffic_sources(period_days=1):
     """Etapa 1 — distribución de fuentes de tráfico (Discover, búsqueda, etc.)."""
     payload = query(

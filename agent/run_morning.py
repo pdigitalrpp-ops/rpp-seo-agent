@@ -17,9 +17,9 @@ from collectors import marfeel, gsc, competitors
 from collectors.rpp_articles import parse_article
 from analyzers import decay, onpage_audit, opportunities
 from writers.supabase_writer import (
-    save_run_log, save_traffic, save_gsc_data, save_competitor_articles,
-    save_decay, save_daily_insights, save_scoring_weights, save_onpage_audits,
-    get_historical_traffic,
+    save_run_log, save_traffic, save_traffic_channels, save_gsc_data,
+    save_competitor_articles, save_decay, save_daily_insights,
+    save_scoring_weights, save_onpage_audits, get_historical_traffic,
 )
 
 logging.basicConfig(
@@ -92,6 +92,7 @@ def run():
 
     # --- RECOLECCIÓN ---
     marfeel_perf    = safe_collect("marfeel_yesterday", marfeel.fetch_yesterday_performance, run_data)
+    marfeel_channel = safe_collect("marfeel_by_channel", marfeel.fetch_yesterday_by_channel, run_data)
     traffic_sources = safe_collect("marfeel_sources",   marfeel.fetch_traffic_sources,       run_data)
     gsc_search      = safe_collect("gsc_search",        gsc.fetch_search_performance,        run_data)
     gsc_drops       = safe_collect("gsc_drops",         gsc.find_position_drops,             run_data)
@@ -142,6 +143,7 @@ def run():
             "source":       "marfeel",
         } for r in (marfeel_perf or []) if r.get("label")]
         save_traffic(traffic_rows, today)
+        save_traffic_channels(marfeel_channel or [], today)
         save_gsc_data(gsc_search or [], today)
         save_competitor_articles(competitor_data or [])
         save_decay(decay_list, today)

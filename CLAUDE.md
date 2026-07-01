@@ -113,6 +113,12 @@ rpp-seo-agent/
   todas con URL real (`https://rpp.pe/...`) y título → el fix del parser funciona
   end-to-end. (Ver pendiente "filtrar no-artículos" arriba.)
 - Secretos: `MARFEEL_EMAIL`, `MARFEEL_PASSWORD`.
+- **Tráfico por canal (nuevo):** `fetch_yesterday_by_channel()` agrupa por
+  `url+title+source` → una fila por (artículo, canal). Alimenta `own_traffic_channels`
+  y la página `/trafico` (filtro por canal + folder, default Google). **Sin verificar
+  contra la API en vivo** que Marfeel devuelva `source` por URL al agrupar en 3 dims;
+  se confirma en la próxima corrida de `run_morning`. Si `source` no viene por fila,
+  habría que consultar por canal (un `filters` por source, +60s c/u por el rate-limit).
 
 ### Google Trends
 - **pytrends NO funciona desde GitHub Actions** (bloqueo por IP de datacenter).
@@ -155,8 +161,9 @@ rpp-seo-agent/
 - **El cron se retrasa/saltea mucho** en repos de poca actividad (hoy corrió ~3 veces,
   no cada 10 min). Para tiempo real de verdad haría falta un worker dedicado.
 - `run_radar.py` sólo escribe `daily_trends`, `competitor_articles`, `recommendations`,
-  `alerts`, `agent_runs`. `run_morning.py` escribe `own_traffic`, `gsc_daily`,
-  `content_decay`, `daily_insights`, `scoring_weights`, `onpage_audits`.
+  `alerts`, `agent_runs`. `run_morning.py` escribe `own_traffic`,
+  `own_traffic_channels`, `gsc_daily`, `content_decay`, `daily_insights`,
+  `scoring_weights`, `onpage_audits`.
 
 ---
 
@@ -168,7 +175,8 @@ rpp-seo-agent/
 | `competitor_articles` | radar (upsert por url) | dashboard competencia |
 | `recommendations` | radar (borra+reinserta por fecha) | dashboard recomendaciones, home |
 | `alerts` | radar | dashboard alertas |
-| `own_traffic` | morning | dashboard trafico, decay |
+| `own_traffic` | morning | dashboard trafico (fallback), decay |
+| `own_traffic_channels` | morning (borra+reinserta por fecha) | dashboard trafico (canal + folder) |
 | `gsc_daily` | morning | dashboard search-console |
 | `content_decay` | morning (upsert page_path) | dashboard alertas |
 | `daily_insights` | morning (borra+reinserta) | dashboard home |
