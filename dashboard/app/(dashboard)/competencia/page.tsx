@@ -78,7 +78,7 @@ export default async function CompetenciaPage() {
                     <p className="text-sm text-gray-800 line-clamp-2">{a.title}</p>
                     {a.published_at && (
                       <p className="text-xs text-gray-400 mt-0.5">
-                        {new Date(a.published_at).toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" })}
+                        {new Date(a.published_at).toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit", timeZone: "America/Lima" })}
                       </p>
                     )}
                   </div>

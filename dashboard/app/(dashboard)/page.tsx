@@ -23,7 +23,7 @@ export default async function DashboardHome() {
         <span className="text-sm text-gray-500">
           Última actualización:{" "}
           {lastRun?.finished_at
-            ? new Date(lastRun.finished_at).toLocaleString("es-PE")
+            ? new Date(lastRun.finished_at).toLocaleString("es-PE", { timeZone: "America/Lima" })
             : "Sin datos"}
         </span>
       </div>
