@@ -11,10 +11,11 @@ dashboard web.
 
 ## Estado actual
 
-**Fecha último avance:** 2026-06-30
+**Fecha último avance:** 2026-07-01
 **Estado:** v2 en producción y **funcionando end-to-end**. El radar corre en
 GitHub Actions, recolecta de Marfeel + Google Trends + competencia, puntúa y
-guarda recomendaciones en Supabase; el dashboard las muestra en vivo.
+guarda recomendaciones en Supabase; el dashboard las muestra en vivo. El
+benchmark matutino también quedó **verificado escribiendo data real** (ver abajo).
 
 - **Repo:** `https://github.com/pdigitalrpp-ops/rpp-seo-agent` (rama `master`)
 - **Dashboard:** `https://rpp-seo-agent.vercel.app` (Vercel, team PDIGITAL RPP)
@@ -27,8 +28,10 @@ guarda recomendaciones en Supabase; el dashboard las muestra en vivo.
   usuario lo dejó para el final.)
 - **Secretos opcionales:** `GSC_CREDENTIALS_JSON` (posiciones SEO) y `SERPAPI_KEY`.
   El agente ya funciona sin ellos (esas fuentes fallan de forma controlada).
-- **Benchmark matutino (run_morning):** corre 06:00 Lima; poblaría own_traffic,
-  gsc, decay, insights y auditorías on-page. Verificar su salida real.
+- **Filtrar no-artículos del benchmark:** own_traffic incluye filas que no son notas
+  editoriales (home `rpp.pe`, `/audio/en-vivo`, y el widget `experiences.mrf.io/...`
+  del recomendador de Marfeel). Conviene excluir en run_morning los page_path que no
+  sean rutas de artículo de rpp.pe / dominios ajenos (mrf.io). No implementado aún.
 - **Fase 2 — capa LLM (Claude):** ver más abajo. Es lo que corrige la calidad.
 
 ---
@@ -106,6 +109,9 @@ rpp-seo-agent/
   Cada entry: `{"key": hash, "total": N, "items": [{"id","value","type"}]}` donde
   `type` = nombre de la dimensión (`url`, `title`, `section`, `source`). `_rows_from_response`
   en `marfeel.py` parsea esto. (Bug histórico: leía `data[]` → guardaba fechas como page_path.)
+- **Verificado (2026-07-01, run_morning #6 manual):** own_traffic quedó con 200 filas,
+  todas con URL real (`https://rpp.pe/...`) y título → el fix del parser funciona
+  end-to-end. (Ver pendiente "filtrar no-artículos" arriba.)
 - Secretos: `MARFEEL_EMAIL`, `MARFEEL_PASSWORD`.
 
 ### Google Trends
@@ -139,6 +145,11 @@ rpp-seo-agent/
   actualiza cada ~10 min; 1h de ISR era demasiado stale).
 - Nueva página `/auditoria` (onpage_audits). Home muestra "Aprendizajes de hoy"
   (daily_insights). recomendaciones/home usan `section` y score `/100`.
+- **Zona horaria (gotcha):** los Server Components renderizan en el runtime de Vercel
+  (UTC). Al mostrar horas hay que forzar `timeZone: "America/Lima"` en
+  `toLocaleTimeString`/`toLocaleString`, o se ven ~5h adelantadas. Ya aplicado en
+  `competencia/page.tsx` (hora de artículos) y `page.tsx` (última actualización).
+  La data en Supabase siempre está en UTC con tz — el ajuste es SOLO de display.
 
 ### GitHub Actions
 - **El cron se retrasa/saltea mucho** en repos de poca actividad (hoy corrió ~3 veces,
