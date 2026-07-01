@@ -28,12 +28,15 @@ benchmark matutino también quedó **verificado escribiendo data real** (ver aba
   usuario lo dejó para el final.)
 - **Secretos opcionales:** `GSC_CREDENTIALS_JSON` (posiciones SEO) y `SERPAPI_KEY`.
   El agente ya funciona sin ellos (esas fuentes fallan de forma controlada).
-- **Filtrar no-artículos del benchmark:** own_traffic / own_traffic_channels incluyen
-  filas que no son notas editoriales (home `rpp.pe`, `/audio/en-vivo`, y el widget
-  `experiences.mrf.io/...` del recomendador de Marfeel). El dashboard `/trafico` ya los
-  excluye en cliente (`isRealArticle` en `TraficoClient.tsx`: descarta `*.mrf.io` y
-  `/audio/en-vivo`). PENDIENTE: filtrar también en `run_morning` para que decay/insights
-  (que leen own_traffic) no los cuenten; y decidir si excluir la home `rpp.pe`.
+- **Filtrar no-artículos (RESUELTO):** solo se considera contenido editorial de rpp.pe lo
+  que matchea `-(noticia|live)-<id>` (notas + coberturas en vivo tipo minuto-a-minuto).
+  Se descarta home, homes de sección (`/deportes`), landings/herramientas
+  (`/calculadora-...`, `/simulador-...`), buscador, `/ultimas-noticias`, `/tv-vivo`,
+  `/audio/en-vivo`, listados `/noticias/...` y el widget `experiences.mrf.io`. Filtro
+  aplicado en DOS sitios (deben coincidir): `run_morning.is_real_article` (pipeline: limpia
+  own_traffic, own_traffic_channels, decay, insights, auditoría) y `isRealArticle` en
+  `TraficoClient.tsx` (dashboard). Si aparece un tipo de contenido con otro sufijo (video,
+  galería…), ampliar el regex en ambos.
 - **Fase 2 — capa LLM (Claude):** ver más abajo. Es lo que corrige la calidad.
 
 ---

@@ -7,8 +7,10 @@ scoring) que el radar de tiempo real usa el resto del día.
 """
 
 import logging
+import re
 import sys
 from datetime import datetime, date
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -28,6 +30,25 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger("run_morning")
+
+
+# Contenido real de rpp.pe = notas (…-noticia-<id>) y coberturas en vivo (…-live-<id>).
+# Todo lo demás (home, homes de sección /deportes, landings/herramientas, buscador,
+# /ultimas-noticias, /tv-vivo, /audio/en-vivo, listados /noticias/..., widget mrf.io)
+# NO es contenido editorial y se descarta antes de guardar/analizar.
+_ARTICLE_RE = re.compile(r"-(noticia|live)-\d+", re.IGNORECASE)
+
+
+def is_real_article(url):
+    if not url:
+        return False
+    try:
+        host = (urlparse(url).hostname or "").replace("www.", "")
+    except Exception:
+        return False
+    if host != "rpp.pe" and not host.endswith(".rpp.pe"):
+        return False
+    return bool(_ARTICLE_RE.search(url))
 
 
 def safe_collect(name, func, run_data, **kwargs):
@@ -97,6 +118,11 @@ def run():
     gsc_search      = safe_collect("gsc_search",        gsc.fetch_search_performance,        run_data)
     gsc_drops       = safe_collect("gsc_drops",         gsc.find_position_drops,             run_data)
     competitor_data = safe_collect("competitors",       competitors.fetch_all_competitors,   run_data)
+
+    # Deja solo contenido editorial (fuera home, secciones, landings, mrf.io, audio/tv en vivo)
+    marfeel_perf    = [r for r in (marfeel_perf or [])    if is_real_article(r.get("label"))]
+    marfeel_channel = [r for r in (marfeel_channel or []) if is_real_article(r.get("page_path"))]
+    logger.info(f"Filtrado a contenido: {len(marfeel_perf)} notas, {len(marfeel_channel)} filas por canal")
 
     # --- ANÁLISIS ---
     quick_wins = opportunities.find_gsc_quick_wins(gsc_search or [])

@@ -13,19 +13,20 @@ export type ChannelRow = {
 const TODOS = "Todos"
 
 /**
- * Descarta filas que NO son notas editoriales:
- *  - widget del recomendador de Marfeel (experiences.mrf.io / *.mrf.io)
- *  - reproductor de audio en vivo (/audio/en-vivo)
+ * Solo contenido editorial de rpp.pe: notas (…-noticia-<id>) y coberturas en vivo
+ * (…-live-<id>). Descarta home, homes de sección (/deportes), landings/herramientas,
+ * buscador, /ultimas-noticias, /tv-vivo, /audio/en-vivo, listados y el widget mrf.io.
  */
+const ARTICLE_RE = /-(noticia|live)-\d+/i
+
 function isRealArticle(pagePath: string): boolean {
   try {
     const u = new URL(pagePath)
     const host = u.hostname.replace(/^www\./, "")
-    if (host === "mrf.io" || host.endsWith(".mrf.io")) return false
-    if (u.pathname.replace(/\/$/, "").startsWith("/audio/en-vivo")) return false
-    return true
+    if (host !== "rpp.pe" && !host.endsWith(".rpp.pe")) return false
+    return ARTICLE_RE.test(u.pathname)
   } catch {
-    return true
+    return false
   }
 }
 
