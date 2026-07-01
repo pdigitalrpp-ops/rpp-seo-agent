@@ -159,8 +159,12 @@ rpp-seo-agent/
 - **Zona horaria (gotcha):** los Server Components renderizan en el runtime de Vercel
   (UTC). Al mostrar horas hay que forzar `timeZone: "America/Lima"` en
   `toLocaleTimeString`/`toLocaleString`, o se ven ~5h adelantadas. Ya aplicado en
-  `competencia/page.tsx` (hora de artículos) y `page.tsx` (última actualización).
-  La data en Supabase siempre está en UTC con tz — el ajuste es SOLO de display.
+  `competencia/CompetenciaClient.tsx` (hora de artículos) y `page.tsx` (última
+  actualización). La data en Supabase siempre está en UTC con tz — el ajuste es SOLO de display.
+- **`/competencia` (client component):** navegador de medios a la izquierda (TODOS + cada
+  medio con conteo y favicon), ventana única con las notas, identificador con logo (favicon
+  vía `google.com/s2/favicons`, fallback a inicial de color) por nota, y chips de categoría
+  clicables. Filtrado cruzado tipo facetas (medio ↔ categoría). `page.tsx` solo hace fetch.
 
 ### GitHub Actions
 - **El cron se retrasa/saltea mucho** en repos de poca actividad (hoy corrió ~3 veces,
