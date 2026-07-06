@@ -112,6 +112,37 @@ export default async function AuditoriaPage() {
               ) : (
                 <p className="mt-3 text-xs text-green-600">Sin problemas editoriales — nota bien optimizada.</p>
               )}
+
+              {/* Sugerencias reescritas por IA (Gemini) */}
+              {a.suggestions && (a.suggestions.title || a.suggestions.meta_description) && (
+                <div className="mt-3 rounded-lg bg-violet-50 border border-violet-100 p-3 space-y-2">
+                  <p className="text-[11px] font-semibold text-violet-700 flex items-center gap-1">
+                    ✨ Sugerencia IA
+                  </p>
+                  {a.suggestions.title && (
+                    <div>
+                      <p className="text-[10px] uppercase text-gray-400 font-medium">Título</p>
+                      <p className="text-xs text-gray-800">{a.suggestions.title}
+                        <span className="text-gray-400"> ({a.suggestions.title.length}c)</span></p>
+                    </div>
+                  )}
+                  {a.suggestions.meta_description && (
+                    <div>
+                      <p className="text-[10px] uppercase text-gray-400 font-medium">Meta description</p>
+                      <p className="text-xs text-gray-800">{a.suggestions.meta_description}
+                        <span className="text-gray-400"> ({a.suggestions.meta_description.length}c)</span></p>
+                    </div>
+                  )}
+                  {Array.isArray(a.suggestions.h2) && a.suggestions.h2.length > 0 && (
+                    <div>
+                      <p className="text-[10px] uppercase text-gray-400 font-medium">Subtítulos H2</p>
+                      <ul className="text-xs text-gray-800 list-disc list-inside">
+                        {a.suggestions.h2.map((h: string, i: number) => <li key={i}>{h}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )
         })}

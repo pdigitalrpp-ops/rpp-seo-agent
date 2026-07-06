@@ -190,8 +190,10 @@ CREATE TABLE IF NOT EXISTS onpage_audits (
   target_keyword text,
   score          integer,
   issues         jsonb,
+  suggestions    jsonb,            -- reescritura LLM: {title, meta_description, h2[]}
   created_at     timestamptz DEFAULT now()
 );
+ALTER TABLE onpage_audits ADD COLUMN IF NOT EXISTS suggestions jsonb;
 
 CREATE INDEX IF NOT EXISTS idx_daily_insights_date  ON daily_insights(date DESC);
 CREATE INDEX IF NOT EXISTS idx_scoring_weights_date ON scoring_weights(date DESC);

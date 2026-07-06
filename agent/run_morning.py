@@ -18,6 +18,7 @@ load_dotenv()
 from collectors import marfeel, gsc, competitors
 from collectors.rpp_articles import parse_article
 from analyzers import decay, onpage_audit, opportunities
+from llm import gemini
 from writers.supabase_writer import (
     save_run_log, save_traffic, save_traffic_channels, save_gsc_data,
     save_competitor_articles, save_decay, save_daily_insights,
@@ -177,6 +178,19 @@ def run():
         result = onpage_audit.audit_article(parsed, target_keyword=kw)
         result["target_keyword"] = kw
         result["title"] = parsed.get("title_tag")
+
+        # Fase 2 (LLM): si la nota tiene problemas EDITORIALES, Gemini propone
+        # título/meta/H2 optimizados listos para copiar. Rules-first: si Gemini
+        # no está, simplemente no hay sugerencia. Solo notas leídas OK.
+        editorial = [i for i in result.get("issues", []) if i.get("class") == "editorial"]
+        if editorial and not parsed.get("error"):
+            result["suggestions"] = gemini.rewrite_onpage(
+                title=parsed.get("title_tag"),
+                meta_description=parsed.get("meta_description"),
+                keyword=kw,
+                issues=editorial,
+                first_paragraph=parsed.get("first_paragraph"),
+            )
         audits.append(result)
 
     # --- GUARDAR (cada save aislado: un fallo no bota a los demás) ---

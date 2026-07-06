@@ -132,3 +132,14 @@ ONPAGE = {
     "long_article_min_h2":    2,
     "stale_days":             180,   # nota que aún trae tráfico pero lleva medio año sin refresh
 }
+
+# ---------------------------------------------------------------------------
+# Capa LLM — Google Gemini (fase 2)
+# Rules-first sigue siendo la base: si no hay key o falla, el agente cae al
+# comportamiento por reglas. Gemini solo AUMENTA la calidad (categorización real,
+# reescritura de títulos/metas). Se usa la API REST (no SDK) con requests.
+# ---------------------------------------------------------------------------
+GEMINI_API_KEY  = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_MODEL    = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
+GEMINI_TIMEOUT_SECONDS = 30

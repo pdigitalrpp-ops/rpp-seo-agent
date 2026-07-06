@@ -148,7 +148,9 @@ def score_all_topics(trends_data, competitor_data, gsc_data,
     scored = []
     for item in trends_data:
         kw = item["keyword"]
-        category = _infer_category_from_keyword(kw)
+        # Respeta la categoría ya asignada (p.ej. por Gemini en el radar);
+        # si no viene, cae a la inferencia por keywords.
+        category = item.get("category") or _infer_category_from_keyword(kw)
         kw_words = [w for w in kw.lower().split() if len(w) > 4]
         max_comp = max((len(comp_coverage.get(w, set())) for w in kw_words), default=0)
 

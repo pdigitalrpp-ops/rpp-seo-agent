@@ -16,9 +16,11 @@ load_dotenv()
 
 from config import (
     KNOWN_SECTIONS_FALLBACK, ALERT_SCORE_THRESHOLD, ALERT_MAX_PER_SECTION_PER_HOUR,
+    CATEGORY_KEYWORDS,
 )
 from collectors import marfeel, trends, competitors
 from analyzers import scoring, opportunities
+from llm import gemini
 from notifiers import notify
 from writers.supabase_writer import (
     save_run_log, save_recommendations, save_alerts, save_trends,
@@ -92,12 +94,21 @@ def run():
     except Exception as e:
         logger.warning(f"No se pudieron leer los pesos de aprendizaje: {e}")
 
+    # Categorización: Gemini clasifica todos los temas en 1 llamada (razona sobre
+    # nombres propios donde las reglas fallan: 'haaland'→deportes, no 'otros').
+    # Si Gemini no está o falla, cae a la inferencia por keywords.
+    categories = list(CATEGORY_KEYWORDS.keys()) + ["otros"]
+    llm_cats = gemini.categorize_topics([t["keyword"] for t in trends_data], categories)
+    if llm_cats:
+        logger.info(f"✅ Gemini categorizó {len(llm_cats)}/{len(trends_data)} temas")
+
     # Momentum propio: categorías con tracción en tiempo real (Marfeel)
     realtime_titles = " ".join((r.get("title") or "") for r in (realtime or [])).lower()
     for item in trends_data:
         kw_words = [w for w in item["keyword"].lower().split() if len(w) > 4]
         item["own_momentum"] = min(sum(1 for w in kw_words if w in realtime_titles) / 2.0, 1.0)
-        item["category"] = scoring._infer_category_from_keyword(item["keyword"])
+        item["category"] = ((llm_cats or {}).get(item["keyword"])
+                            or scoring._infer_category_from_keyword(item["keyword"]))
 
     scored = scoring.score_all_topics(
         trends_data, competitor_data or [], gsc_data=[],

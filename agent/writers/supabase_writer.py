@@ -268,6 +268,7 @@ def save_onpage_audits(audits, run_date):
         "target_keyword": a.get("target_keyword"),
         "score":          a.get("score"),
         "issues":         a.get("issues"),
+        "suggestions":    a.get("suggestions"),   # reescritura LLM (título/meta/H2)
     } for a in audits]
     sb.table("onpage_audits").insert(rows).execute()
     logger.info(f"Guardadas {len(rows)} auditorías on-page")
