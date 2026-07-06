@@ -27,10 +27,12 @@ def is_enabled():
     return bool(GEMINI_API_KEY)
 
 
-def _generate(prompt, system=None, want_json=True, retries=1):
+def _generate(prompt, system=None, want_json=True, retries=2):
     """
     Llama a Gemini generateContent. Devuelve el texto (str) o None si falla.
     Con want_json fuerza responseMimeType application/json.
+    En 429 (rate limit del free tier) hace backoff creciente. Para minimizar
+    requests, los callers BATCHEAN (1 llamada para muchos ítems).
     """
     if not GEMINI_API_KEY:
         return None
@@ -49,9 +51,10 @@ def _generate(prompt, system=None, want_json=True, retries=1):
     for attempt in range(retries + 1):
         try:
             resp = requests.post(url, json=body, timeout=GEMINI_TIMEOUT_SECONDS)
-            if resp.status_code == 429:   # rate limit → espera corta y reintenta
+            if resp.status_code == 429:   # rate limit → backoff creciente y reintenta
                 last_err = "429 rate limit"
-                time.sleep(2 + attempt * 3)
+                if attempt < retries:
+                    time.sleep(12 * (attempt + 1))   # 12s, 24s
                 continue
             resp.raise_for_status()
             data = resp.json()
@@ -59,7 +62,7 @@ def _generate(prompt, system=None, want_json=True, retries=1):
         except Exception as e:
             last_err = e
             if attempt < retries:
-                time.sleep(1)
+                time.sleep(2)
     logger.warning(f"Gemini no respondió ({last_err}); se usa el fallback por reglas")
     return None
 
@@ -165,4 +168,60 @@ def rewrite_onpage(title, meta_description, keyword, issues, first_paragraph=Non
     }
     if not out["title"] and not out["meta_description"]:
         return None
+    return out
+
+
+def rewrite_onpage_batch(items, title_max=60, meta_min=120, meta_max=160):
+    """
+    Reescribe VARIAS notas en UNA sola llamada (clave para no saturar el free
+    tier: 8 notas = 1 request, no 8). `items` = lista de dicts con keys
+    {title, meta_description, keyword, issues, first_paragraph}.
+    Devuelve una lista alineada por índice: [suggestion|None, ...] o None global.
+    """
+    if not is_enabled() or not items:
+        return None
+
+    notes = []
+    for i, it in enumerate(items):
+        notes.append({
+            "i":         i,
+            "keyword":   it.get("keyword") or "",
+            "title":     it.get("title") or "",
+            "meta":      it.get("meta_description") or "",
+            "parrafo":   (it.get("first_paragraph") or "")[:300],
+            "problemas": [p.get("message") for p in (it.get("issues") or [])],
+        })
+    system = (
+        "Eres un editor SEO de RPP Noticias (Perú). Reescribes títulos y meta "
+        "descriptions de notas ya publicadas para mejorar posicionamiento y CTR, "
+        "en español neutro peruano, sin clickbait ni inventar datos."
+    )
+    prompt = (
+        f"Para CADA nota reescribe: un título ≤ {title_max} caracteres con la "
+        f"keyword de forma natural; una meta description entre {meta_min} y "
+        f"{meta_max} caracteres con la keyword; y hasta 3 subtítulos H2 útiles.\n"
+        "Si una nota no trae keyword, optimiza igual por su tema.\n\n"
+        f"Notas (JSON):\n{json.dumps(notes, ensure_ascii=False)}\n\n"
+        'Responde SOLO un JSON: {"items": [{"i": <indice>, "title": "...", '
+        '"meta_description": "...", "h2": ["...","..."]}]}'
+    )
+    data = _generate_json(prompt, system=system)
+    if not isinstance(data, dict) or not isinstance(data.get("items"), list):
+        return None
+
+    out = [None] * len(items)
+    for entry in data["items"]:
+        try:
+            idx = int(entry["i"])
+        except (KeyError, ValueError, TypeError):
+            continue
+        if not (0 <= idx < len(items)):
+            continue
+        sug = {
+            "title":            (entry.get("title") or "").strip() or None,
+            "meta_description": (entry.get("meta_description") or "").strip() or None,
+            "h2":               [h for h in (entry.get("h2") or []) if isinstance(h, str)][:3],
+        }
+        if sug["title"] or sug["meta_description"]:
+            out[idx] = sug
     return out

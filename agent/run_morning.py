@@ -170,6 +170,7 @@ def run():
         if r.get("label"):
             audit_targets.append((r["label"], None))
     seen = set()
+    rewrite_items = []   # notas con problemas editoriales → reescritura LLM en batch
     for url, kw in audit_targets:
         if not url or url in seen:
             continue
@@ -178,20 +179,26 @@ def run():
         result = onpage_audit.audit_article(parsed, target_keyword=kw)
         result["target_keyword"] = kw
         result["title"] = parsed.get("title_tag")
-
-        # Fase 2 (LLM): si la nota tiene problemas EDITORIALES, Gemini propone
-        # título/meta/H2 optimizados listos para copiar. Rules-first: si Gemini
-        # no está, simplemente no hay sugerencia. Solo notas leídas OK.
         editorial = [i for i in result.get("issues", []) if i.get("class") == "editorial"]
         if editorial and not parsed.get("error"):
-            result["suggestions"] = gemini.rewrite_onpage(
-                title=parsed.get("title_tag"),
-                meta_description=parsed.get("meta_description"),
-                keyword=kw,
-                issues=editorial,
-                first_paragraph=parsed.get("first_paragraph"),
-            )
+            rewrite_items.append((result, {
+                "title":            parsed.get("title_tag"),
+                "meta_description": parsed.get("meta_description"),
+                "keyword":          kw,
+                "issues":           editorial,
+                "first_paragraph":  parsed.get("first_paragraph"),
+            }))
         audits.append(result)
+
+    # Fase 2 (LLM): Gemini reescribe título/meta/H2 de TODAS las notas con
+    # problemas editoriales en UNA sola llamada (evita el 429 del free tier).
+    # Rules-first: si Gemini no está o falla, simplemente no hay sugerencias.
+    if rewrite_items:
+        suggestions = gemini.rewrite_onpage_batch([it for _, it in rewrite_items])
+        if suggestions:
+            for (result, _), sug in zip(rewrite_items, suggestions):
+                result["suggestions"] = sug
+            logger.info(f"✅ Gemini reescribió {sum(1 for s in suggestions if s)}/{len(rewrite_items)} notas")
 
     # --- GUARDAR (cada save aislado: un fallo no bota a los demás) ---
     traffic_rows = [{
