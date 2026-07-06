@@ -84,7 +84,9 @@ CREATE TABLE IF NOT EXISTS content_decay (
   drop_percentage  float,
   suggested_action text,
   resolved         boolean DEFAULT false,
-  created_at       timestamptz DEFAULT now()
+  created_at       timestamptz DEFAULT now(),
+  -- necesario para el upsert on_conflict=page_path del writer
+  CONSTRAINT content_decay_page_path_key UNIQUE (page_path)
 );
 
 CREATE TABLE IF NOT EXISTS publishing_windows (
@@ -151,6 +153,11 @@ ALTER TABLE alerts          ADD COLUMN IF NOT EXISTS section text;
 ALTER TABLE alerts          ADD COLUMN IF NOT EXISTS score float;
 ALTER TABLE own_traffic     ADD COLUMN IF NOT EXISTS unique_users integer;
 ALTER TABLE own_traffic     ADD COLUMN IF NOT EXISTS title text;
+
+-- Constraint único que necesita el upsert on_conflict=page_path de content_decay
+-- (sin él, el POST daba 42P10 y el decay nunca se guardaba). Idempotente.
+ALTER TABLE content_decay DROP CONSTRAINT IF EXISTS content_decay_page_path_key;
+ALTER TABLE content_decay ADD  CONSTRAINT content_decay_page_path_key UNIQUE (page_path);
 
 -- Insights del benchmark de la mañana (narrativa para el dashboard)
 CREATE TABLE IF NOT EXISTS daily_insights (

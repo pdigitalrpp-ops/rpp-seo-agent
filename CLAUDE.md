@@ -27,11 +27,6 @@ benchmark matutino también quedó **verificado escribiendo data real** (ver aba
   sección). Hasta entonces las alertas quedan solo en Supabase/dashboard. (El
   usuario lo dejó para el final.)
 - **Secreto opcional:** `SERPAPI_KEY` (rankings/SERP). El agente funciona sin él.
-- **content_decay no guarda:** upsert con `on_conflict=page_path` pero la tabla no
-  tiene constraint único en esa columna (error 42P10). Falta:
-  `alter table content_decay add constraint content_decay_page_path_key unique (page_path);`
-  (dedupe antes si hay filas repetidas). El MCP de Supabase estaba caído (503/429)
-  cuando se intentó aplicar.
 - **Filtrar no-artículos (RESUELTO):** solo se considera contenido editorial de rpp.pe lo
   que matchea `-(noticia|live)-<id>` (notas + coberturas en vivo tipo minuto-a-minuto).
   Se descarta home, homes de sección (`/deportes`), landings/herramientas
