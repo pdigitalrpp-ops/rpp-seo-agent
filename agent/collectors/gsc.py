@@ -4,17 +4,21 @@ import logging
 from datetime import datetime, timedelta
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-from config import GSC_SITE_URL, GSC_DROP_ALERT_THRESHOLD
+from config import GSC_SITE_URL, GSC_DROP_ALERT_THRESHOLD, SITE_DOMAIN
 
 logger = logging.getLogger(__name__)
 
 SCOPES = ["https://www.googleapis.com/auth/webmasters.readonly"]
 
+# Propiedad resuelta (auto-detectada o forzada por env), cacheada por proceso
+_resolved_site_url = None
+
 
 def _get_service():
     """
     Inicializa GSC. La service account debe estar añadida como usuario en GSC:
-    Search Console → rpp.pe → Configuración → Usuarios y permisos → Añadir usuario.
+    Search Console → rpp.pe → Configuración → Usuarios y permisos → Añadir usuario
+    (el email es el client_email del JSON, termina en .iam.gserviceaccount.com).
     """
     creds_json = os.environ.get("GSC_CREDENTIALS_JSON")
     if not creds_json:
@@ -26,6 +30,44 @@ def _get_service():
         tmp_path, scopes=SCOPES
     )
     return build("searchconsole", "v1", credentials=creds)
+
+
+def _resolve_site_url(service):
+    """
+    Devuelve el siteUrl a usar. Si GSC_SITE_URL está seteado por env, se usa tal
+    cual. Si no, pregunta a Google qué propiedades ve la service account
+    (sites().list) y elige la de rpp.pe — dominio primero, prefijo después.
+    El listado completo queda en el log: es el diagnóstico definitivo de
+    permisos (lista vacía = la service account no fue añadida / email errado).
+    """
+    global _resolved_site_url
+    if GSC_SITE_URL:
+        return GSC_SITE_URL
+    if _resolved_site_url:
+        return _resolved_site_url
+
+    entries = service.sites().list().execute().get("siteEntry", [])
+    visible = [
+        (e.get("siteUrl", ""), e.get("permissionLevel", ""))
+        for e in entries
+    ]
+    logger.info(f"GSC: propiedades visibles para la service account: {visible or 'NINGUNA'}")
+
+    candidates = [
+        url for url, perm in visible
+        if SITE_DOMAIN in url and perm != "siteUnverifiedUser"
+    ]
+    if not candidates:
+        raise ValueError(
+            f"La service account no tiene acceso a ninguna propiedad de {SITE_DOMAIN}. "
+            "Verificar que en Search Console se añadió el client_email del JSON "
+            "(termina en .iam.gserviceaccount.com) como usuario de la propiedad."
+        )
+    # Preferir la propiedad de dominio (cubre todo el sitio)
+    candidates.sort(key=lambda u: (not u.startswith("sc-domain:"), u))
+    _resolved_site_url = candidates[0]
+    logger.info(f"GSC: usando propiedad {_resolved_site_url}")
+    return _resolved_site_url
 
 
 def fetch_search_performance(days_back=3, row_limit=500):
@@ -45,7 +87,7 @@ def fetch_search_performance(days_back=3, row_limit=500):
     }
 
     response = service.searchanalytics().query(
-        siteUrl=GSC_SITE_URL, body=request
+        siteUrl=_resolve_site_url(service), body=request
     ).execute()
 
     rows = []
@@ -76,7 +118,7 @@ def fetch_discover_performance(days_back=7):
     }
 
     response = service.searchanalytics().query(
-        siteUrl=GSC_SITE_URL, body=request
+        siteUrl=_resolve_site_url(service), body=request
     ).execute()
 
     return [

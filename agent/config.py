@@ -3,11 +3,11 @@ import os
 SITE_URL = "https://rpp.pe/"
 SITE_DOMAIN = "rpp.pe"
 
-# Propiedad de Search Console. rpp.pe está verificado como propiedad de DOMINIO,
-# así que para la API es "sc-domain:rpp.pe" (pedir "https://rpp.pe/" da 403
-# aunque la service account tenga permisos). Overrideable por env por si la
-# propiedad cambia de tipo.
-GSC_SITE_URL = os.environ.get("GSC_SITE_URL", "sc-domain:rpp.pe")
+# Propiedad de Search Console. Vacío = auto-detectar: el collector lista las
+# propiedades a las que la service account tiene acceso (sites().list) y elige
+# la que corresponda a rpp.pe (prefiere dominio "sc-domain:rpp.pe" sobre
+# prefijo "https://rpp.pe/"). Setear GSC_SITE_URL por env para forzar una.
+GSC_SITE_URL = os.environ.get("GSC_SITE_URL", "")
 
 # ---------------------------------------------------------------------------
 # Marfeel (reemplaza a GA4 como fuente de tráfico/audiencia)
