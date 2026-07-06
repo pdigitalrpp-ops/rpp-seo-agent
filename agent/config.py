@@ -3,6 +3,12 @@ import os
 SITE_URL = "https://rpp.pe/"
 SITE_DOMAIN = "rpp.pe"
 
+# Propiedad de Search Console. rpp.pe está verificado como propiedad de DOMINIO,
+# así que para la API es "sc-domain:rpp.pe" (pedir "https://rpp.pe/" da 403
+# aunque la service account tenga permisos). Overrideable por env por si la
+# propiedad cambia de tipo.
+GSC_SITE_URL = os.environ.get("GSC_SITE_URL", "sc-domain:rpp.pe")
+
 # ---------------------------------------------------------------------------
 # Marfeel (reemplaza a GA4 como fuente de tráfico/audiencia)
 # Auth: POST signin {email, password} -> bearer token (válido ~14 días).
@@ -12,7 +18,7 @@ MARFEEL_SIGNIN_URL = "https://api.newsroom.bi/api/user/signin"
 MARFEEL_QUERY_URL  = "https://api.newsroom.bi/api/dashboard/query"
 MARFEEL_EMAIL      = os.environ.get("MARFEEL_EMAIL", "")
 MARFEEL_PASSWORD   = os.environ.get("MARFEEL_PASSWORD", "")
-MARFEEL_MIN_INTERVAL_SECONDS = 60   # rate-limiter: 1 req/min
+MARFEEL_MIN_INTERVAL_SECONDS = 65   # rate-limiter: 1 req/min (65s: con 60 justos la API igual devolvía 429)
 MARFEEL_MAX_ROWS             = 500
 
 # ---------------------------------------------------------------------------

@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timedelta
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-from config import SITE_URL, GSC_DROP_ALERT_THRESHOLD
+from config import GSC_SITE_URL, GSC_DROP_ALERT_THRESHOLD
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ def fetch_search_performance(days_back=3, row_limit=500):
     }
 
     response = service.searchanalytics().query(
-        siteUrl=SITE_URL, body=request
+        siteUrl=GSC_SITE_URL, body=request
     ).execute()
 
     rows = []
@@ -76,7 +76,7 @@ def fetch_discover_performance(days_back=7):
     }
 
     response = service.searchanalytics().query(
-        siteUrl=SITE_URL, body=request
+        siteUrl=GSC_SITE_URL, body=request
     ).execute()
 
     return [
