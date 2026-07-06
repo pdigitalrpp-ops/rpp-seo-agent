@@ -37,13 +37,6 @@ def _norm_url(u):
     return f"{host}{path}".lower()
 
 
-def _slug_of(url):
-    try:
-        return (urlparse(url).path or "").rstrip("/").split("/")[-1]
-    except Exception:
-        return ""
-
-
 def _days_since(iso_date):
     """Días desde una fecha ISO (datePublished/dateModified). None si no parsea."""
     if not iso_date:
@@ -151,12 +144,6 @@ def audit_article(parsed, target_keyword=None):
     if not any(t in types for t in ["newsarticle", "article"]):
         issues.append(_issue("structured_data", "medium",
             "Falta schema NewsArticle/Article (JSON-LD)"))
-
-    # --- Slug ---
-    slug = _slug_of(parsed["url"])
-    if len(slug) > ONPAGE["slug_max_len"]:
-        issues.append(_issue("slug", "low",
-            f"Slug muy largo ({len(slug)}c); acortarlo mejora legibilidad y CTR en SERP"))
 
     # --- Indexabilidad ---
     robots = (parsed.get("robots") or "").lower()

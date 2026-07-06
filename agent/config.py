@@ -128,7 +128,6 @@ ONPAGE = {
     "discover_min_img_width": 1200,
     "fetch_timeout_seconds":  15,
     # reglas enriquecidas (v2 del auditor)
-    "slug_max_len":           75,    # slug muy largo pierde legibilidad/CTR en SERP
     "long_article_words":     700,   # a partir de aquí se espera estructura con varios H2
     "long_article_min_h2":    2,
     "stale_days":             180,   # nota que aún trae tráfico pero lleva medio año sin refresh
