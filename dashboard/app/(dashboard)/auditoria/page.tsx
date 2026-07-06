@@ -8,6 +8,11 @@ const SEVERITY_BADGE: Record<string, string> = {
   low:    "bg-blue-100 text-blue-700",
 }
 
+// Fallback por si alguna fila vieja no trae el campo `class` en sus issues.
+const PLATFORM_CHECKS = new Set(["structured_data", "indexability", "canonical", "discover", "social"])
+const issueClass = (it: any) =>
+  it.class ?? (PLATFORM_CHECKS.has(it.check) ? "platform" : "editorial")
+
 export default async function AuditoriaPage() {
   const today = new Date().toISOString().split("T")[0]
 
@@ -18,6 +23,24 @@ export default async function AuditoriaPage() {
     .order("score", { ascending: true })
     .limit(30)
 
+  const rows = audits ?? []
+
+  // Agregado de issues de PLATAFORMA (sistémicos): se muestran una sola vez,
+  // con cuántas notas afecta cada uno.
+  const platformAgg: Record<string, { message: string; severity: string; count: number }> = {}
+  for (const a of rows) {
+    const seen = new Set<string>()
+    for (const it of (a.issues ?? [])) {
+      if (issueClass(it) !== "platform") continue
+      const key = it.check + "|" + it.message
+      if (seen.has(key)) continue
+      seen.add(key)
+      if (!platformAgg[key]) platformAgg[key] = { message: it.message, severity: it.severity, count: 0 }
+      platformAgg[key].count++
+    }
+  }
+  const platformIssues = Object.values(platformAgg).sort((a, b) => b.count - a.count)
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -25,44 +48,73 @@ export default async function AuditoriaPage() {
         <span className="text-sm text-gray-500">{today}</span>
       </div>
 
-      {!audits?.length && (
+      {!rows.length && (
         <div className="bg-white rounded-xl border p-8 text-center text-gray-500 text-sm">
           Aún no hay auditorías. El benchmark de la mañana revisa las notas publicadas y los quick wins de Search Console.
         </div>
       )}
 
+      {/* Pendientes técnicos del sitio (sistémicos, para dev/SEO técnico) */}
+      {platformIssues.length > 0 && (
+        <div className="bg-white rounded-xl border border-amber-200 p-4">
+          <h2 className="text-sm font-semibold text-gray-800">Pendientes técnicos del sitio</h2>
+          <p className="text-xs text-gray-500 mb-3">
+            Issues de plantilla/CMS que se repiten en muchas notas. No dependen del redactor;
+            los resuelve el equipo técnico y no afectan el score por nota.
+          </p>
+          <ul className="space-y-1.5">
+            {platformIssues.map((it, i) => (
+              <li key={i} className="flex items-start gap-2">
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${SEVERITY_BADGE[it.severity] ?? "bg-gray-100 text-gray-600"}`}>
+                  {it.severity?.toUpperCase()}
+                </span>
+                <span className="text-xs text-gray-700 flex-1">{it.message}</span>
+                <span className="text-xs text-gray-400 shrink-0">{it.count} nota{it.count !== 1 ? "s" : ""}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Auditoría editorial por nota (lo que el redactor puede arreglar) */}
       <div className="space-y-3">
-        {audits?.map((a: any) => (
-          <div key={a.id} className="bg-white rounded-xl border p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="font-medium text-gray-900 truncate">{a.title ?? a.url}</p>
-                <p className="text-xs text-gray-400 font-mono truncate">{a.url}</p>
-                {a.target_keyword && (
-                  <p className="text-xs text-gray-500 mt-0.5">keyword: <strong>{a.target_keyword}</strong></p>
-                )}
+        {rows.map((a: any) => {
+          const editorial = (a.issues ?? []).filter((it: any) => issueClass(it) === "editorial")
+          return (
+            <div key={a.id} className="bg-white rounded-xl border p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-medium text-gray-900 truncate">{a.title ?? a.url}</p>
+                  <a href={a.url} target="_blank" rel="noreferrer"
+                     className="text-xs text-gray-400 font-mono truncate hover:text-red-600 block">{a.url}</a>
+                  {a.target_keyword && (
+                    <p className="text-xs text-gray-500 mt-0.5">keyword: <strong>{a.target_keyword}</strong></p>
+                  )}
+                </div>
+                <div className="text-right shrink-0">
+                  <span className={`text-xl font-bold ${
+                    a.score >= 80 ? "text-green-600" : a.score >= 60 ? "text-orange-500" : "text-red-600"
+                  }`}>{a.score ?? "—"}</span>
+                  <span className="text-xs text-gray-400">/100</span>
+                </div>
               </div>
-              <div className="text-right shrink-0">
-                <span className={`text-xl font-bold ${
-                  a.score >= 80 ? "text-green-600" : a.score >= 60 ? "text-orange-500" : "text-red-600"
-                }`}>{a.score ?? "—"}</span>
-                <span className="text-xs text-gray-400">/100</span>
-              </div>
+              {editorial.length > 0 ? (
+                <ul className="mt-3 space-y-1.5">
+                  {editorial.map((it: any, i: number) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${SEVERITY_BADGE[it.severity] ?? "bg-gray-100 text-gray-600"}`}>
+                        {it.severity?.toUpperCase()}
+                      </span>
+                      <span className="text-xs text-gray-700">{it.message}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-3 text-xs text-green-600">Sin problemas editoriales — nota bien optimizada.</p>
+              )}
             </div>
-            {Array.isArray(a.issues) && a.issues.length > 0 && (
-              <ul className="mt-3 space-y-1.5">
-                {a.issues.map((it: any, i: number) => (
-                  <li key={i} className="flex items-start gap-2">
-                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${SEVERITY_BADGE[it.severity] ?? "bg-gray-100 text-gray-600"}`}>
-                      {it.severity?.toUpperCase()}
-                    </span>
-                    <span className="text-xs text-gray-700">{it.message}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )

@@ -19,9 +19,32 @@ logger = logging.getLogger(__name__)
 # Penalización en el score 0-100 por severidad
 _PENALTY = {"high": 20, "medium": 10, "low": 5}
 
+# Clase de cada issue:
+#  - "editorial": lo arregla el redactor al escribir/editar la nota.
+#  - "platform":  es sistémico (CMS/plantilla), lo arregla dev/SEO técnico;
+#                 sale igual en casi todas las notas, así que NO cuenta para el
+#                 score por-nota (si no, no prioriza) y se muestra agregado aparte.
+_CHECK_CLASS = {
+    "title":            "editorial",
+    "meta_description": "editorial",
+    "h1":               "editorial",
+    "headings":         "editorial",
+    "depth":            "editorial",
+    "keyword_intro":    "editorial",
+    "internal_links":   "editorial",
+    "image_alt":        "editorial",
+    "freshness":        "editorial",
+    "structured_data":  "platform",
+    "indexability":     "platform",
+    "canonical":        "platform",
+    "discover":         "platform",
+    "social":           "platform",
+}
+
 
 def _issue(check, severity, message):
-    return {"check": check, "severity": severity, "message": message}
+    return {"check": check, "severity": severity, "message": message,
+            "class": _CHECK_CLASS.get(check, "editorial")}
 
 
 def _norm_url(u):
@@ -177,9 +200,12 @@ def audit_article(parsed, target_keyword=None):
             f"Sin actualizarse hace {age} días; un refresh puede recuperar posiciones"))
 
     # --- Score de salud ---
+    # Solo penaliza lo EDITORIAL (lo que el redactor puede arreglar). Los issues
+    # de plataforma se muestran aparte y no distorsionan la priorización por nota.
     score = 100
     for it in issues:
-        score -= _PENALTY.get(it["severity"], 5)
+        if it.get("class") == "editorial":
+            score -= _PENALTY.get(it["severity"], 5)
     score = max(score, 0)
 
     return {"url": parsed["url"], "score": score, "issues": issues}
