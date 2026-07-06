@@ -26,8 +26,12 @@ benchmark matutino también quedó **verificado escribiendo data real** (ver aba
 - **Alertas Etapa 3 (Teams/WhatsApp):** definir `SECTION_RESPONSIBLES` (canal por
   sección). Hasta entonces las alertas quedan solo en Supabase/dashboard. (El
   usuario lo dejó para el final.)
-- **Secretos opcionales:** `GSC_CREDENTIALS_JSON` (posiciones SEO) y `SERPAPI_KEY`.
-  El agente ya funciona sin ellos (esas fuentes fallan de forma controlada).
+- **Secreto opcional:** `SERPAPI_KEY` (rankings/SERP). El agente funciona sin él.
+- **content_decay no guarda:** upsert con `on_conflict=page_path` pero la tabla no
+  tiene constraint único en esa columna (error 42P10). Falta:
+  `alter table content_decay add constraint content_decay_page_path_key unique (page_path);`
+  (dedupe antes si hay filas repetidas). El MCP de Supabase estaba caído (503/429)
+  cuando se intentó aplicar.
 - **Filtrar no-artículos (RESUELTO):** solo se considera contenido editorial de rpp.pe lo
   que matchea `-(noticia|live)-<id>` (notas + coberturas en vivo tipo minuto-a-minuto).
   Se descarta home, homes de sección (`/deportes`), landings/herramientas
@@ -107,6 +111,7 @@ rpp-seo-agent/
   bearer token (válido ~14 días, se cachea en `marfeel.py`).
 - Datos: `POST https://api.newsroom.bi/api/dashboard/query`.
 - **LÍMITE DURO: 1 request/minuto.** `marfeel.py` tiene un rate-limiter global.
+  El intervalo es **65s** (con 60s justos la API igual devolvía 429).
 - **El query DEBE llevar `dates`.** Sin `dates` + `granularity:"realtime"` devuelve
   `{"msg":"Invalid params"}`. Se usa `granularity:"daily"` + `dates:{last:{number:1,dimension:"day"}}`.
 - **Estructura de la respuesta agrupada (clave):** los datos por dimensión están en
@@ -124,6 +129,18 @@ rpp-seo-agent/
   contra la API en vivo** que Marfeel devuelva `source` por URL al agrupar en 3 dims;
   se confirma en la próxima corrida de `run_morning`. Si `source` no viene por fila,
   habría que consultar por canal (un `filters` por source, +60s c/u por el rate-limit).
+
+### Google Search Console (FUNCIONANDO desde 2026-07-06)
+- Service account (secreto `GSC_CREDENTIALS_JSON`) añadida como usuario en la
+  propiedad por el admin de GSC. El email a añadir es el `client_email` del JSON
+  (termina en `.iam.gserviceaccount.com`), NO un gmail.
+- **Gotcha de propiedad:** pedir `https://rpp.pe/` daba 403; `sc-domain:rpp.pe`
+  también. La solución fue **auto-detectar**: `_resolve_site_url()` en `gsc.py`
+  llama `sites().list()`, loguea las propiedades visibles (diagnóstico definitivo
+  de permisos) y usa la de rpp.pe (dominio > prefijo). `GSC_SITE_URL` por env
+  fuerza una propiedad específica; vacío = auto-detección (default).
+- Con esto `gsc_daily` se puebla y /search-console muestra quick wins, CTR bajo
+  y top queries. Latencia de datos GSC: ~2 días (el collector ya lo contempla).
 
 ### Google Trends
 - **pytrends NO funciona desde GitHub Actions** (bloqueo por IP de datacenter).
@@ -204,7 +221,7 @@ MARFEEL_EMAIL          → pdigitalrpp@gmail.com                 [✅ configurad
 MARFEEL_PASSWORD       → password de API de Marfeel            [✅ configurado]
 SUPABASE_URL           → https://tfrnpjbvxulswvqtosoq.supabase.co  [✅ configurado]
 SUPABASE_KEY           → service_role key (NO la anon)         [✅ configurado]
-GSC_CREDENTIALS_JSON   → service account de Google             [⏳ pendiente, opcional]
+GSC_CREDENTIALS_JSON   → service account de Google             [✅ configurado]
 SERPAPI_KEY            → clave de serpapi.com                  [⏳ pendiente, opcional]
 ```
 
