@@ -157,6 +157,24 @@ rpp-seo-agent/
 - **Secciones reemplazan a "programas".** `assign_section(category, sections)` mapea la
   categoría a una sección real de rpp.pe (dimensión `section` de Marfeel).
 
+### Auditoría SEO on-page (`onpage_audit.py`)
+- Corre en el benchmark matutino sobre notas donde rinde optimizar: quick-wins
+  de GSC (con su keyword), CTR bajo de GSC, y top de ayer de Marfeel.
+- `parse_article` (BeautifulSoup) extrae señales on-page; `audit_article` emite
+  issues con severidad (high/med/low) y un score 0-100.
+- **Split editorial vs plataforma (clave):** cada issue tiene `class`.
+  - `editorial` (lo arregla el redactor): title, meta desc, H1, H2, profundidad,
+    keyword en intro/H1/meta, enlazado interno, alt, freshness. **Solo esto cuenta
+    para el score por nota.**
+  - `platform` (sistémico, CMS/plantilla; lo arregla dev/SEO): og:image <1200
+    (RPP declara 860px → pierde Discover), canonical, structured_data, social
+    (og/twitter). El dashboard los muestra **agregados una sola vez** ("Pendientes
+    técnicos del sitio"), no repetidos por nota, y NO penalizan el score.
+  - Motivo: al validar, esos checks salían en el 100% de las notas (son de
+    plantilla) e inflaban el ruido; separarlos hace que el score priorice de
+    verdad. La regla de `slug` se quitó (rpp usa slugs 70-140c por diseño; ruido).
+- `save_onpage_audits` borra por `audited_date` y reinserta (re-correr reemplaza).
+
 ### Supabase
 - **Usar `supabase==2.31.0` + `httpx>=0.26`.** Versiones viejas dan
   `Client.__init__() got an unexpected keyword argument 'proxy'` y bloquean la escritura.
