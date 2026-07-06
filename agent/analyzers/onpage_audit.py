@@ -9,6 +9,9 @@ alt de imágenes, structured data, indexabilidad y readiness para Discover.
 """
 
 import logging
+from datetime import datetime, timezone
+from urllib.parse import urlparse
+
 from config import ONPAGE
 
 logger = logging.getLogger(__name__)
@@ -19,6 +22,42 @@ _PENALTY = {"high": 20, "medium": 10, "low": 5}
 
 def _issue(check, severity, message):
     return {"check": check, "severity": severity, "message": message}
+
+
+def _norm_url(u):
+    """host+path en minúsculas, sin www, sin query/fragment ni slash final."""
+    if not u:
+        return ""
+    try:
+        p = urlparse(u if "://" in u else "https://" + u.lstrip("/"))
+    except Exception:
+        return u.strip().lower()
+    host = (p.hostname or "").replace("www.", "")
+    path = (p.path or "").rstrip("/")
+    return f"{host}{path}".lower()
+
+
+def _slug_of(url):
+    try:
+        return (urlparse(url).path or "").rstrip("/").split("/")[-1]
+    except Exception:
+        return ""
+
+
+def _days_since(iso_date):
+    """Días desde una fecha ISO (datePublished/dateModified). None si no parsea."""
+    if not iso_date:
+        return None
+    raw = str(iso_date).strip().replace("Z", "+00:00")
+    for candidate in (raw, raw[:19]):   # tolera con y sin offset
+        try:
+            dt = datetime.fromisoformat(candidate)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return (datetime.now(timezone.utc) - dt).days
+        except ValueError:
+            continue
+    return None
 
 
 def audit_article(parsed, target_keyword=None):
@@ -61,6 +100,9 @@ def audit_article(parsed, target_keyword=None):
         elif len(md) > ONPAGE["meta_desc_max_len"]:
             issues.append(_issue("meta_description", "low",
                 f"Meta description larga ({len(md)}c); se truncará"))
+        if kw and kw not in md.lower():
+            issues.append(_issue("meta_description", "low",
+                f"La keyword '{target_keyword}' no está en la meta description"))
 
     # --- H1 ---
     h1s = parsed.get("h1s") or []
@@ -68,11 +110,19 @@ def audit_article(parsed, target_keyword=None):
         issues.append(_issue("h1", "high", "Sin H1"))
     elif len(h1s) > 1:
         issues.append(_issue("h1", "medium", f"{len(h1s)} H1 (debe haber uno solo)"))
+    elif kw and kw not in h1s[0].lower():
+        issues.append(_issue("h1", "medium", f"La keyword '{target_keyword}' no está en el H1"))
 
     # --- Estructura de subtítulos ---
-    if parsed.get("h2_count", 0) == 0:
+    h2_count = parsed.get("h2_count", 0)
+    if h2_count == 0:
         issues.append(_issue("headings", "medium",
             "Sin subtítulos H2; mala escaneabilidad y peor para featured snippets"))
+    elif (parsed.get("word_count", 0) >= ONPAGE["long_article_words"]
+          and h2_count < ONPAGE["long_article_min_h2"]):
+        issues.append(_issue("headings", "low",
+            f"Nota larga ({parsed.get('word_count')}p) con solo {h2_count} H2; "
+            "conviene segmentar en más secciones"))
 
     # --- Profundidad ---
     wc = parsed.get("word_count", 0)
@@ -102,12 +152,22 @@ def audit_article(parsed, target_keyword=None):
         issues.append(_issue("structured_data", "medium",
             "Falta schema NewsArticle/Article (JSON-LD)"))
 
+    # --- Slug ---
+    slug = _slug_of(parsed["url"])
+    if len(slug) > ONPAGE["slug_max_len"]:
+        issues.append(_issue("slug", "low",
+            f"Slug muy largo ({len(slug)}c); acortarlo mejora legibilidad y CTR en SERP"))
+
     # --- Indexabilidad ---
     robots = (parsed.get("robots") or "").lower()
     if "noindex" in robots:
         issues.append(_issue("indexability", "high", "La nota tiene noindex"))
-    if not parsed.get("canonical"):
+    canonical = parsed.get("canonical")
+    if not canonical:
         issues.append(_issue("canonical", "low", "Sin etiqueta canonical"))
+    elif _norm_url(canonical) != _norm_url(parsed["url"]):
+        issues.append(_issue("canonical", "medium",
+            f"El canonical apunta a otra URL ({canonical}); revisar canibalización/indexación"))
 
     # --- Discover readiness ---
     if not parsed.get("og_image"):
@@ -115,6 +175,19 @@ def audit_article(parsed, target_keyword=None):
     elif parsed.get("og_image_width") and parsed["og_image_width"] < ONPAGE["discover_min_img_width"]:
         issues.append(_issue("discover", "low",
             f"Imagen <{ONPAGE['discover_min_img_width']}px; Discover exige imágenes grandes"))
+
+    # --- Social / Open Graph ---
+    if not parsed.get("og_title") or not parsed.get("og_description"):
+        issues.append(_issue("social", "low",
+            "Falta og:title u og:description; se comparte peor en redes"))
+    if not parsed.get("twitter_card"):
+        issues.append(_issue("social", "low", "Sin twitter:card; peor preview en X/Twitter"))
+
+    # --- Frescura (refresh de contenido que aún trae tráfico) ---
+    age = _days_since(parsed.get("date_modified") or parsed.get("date_published"))
+    if age is not None and age >= ONPAGE["stale_days"]:
+        issues.append(_issue("freshness", "low",
+            f"Sin actualizarse hace {age} días; un refresh puede recuperar posiciones"))
 
     # --- Score de salud ---
     score = 100

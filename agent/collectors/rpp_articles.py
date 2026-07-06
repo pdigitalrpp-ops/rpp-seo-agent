@@ -22,8 +22,8 @@ def _word_count(text):
     return len((text or "").split())
 
 
-def _extract_jsonld_types(soup):
-    types = []
+def _iter_jsonld_blocks(soup):
+    """Devuelve todos los objetos JSON-LD de la página (aplana listas y @graph)."""
     for script in soup.find_all("script", attrs={"type": "application/ld+json"}):
         try:
             data = json.loads(script.string or "")
@@ -31,10 +31,33 @@ def _extract_jsonld_types(soup):
             continue
         blocks = data if isinstance(data, list) else [data]
         for block in blocks:
-            if isinstance(block, dict) and block.get("@type"):
-                t = block["@type"]
-                types.extend(t if isinstance(t, list) else [t])
+            if not isinstance(block, dict):
+                continue
+            if isinstance(block.get("@graph"), list):
+                for sub in block["@graph"]:
+                    if isinstance(sub, dict):
+                        yield sub
+            else:
+                yield block
+
+
+def _extract_jsonld_types(soup):
+    types = []
+    for block in _iter_jsonld_blocks(soup):
+        t = block.get("@type")
+        if t:
+            types.extend(t if isinstance(t, list) else [t])
     return types
+
+
+def _extract_article_dates(soup):
+    """datePublished / dateModified del bloque Article/NewsArticle (si existe)."""
+    for block in _iter_jsonld_blocks(soup):
+        t = block.get("@type") or ""
+        t = " ".join(t) if isinstance(t, list) else t
+        if "article" in t.lower():
+            return block.get("datePublished"), block.get("dateModified")
+    return None, None
 
 
 def parse_article(url):
@@ -88,6 +111,8 @@ def parse_article(url):
     except (ValueError, TypeError):
         og_width = None
 
+    date_published, date_modified = _extract_article_dates(soup)
+
     return {
         "url":                url,
         "title_tag":          title_tag,
@@ -99,7 +124,12 @@ def parse_article(url):
         "robots":             meta("name", "robots"),
         "og_image":           meta("property", "og:image"),
         "og_image_width":     og_width,
+        "og_title":           meta("property", "og:title"),
+        "og_description":     meta("property", "og:description"),
+        "twitter_card":       meta("name", "twitter:card"),
         "jsonld_types":       _extract_jsonld_types(soup),
+        "date_published":     date_published,
+        "date_modified":      date_modified,
         "word_count":         _word_count(body_text),
         "first_paragraph":    first_p,
         "internal_links":     internal_links,

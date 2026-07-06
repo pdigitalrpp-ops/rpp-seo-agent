@@ -156,11 +156,15 @@ def run():
     except Exception as e:
         logger.warning(f"Decay analysis falló: {e}")
 
-    # Auditoría on-page: quick wins (con su keyword) + top notas de ayer
+    # Auditoría on-page: quick wins (con su keyword) + CTR bajo (title/meta a
+    # reescribir) + top notas de ayer. Son las notas donde más rinde optimizar.
+    low_ctr = opportunities.find_low_ctr_opportunities(gsc_search or [])
     audits = []
     audit_targets = []
     for qw in quick_wins[:5]:
         audit_targets.append((qw["page"], qw.get("query")))
+    for lc in low_ctr[:5]:
+        audit_targets.append((lc["page"], None))
     for r in (marfeel_perf or [])[:3]:
         if r.get("label"):
             audit_targets.append((r["label"], None))
