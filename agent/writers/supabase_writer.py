@@ -258,6 +258,9 @@ def save_onpage_audits(audits, run_date):
     if not audits:
         return
     sb = _get_client()
+    # Borra las auditorías del día y reinserta, para que re-correr el benchmark
+    # reemplace en vez de acumular duplicados.
+    sb.table("onpage_audits").delete().eq("audited_date", str(run_date)).execute()
     rows = [{
         "audited_date":   str(run_date),
         "url":            a["url"],

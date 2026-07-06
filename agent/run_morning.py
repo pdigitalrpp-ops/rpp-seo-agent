@@ -63,6 +63,22 @@ def safe_collect(name, func, run_data, **kwargs):
         return None
 
 
+def safe_save(name, func, run_data, *args, **kwargs):
+    """
+    Guarda de forma aislada: si un save falla, se loguea y se sigue con los
+    demás (antes estaban todos en un try común, así que un solo error —p.ej. el
+    del constraint de content_decay— abortaba el resto de guardados).
+    """
+    try:
+        func(*args, **kwargs)
+        logger.info(f"💾 {name}: guardado")
+        return True
+    except Exception as e:
+        logger.error(f"❌ Error guardando {name}: {e}")
+        run_data.setdefault("save_errors", []).append(name)
+        return False
+
+
 def _clamp(x, lo=0.7, hi=1.5):
     return max(lo, min(hi, x))
 
@@ -159,27 +175,24 @@ def run():
         result["title"] = parsed.get("title_tag")
         audits.append(result)
 
-    # --- GUARDAR ---
-    try:
-        traffic_rows = [{
-            "page_path":    r.get("label"),
-            "sessions":     r.get("pageViewsTotal", 0),
-            "unique_users": r.get("uniqueUsers"),
-            "title":        r.get("title"),
-            "source":       "marfeel",
-        } for r in (marfeel_perf or []) if r.get("label")]
-        save_traffic(traffic_rows, today)
-        save_traffic_channels(marfeel_channel or [], today)
-        save_gsc_data(gsc_search or [], today)
-        save_competitor_articles(competitor_data or [])
-        save_decay(decay_list, today)
-        save_daily_insights(insights, today)
-        save_scoring_weights(weights, today)
-        save_onpage_audits(audits, today)
-        logger.info("✅ Benchmark guardado en Supabase")
-    except Exception as e:
-        logger.error(f"❌ Error guardando en Supabase: {e}")
-        run_data["error_log"] = str(e)
+    # --- GUARDAR (cada save aislado: un fallo no bota a los demás) ---
+    traffic_rows = [{
+        "page_path":    r.get("label"),
+        "sessions":     r.get("pageViewsTotal", 0),
+        "unique_users": r.get("uniqueUsers"),
+        "title":        r.get("title"),
+        "source":       "marfeel",
+    } for r in (marfeel_perf or []) if r.get("label")]
+    safe_save("own_traffic",          save_traffic,             run_data, traffic_rows, today)
+    safe_save("own_traffic_channels", save_traffic_channels,    run_data, marfeel_channel or [], today)
+    safe_save("gsc_daily",            save_gsc_data,            run_data, gsc_search or [], today)
+    safe_save("competitor_articles",  save_competitor_articles, run_data, competitor_data or [])
+    safe_save("content_decay",        save_decay,               run_data, decay_list, today)
+    safe_save("daily_insights",       save_daily_insights,      run_data, insights, today)
+    safe_save("scoring_weights",      save_scoring_weights,     run_data, weights, today)
+    safe_save("onpage_audits",        save_onpage_audits,       run_data, audits, today)
+    if run_data.get("save_errors"):
+        run_data["error_log"] = "save_errors: " + ", ".join(run_data["save_errors"])
 
     # --- LOG ---
     run_data["finished_at"] = datetime.now()
