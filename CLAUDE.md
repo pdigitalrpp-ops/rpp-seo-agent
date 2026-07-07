@@ -22,6 +22,21 @@ benchmark matutino también quedó **verificado escribiendo data real** (ver aba
 - **Supabase:** project ref `tfrnpjbvxulswvqtosoq`
 - Git local del usuario autentica como `pdigitalrpp-ops` vía Git Credential Manager.
 
+### Conexiones MCP disponibles para Claude Code (2026-07-07)
+- **Supabase MCP:** conectado, `project_id=tfrnpjbvxulswvqtosoq` (usar `execute_sql`/`apply_migration`).
+  A veces devuelve 429/503 con ráfagas de queries; esperar unos segundos y reintentar.
+- **Vercel MCP:** conectado y verificado. Team **PDIGITAL RPP** = `team_J5ILqbtm0EDZ4BSl158WrhD8`.
+  Proyectos: `rpp-seo-agent` = `prj_2w37k5pifcwXtoQlVNZ1qszB8ect` (el dashboard real),
+  `rpp-dashboard` = `prj_HQsOhCJALxcVutbXs595EJjQVS8U` (sin usar por ahora). Con esto se puede
+  listar deployments/logs de build sin navegador (`list_deployments`, `get_deployment`).
+- **GitHub MCP: PENDIENTE.** El usuario conectó el plugin de GitHub en la app, pero sus
+  herramientas NO se exponen en sesiones ya iniciadas (los conectores cargan tools solo al
+  arrancar la sesión). Probado y confirmado 2026-07-07. Para que funcione: abrir un **chat
+  nuevo** después de conectar el plugin. Alternativa no probada: MCP oficial de GitHub vía
+  config (`api.githubcopilot.com/mcp/`) con un PAT de `pdigitalrpp-ops` que pega el usuario.
+  Mientras tanto, GitHub se opera con `git push` (código) + navegador (workflows/secrets),
+  que es el flujo que se ha usado en toda la sesión y funciona bien.
+
 ### Pendientes
 - **Alertas Etapa 3 (Teams/WhatsApp):** definir `SECTION_RESPONSIBLES` (canal por
   sección). Hasta entonces las alertas quedan solo en Supabase/dashboard. (El
