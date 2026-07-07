@@ -150,7 +150,17 @@ rpp-seo-agent/
   de permisos) y usa la de rpp.pe (dominio > prefijo). `GSC_SITE_URL` por env
   fuerza una propiedad específica; vacío = auto-detección (default).
 - Con esto `gsc_daily` se puebla y /search-console muestra quick wins, CTR bajo
-  y top queries. Latencia de datos GSC: ~2 días (el collector ya lo contempla).
+  y top queries.
+- **Frescura (fix 2026-07-07):** la ventana del collector termina AYER (hoy-1),
+  no hoy-2: con `dataState: "all"` Google entrega data fresca (parcial) de hasta
+  ayer. Con hoy-2 el dashboard mostraba partidos de hace 3-5 días como actuales.
+- **Modelo de datos gsc_daily (clave para no romperlo):** cada corrida guarda un
+  SNAPSHOT completo (agregado de la ventana de ~3 días de GSC) con `date` = día
+  de corrida, reemplazando la fecha (delete+insert). Las ventanas de días
+  consecutivos SE SOLAPAN → el dashboard debe leer SOLO el snapshot más reciente
+  (`eq date = max(date)`), nunca `gte` de varios días (duplica todo y revive data
+  vieja — bug visto 2026-07-07). Una query puede repetirse legítimamente en el
+  snapshot si rankea con varias páginas (dimensiones page+query).
 
 ### Google Trends
 - **pytrends NO funciona desde GitHub Actions** (bloqueo por IP de datacenter).
