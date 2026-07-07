@@ -228,6 +228,28 @@ rpp-seo-agent/
   medio con conteo y favicon), ventana única con las notas, identificador con logo (favicon
   vía `google.com/s2/favicons`, fallback a inicial de color) por nota, y chips de categoría
   clicables. Filtrado cruzado tipo facetas (medio ↔ categoría). `page.tsx` solo hace fetch.
+- **Diseño visual "RPP Digital" (2026-07-07):** header amarillo (`bg-rpp-yellow`
+  `#F5D414`) con nav en pills (`components/NavPills.tsx`, detecta ruta activa vía
+  `usePathname` — antes no existía esa detección), tipografía Inter (`next/font/google`
+  en `app/layout.tsx`). Tokens en `tailwind.config.ts`: `rpp-yellow`/`rpp-ink`
+  (`#111827`)/`rpp-teal` (`#0D9488`). **Rojo se reserva para semántica de alerta/crítico**
+  (severidad alta, caídas, score bajo); el "activo" de filtros/pills pasa a teal para no
+  chocar con el amarillo del header. Tarjetas estandarizadas a `rounded-2xl border
+  border-gray-200`.
+  - Componentes compartidos nuevos en `dashboard/components/`: `ui/Pill.tsx` (variantes
+    `solid`/`accent`/`tag` como `<button>`, más `pillClasses()` exportada para usar
+    directo sobre un `<Link>` — **nunca anidar un `<Pill>` dentro de `<Link>`**, sería un
+    `<button>` dentro de `<a>` = HTML inválido), `ui/StatCard.tsx` (KPI con acento de
+    color vía `border-l-4` inline).
+  - `<select>` de filtros (Sección en `/trafico`) migrado a fila de `Pill(variant="solid")`.
+  - Mapas de color planos (`URGENCY_COLORS`, `CATEGORY_COLORS`, `SEVERITY_BADGE`, etc.)
+    en las páginas migrados a `TagBadge`/`Pill(variant="tag")`, coloreado por hex vía
+    `style` (no clases Tailwind dinámicas — evita problemas de purge en build).
+  - **Nota de entorno:** este proyecto no tiene Node/npm instalable en el sandbox de
+    Claude Code (Bash y `preview_start` no lo encuentran) — no se puede `npm run build`
+    ni levantar dev server local para verificar. La verificación real ocurre en el build
+    de Vercel (que sí tiene Node) tras el push; usar el Vercel MCP
+    (`list_deployments`/`get_deployment_build_logs`) para confirmar `state: "READY"`.
 
 ### GitHub Actions
 - **El cron se retrasa/saltea mucho** en repos de poca actividad (hoy corrió ~3 veces,
