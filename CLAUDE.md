@@ -247,17 +247,33 @@ PASS_EDITORIAL / PASS_DIRECCION / PASS_ADMIN   (contraseñas temporales: <rol>20
 
 ---
 
-## Fase 2 — capa agéntica LLM (pendiente, decidida)
+## Fase 2 — capa LLM (CÓDIGO LISTO, bloqueada por cuota de API)
 
-El agente actual es **rules-first**. La categorización por keywords falla notoriamente:
-nombres de jugadores ("erling haaland", "lebron james", "van gaal") caen en "otros"
-en vez de "deportes" → baja relevancia → se filtran → se pierde señal. Los títulos son
-templados ("todo lo que necesitas saber").
+**Estado (2026-07-06):** la capa LLM está **implementada y validada end-to-end**,
+pero la key de Gemini no tiene cuota (`generate_content_free_tier_requests,
+limit: 0` → 429 desde la primera llamada). El usuario buscará una **API gratuita
+alternativa**. Mientras, el agente corre rules-first sin degradarse.
 
-**Fase 2 = agregar Claude** que: (1) categorice/razone los temas de verdad, (2) redacte
-titulares y ángulos reales, (3) explique en lenguaje natural por qué funcionó el contenido.
-Los datos ya limpios en Supabase son la base. Enchufar en costuras marcadas. **Rules-first
-primero (ya hecho), IA después.**
+**Lo que ya existe (no reescribir):**
+- `agent/llm/gemini.py` — cliente REST (requests, sin SDK). `is_enabled()` por
+  `GEMINI_API_KEY`; TODA función devuelve None si no hay key o falla → los
+  orquestadores caen a reglas automáticamente. Loguea el body exacto en errores.
+- **A) Categorización (radar):** `categorize_topics(keywords, categories)` — 1
+  llamada batch para los ~10 trends. Enchufada en `run_radar.py`; `scoring.py`
+  respeta `item["category"]` pre-asignada. Arregla "haaland → otros".
+- **B) Reescritura (auditoría):** `rewrite_onpage_batch(items)` — 1 llamada batch
+  para todas las notas con issues editoriales. Enchufada en `run_morning.py`;
+  se guarda en `onpage_audits.suggestions` (jsonb, columna ya migrada) y el
+  dashboard la muestra como "✨ Sugerencia IA" (título/meta/H2 con contador de chars).
+- Workflows ya pasan `GEMINI_API_KEY` (secret configurado). `GEMINI_MODEL`
+  overrideable por env (default gemini-2.0-flash).
+
+**Para cambiar de proveedor LLM:** el contrato son 2 funciones batch
+(`categorize_topics`, `rewrite_onpage_batch`) con salida JSON. Crear un cliente
+equivalente (p.ej. `llm/groq.py` u otro con free tier) o adaptar `gemini.py` —
+los orquestadores no cambian. Presupuesto: radar = 1 call/corrida (~100/día),
+morning = 1 call/día. Volumen mínimo; batch SIEMPRE (aprendido: por-nota saturó
+el rate limit).
 
 ---
 
