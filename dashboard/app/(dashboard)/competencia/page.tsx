@@ -22,7 +22,7 @@ export default async function CompetenciaPage() {
           <h1 className="text-2xl font-bold text-gray-900">Competencia</h1>
           <span className="text-sm text-gray-500">{today}</span>
         </div>
-        <div className="bg-white rounded-xl border p-8 text-center text-gray-500 text-sm">
+        <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center text-gray-500 text-sm">
           Sin datos de competencia para hoy.
         </div>
       </div>

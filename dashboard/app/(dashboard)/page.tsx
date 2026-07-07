@@ -1,6 +1,14 @@
 import { supabase } from "@/lib/supabase"
+import { StatCard } from "@/components/ui/StatCard"
+import { TagBadge } from "@/components/ui/Pill"
 
 export const revalidate = 60
+
+const URGENCY_COLOR: Record<string, string> = {
+  INMEDIATO:      "#DC2626",
+  HOY:            "#F97316",
+  "ESTA SEMANA":  "#2563EB",
+}
 
 export default async function DashboardHome() {
   const today = new Date().toISOString().split("T")[0]
@@ -14,6 +22,8 @@ export default async function DashboardHome() {
   ])
 
   const lastRun = runs?.[0]
+  const alertCount = alerts?.length ?? 0
+  const healthAccent = alertCount === 0 ? "#16A34A" : alertCount <= 2 ? "#F59E0B" : "#DC2626"
 
   return (
     <div className="space-y-6">
@@ -28,32 +38,44 @@ export default async function DashboardHome() {
         </span>
       </div>
 
-      {/* Semáforo SEO */}
-      <div className="bg-white rounded-xl border p-4 flex items-center gap-3">
-        <div className={`w-4 h-4 rounded-full ${
-          !alerts?.length
-            ? "bg-green-500"
-            : alerts.length <= 2
-            ? "bg-yellow-500"
-            : "bg-red-600"
-        }`} />
-        <span className="text-sm font-medium">
-          {!alerts?.length
-            ? "Salud SEO estable — sin alertas activas"
-            : `${alerts.length} alerta(s) activa(s)`}
-        </span>
+      {/* Fila de KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <StatCard
+          label="Salud SEO"
+          value={alertCount === 0 ? "Estable" : `${alertCount} alerta(s)`}
+          subtitle={alertCount === 0 ? "sin alertas activas" : "revisar sección Alertas"}
+          accent={healthAccent}
+        />
+        <StatCard
+          label="Recomendaciones"
+          value={recs?.length ?? 0}
+          subtitle="del día"
+          accent="#F97316"
+        />
+        <StatCard
+          label="Tendencias"
+          value={trends?.length ?? 0}
+          subtitle="detectadas ahora"
+          accent="#0D9488"
+        />
+        <StatCard
+          label="Fuentes OK"
+          value={`${lastRun?.sources_ok?.length ?? 0}/${(lastRun?.sources_ok?.length ?? 0) + (lastRun?.sources_failed?.length ?? 0)}`}
+          subtitle="último run"
+          accent="#8B5CF6"
+        />
       </div>
 
       {/* Fuentes del último run */}
       {lastRun && (
-        <div className="bg-white rounded-xl border p-4">
+        <div className="bg-white rounded-2xl border border-gray-200 p-4">
           <h2 className="text-sm font-semibold text-gray-700 mb-2">Fuentes del último run</h2>
           <div className="flex flex-wrap gap-2">
             {lastRun.sources_ok?.map((s: string) => (
-              <span key={s} className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">{s} ✓</span>
+              <TagBadge key={s} color="#16A34A">{s} ✓</TagBadge>
             ))}
             {lastRun.sources_failed?.map((s: string) => (
-              <span key={s} className="px-2 py-1 bg-red-100 text-red-800 text-xs rounded-full">{s} ✗</span>
+              <TagBadge key={s} color="#DC2626">{s} ✗</TagBadge>
             ))}
           </div>
         </div>
@@ -65,7 +87,7 @@ export default async function DashboardHome() {
           <h2 className="text-lg font-semibold text-gray-800 mb-3">Aprendizajes de hoy</h2>
           <div className="grid gap-3 md:grid-cols-2">
             {insights.map((ins: any) => (
-              <div key={ins.id} className="bg-white rounded-xl border p-4">
+              <div key={ins.id} className="bg-white rounded-2xl border border-gray-200 p-4">
                 <p className="font-medium text-gray-900 text-sm">{ins.headline}</p>
                 {ins.detail && <p className="text-xs text-gray-500 mt-1">{ins.detail}</p>}
               </div>
@@ -79,14 +101,10 @@ export default async function DashboardHome() {
         <h2 className="text-lg font-semibold text-gray-800 mb-3">Top recomendaciones del día</h2>
         <div className="grid gap-3">
           {recs?.slice(0, 3).map((rec: any) => (
-            <div key={rec.id} className="bg-white rounded-xl border p-4">
+            <div key={rec.id} className="bg-white rounded-2xl border border-gray-200 p-4">
               <div className="flex items-start justify-between gap-2">
-                <div>
-                  <span className={`text-xs font-bold px-2 py-0.5 rounded mr-2 ${
-                    rec.urgency === "INMEDIATO" ? "bg-red-100 text-red-700" :
-                    rec.urgency === "HOY"       ? "bg-orange-100 text-orange-700" :
-                    "bg-blue-100 text-blue-700"
-                  }`}>{rec.urgency}</span>
+                <div className="flex items-center gap-2">
+                  <TagBadge color={URGENCY_COLOR[rec.urgency] ?? "#2563EB"}>{rec.urgency}</TagBadge>
                   {rec.section && <span className="text-xs text-gray-500">📂 {rec.section}</span>}
                 </div>
                 <span className="text-sm font-bold text-gray-700">{rec.score}/100</span>
@@ -98,7 +116,7 @@ export default async function DashboardHome() {
             </div>
           ))}
           {!recs?.length && (
-            <p className="text-sm text-gray-500 bg-white rounded-xl border p-4">
+            <p className="text-sm text-gray-500 bg-white rounded-2xl border border-gray-200 p-4">
               Sin recomendaciones para hoy. El agente aún no ha corrido.
             </p>
           )}
@@ -109,13 +127,13 @@ export default async function DashboardHome() {
       {trends && trends.length > 0 && (
         <div>
           <h2 className="text-lg font-semibold text-gray-800 mb-3">Tendencias en Perú ahora</h2>
-          <div className="bg-white rounded-xl border divide-y">
+          <div className="bg-white rounded-2xl border border-gray-200 divide-y">
             {trends.map((t: any) => (
               <div key={t.id} className="flex items-center justify-between px-4 py-2">
                 <span className="text-sm text-gray-700">#{t.rank} {t.keyword}</span>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-gray-500">{t.category}</span>
-                  <span className="text-xs font-semibold text-red-600">
+                  <span className="text-xs font-semibold text-rpp-teal">
                     {t.growth_score?.toFixed(1)}/10
                   </span>
                 </div>

@@ -24,29 +24,28 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="bg-white rounded-xl shadow-md p-8 w-full max-w-sm">
+      <div className="bg-white rounded-2xl border-t-4 border-rpp-yellow shadow-md p-8 w-full max-w-sm">
         <div className="flex items-center gap-2 mb-6">
-          <div className="w-8 h-8 bg-red-600 rounded" />
-          <span className="font-bold text-gray-800 text-lg">RPP SEO Dashboard</span>
+          <span className="font-extrabold text-rpp-ink text-lg">RPP SEO Dashboard</span>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <input
             name="username"
             placeholder="Usuario"
-            className="w-full border rounded-lg px-4 py-2 text-sm"
+            className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rpp-teal/30 focus:border-rpp-teal"
             required
           />
           <input
             name="password"
             type="password"
             placeholder="Contraseña"
-            className="w-full border rounded-lg px-4 py-2 text-sm"
+            className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rpp-teal/30 focus:border-rpp-teal"
             required
           />
           {error && <p className="text-red-600 text-sm">{error}</p>}
           <button
             type="submit"
-            className="w-full bg-red-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-red-700"
+            className="w-full bg-rpp-ink text-white rounded-full py-2 text-sm font-bold hover:bg-gray-800 transition"
           >
             Ingresar
           </button>

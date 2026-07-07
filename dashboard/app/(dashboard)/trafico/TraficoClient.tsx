@@ -1,6 +1,8 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import { Pill } from "@/components/ui/Pill"
+import { StatCard } from "@/components/ui/StatCard"
 
 export type ChannelRow = {
   page_path: string
@@ -136,40 +138,30 @@ export default function TraficoClient({
       )}
 
       {/* Filtro de Sección (arriba) */}
-      <div className="bg-white rounded-xl border p-4 flex items-center gap-3">
-        <label className="text-xs font-bold uppercase tracking-wide text-gray-500">Sección</label>
-        <select
-          value={section}
-          onChange={(e) => setSection(e.target.value)}
-          className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-red-200"
-        >
-          <option value={TODOS}>Todas</option>
+      <div className="bg-white rounded-2xl border border-gray-200 p-4">
+        <h2 className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-3">Sección</h2>
+        <div className="flex flex-wrap gap-2">
+          <Pill variant="solid" active={section === TODOS} onClick={() => setSection(TODOS)}>
+            Todas
+          </Pill>
           {sections.map((s) => (
-            <option key={s} value={s}>
+            <Pill key={s} variant="solid" active={section === s} onClick={() => setSection(s)}>
               {s}
-            </option>
+            </Pill>
           ))}
-        </select>
-        {section !== TODOS && (
-          <button
-            onClick={() => setSection(TODOS)}
-            className="text-xs text-gray-400 hover:text-gray-600"
-          >
-            limpiar
-          </button>
-        )}
+        </div>
       </div>
 
       {/* Tarjetas resumen (según filtro activo) */}
       <div className="grid grid-cols-3 gap-4">
-        <Card label="Page views" value={fmt(totalPv)} />
-        <Card label="Usuarios únicos" value={fmt(totalUsers)} />
-        <Card label="Artículos" value={fmt(articles.length)} />
+        <StatCard label="Page views" value={fmt(totalPv)} accent="#F97316" />
+        <StatCard label="Usuarios únicos" value={fmt(totalUsers)} accent="#0D9488" />
+        <StatCard label="Artículos" value={fmt(articles.length)} accent="#8B5CF6" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-6">
         {/* Sidebar: canal de adquisición (reacciona a la sección) */}
-        <div className="bg-white rounded-xl border p-4 self-start">
+        <div className="bg-white rounded-2xl border border-gray-200 p-4 self-start">
           <h2 className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-3">
             Canal de adquisición
           </h2>
@@ -202,7 +194,7 @@ export default function TraficoClient({
         </div>
 
         {/* Lista de artículos */}
-        <div className="bg-white rounded-xl border overflow-hidden self-start">
+        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden self-start">
           <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-gray-700">
               Artículos
@@ -239,15 +231,6 @@ export default function TraficoClient({
   )
 }
 
-function Card({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="bg-white rounded-xl border p-4">
-      <p className="text-xs text-gray-500">{label}</p>
-      <p className="text-2xl font-bold text-gray-900 mt-1">{value}</p>
-    </div>
-  )
-}
-
 function ChannelItem({
   label,
   pv,
@@ -271,19 +254,19 @@ function ChannelItem({
         onClick={onClick}
         disabled={disabled}
         className={`w-full rounded-lg px-2 py-1.5 text-left transition ${
-          active ? "bg-red-50" : "hover:bg-gray-50"
+          active ? "bg-teal-50" : "hover:bg-gray-50"
         } ${disabled ? "opacity-40 cursor-not-allowed" : ""}`}
       >
         <div className="flex items-center justify-between gap-2">
           <span
             className={`truncate text-sm ${
-              active ? "text-red-700 font-semibold" : "text-gray-700"
+              active ? "text-rpp-teal font-semibold" : "text-gray-700"
             }`}
           >
             {label}
           </span>
           <span
-            className={`shrink-0 text-xs ${active ? "text-red-700 font-semibold" : "text-gray-500"}`}
+            className={`shrink-0 text-xs ${active ? "text-rpp-teal font-semibold" : "text-gray-500"}`}
           >
             {fmt(pv)}
           </span>
@@ -292,7 +275,7 @@ function ChannelItem({
         {showBar && (
           <div className="mt-1 h-1 w-full rounded-full bg-gray-100">
             <div
-              className={`h-1 rounded-full ${active ? "bg-red-600" : "bg-red-400"}`}
+              className={`h-1 rounded-full ${active ? "bg-rpp-teal" : "bg-teal-300"}`}
               style={{ width: `${Math.max(pct, 2)}%` }}
             />
           </div>

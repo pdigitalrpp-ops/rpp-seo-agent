@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import { Pill } from "@/components/ui/Pill"
 
 export type Article = {
   id: string
@@ -120,30 +121,28 @@ export default function CompetenciaClient({
       </div>
 
       {/* Categorías clicables */}
-      <div className="bg-white rounded-xl border p-4">
+      <div className="bg-white rounded-2xl border border-gray-200 p-4">
         <h2 className="text-sm font-semibold text-gray-700 mb-3">Cobertura por categoría hoy</h2>
         <div className="flex flex-wrap gap-2">
-          <CategoryChip
-            label="Todas"
-            count={categoryCounts.reduce((s, [, c]) => s + c, 0)}
-            active={category === TODAS}
-            onClick={() => setCategory(TODAS)}
-          />
+          <Pill variant="solid" active={category === TODAS} onClick={() => setCategory(TODAS)}>
+            Todas: {categoryCounts.reduce((s, [, c]) => s + c, 0)}
+          </Pill>
           {categoryCounts.map(([cat, count]) => (
-            <CategoryChip
+            <Pill
               key={cat}
-              label={cat}
-              count={count}
+              variant="solid"
               active={category === cat}
               onClick={() => setCategory(category === cat ? TODAS : cat)}
-            />
+            >
+              {cat}: {count}
+            </Pill>
           ))}
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-6">
         {/* Navegador de medios */}
-        <div className="bg-white rounded-xl border p-4 self-start">
+        <div className="bg-white rounded-2xl border border-gray-200 p-4 self-start">
           <h2 className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-3">Medios</h2>
           <ul className="space-y-1">
             <MediumItem
@@ -166,7 +165,7 @@ export default function CompetenciaClient({
         </div>
 
         {/* Ventana con las notas */}
-        <div className="bg-white rounded-xl border overflow-hidden self-start">
+        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden self-start">
           <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-gray-700">
               Notas
@@ -185,7 +184,7 @@ export default function CompetenciaClient({
                       href={a.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-sm text-gray-800 hover:text-red-600 line-clamp-2"
+                      className="text-sm text-gray-800 hover:text-rpp-teal line-clamp-2"
                     >
                       {a.title}
                     </a>
@@ -230,38 +229,13 @@ function MediumItem({
       <button
         onClick={onClick}
         className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition ${
-          active ? "bg-red-50 text-red-700 font-semibold" : "text-gray-700 hover:bg-gray-50"
+          active ? "bg-teal-50 text-rpp-teal font-semibold" : "text-gray-700 hover:bg-gray-50"
         }`}
       >
         {site ? <MediumLogo site={site} url={null} size={16} /> : <span className="w-4 shrink-0" />}
         <span className="truncate flex-1 text-left">{label}</span>
-        <span className={`text-xs shrink-0 ${active ? "text-red-700" : "text-gray-400"}`}>{count}</span>
+        <span className={`text-xs shrink-0 ${active ? "text-rpp-teal" : "text-gray-400"}`}>{count}</span>
       </button>
     </li>
-  )
-}
-
-function CategoryChip({
-  label,
-  count,
-  active,
-  onClick,
-}: {
-  label: string
-  count: number
-  active: boolean
-  onClick: () => void
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`text-xs px-3 py-1 rounded-full border transition ${
-        active
-          ? "bg-red-600 text-white border-red-600"
-          : "bg-gray-100 text-gray-700 border-transparent hover:bg-gray-200"
-      }`}
-    >
-      {label}: <strong>{count}</strong>
-    </button>
   )
 }

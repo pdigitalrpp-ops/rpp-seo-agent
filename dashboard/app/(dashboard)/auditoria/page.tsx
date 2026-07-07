@@ -49,14 +49,14 @@ export default async function AuditoriaPage() {
       </div>
 
       {!rows.length && (
-        <div className="bg-white rounded-xl border p-8 text-center text-gray-500 text-sm">
+        <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center text-gray-500 text-sm">
           Aún no hay auditorías. El benchmark de la mañana revisa las notas publicadas y los quick wins de Search Console.
         </div>
       )}
 
       {/* Pendientes técnicos del sitio (sistémicos, para dev/SEO técnico) */}
       {platformIssues.length > 0 && (
-        <div className="bg-white rounded-xl border border-amber-200 p-4">
+        <div className="bg-white rounded-2xl border border-amber-200 p-4">
           <h2 className="text-sm font-semibold text-gray-800">Pendientes técnicos del sitio</h2>
           <p className="text-xs text-gray-500 mb-3">
             Issues de plantilla/CMS que se repiten en muchas notas. No dependen del redactor;
@@ -81,12 +81,12 @@ export default async function AuditoriaPage() {
         {rows.map((a: any) => {
           const editorial = (a.issues ?? []).filter((it: any) => issueClass(it) === "editorial")
           return (
-            <div key={a.id} className="bg-white rounded-xl border p-4">
+            <div key={a.id} className="bg-white rounded-2xl border border-gray-200 p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="font-medium text-gray-900 truncate">{a.title ?? a.url}</p>
                   <a href={a.url} target="_blank" rel="noreferrer"
-                     className="text-xs text-gray-400 font-mono truncate hover:text-red-600 block">{a.url}</a>
+                     className="text-xs text-gray-400 font-mono truncate hover:text-rpp-teal block">{a.url}</a>
                   {a.target_keyword && (
                     <p className="text-xs text-gray-500 mt-0.5">keyword: <strong>{a.target_keyword}</strong></p>
                   )}

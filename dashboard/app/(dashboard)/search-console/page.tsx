@@ -53,7 +53,7 @@ export default async function SearchConsolePage() {
       <div className="grid md:grid-cols-2 gap-6">
 
         {/* Quick Wins */}
-        <div className="bg-white rounded-xl border overflow-hidden">
+        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
           <div className="px-4 py-3 border-b bg-amber-50">
             <h2 className="text-sm font-semibold text-amber-800">Quick Wins (posición 4–10)</h2>
             <p className="text-xs text-amber-600 mt-0.5">Optimizar estos artículos puede subir posición rápidamente</p>
@@ -77,7 +77,7 @@ export default async function SearchConsolePage() {
         </div>
 
         {/* Low CTR */}
-        <div className="bg-white rounded-xl border overflow-hidden">
+        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
           <div className="px-4 py-3 border-b bg-blue-50">
             <h2 className="text-sm font-semibold text-blue-800">CTR bajo (≤2%)</h2>
             <p className="text-xs text-blue-600 mt-0.5">Reescribir title/meta puede multiplicar los clics</p>
@@ -102,7 +102,7 @@ export default async function SearchConsolePage() {
       </div>
 
       {/* Top queries */}
-      <div className="bg-white rounded-xl border overflow-hidden">
+      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
         <div className="px-4 py-3 border-b bg-gray-50">
           <h2 className="text-sm font-semibold text-gray-700">Top queries por clics (últimos 3 días de GSC)</h2>
         </div>

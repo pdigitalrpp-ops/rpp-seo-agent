@@ -1,16 +1,17 @@
 import { supabase } from "@/lib/supabase"
+import { TagBadge } from "@/components/ui/Pill"
 
 export const revalidate = 60
 
-const CATEGORY_COLORS: Record<string, string> = {
-  politica:        "bg-blue-100 text-blue-700",
-  economia:        "bg-green-100 text-green-700",
-  deportes:        "bg-yellow-100 text-yellow-700",
-  entretenimiento: "bg-pink-100 text-pink-700",
-  tecnologia:      "bg-purple-100 text-purple-700",
-  salud:           "bg-teal-100 text-teal-700",
-  mundo:           "bg-orange-100 text-orange-700",
-  otros:           "bg-gray-100 text-gray-600",
+const CATEGORY_COLOR: Record<string, string> = {
+  politica:        "#2563EB",
+  economia:        "#16A34A",
+  deportes:        "#CA8A04",
+  entretenimiento: "#DB2777",
+  tecnologia:      "#7C3AED",
+  salud:           "#0D9488",
+  mundo:           "#EA580C",
+  otros:           "#6B7280",
 }
 
 export default async function TrendsPage() {
@@ -37,13 +38,13 @@ export default async function TrendsPage() {
       </div>
 
       {!trends?.length && (
-        <div className="bg-white rounded-xl border p-8 text-center text-gray-500 text-sm">
+        <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center text-gray-500 text-sm">
           Sin datos de tendencias para hoy.
         </div>
       )}
 
       {/* Lista de tendencias */}
-      <div className="bg-white rounded-xl border overflow-hidden">
+      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
         <div className="px-4 py-3 border-b bg-gray-50">
           <h2 className="text-sm font-semibold text-gray-700">Top tendencias de hoy — Google Trends Perú</h2>
         </div>
@@ -59,16 +60,16 @@ export default async function TrendsPage() {
               </div>
 
               {/* Categoría */}
-              <span className={`text-xs px-2 py-0.5 rounded font-medium shrink-0 ${CATEGORY_COLORS[t.category] ?? "bg-gray-100 text-gray-600"}`}>
+              <TagBadge color={CATEGORY_COLOR[t.category] ?? "#6B7280"} className="shrink-0">
                 {t.category ?? "otros"}
-              </span>
+              </TagBadge>
 
               {/* Score */}
               <div className="shrink-0 text-right w-16">
-                <div className="text-sm font-bold text-red-600">{t.growth_score?.toFixed(1)}/10</div>
+                <div className="text-sm font-bold text-rpp-teal">{t.growth_score?.toFixed(1)}/10</div>
                 <div className="w-full bg-gray-200 rounded-full h-1 mt-1">
                   <div
-                    className="bg-red-500 h-1 rounded-full"
+                    className="bg-rpp-teal h-1 rounded-full"
                     style={{ width: `${Math.min(100, (t.growth_score ?? 0) * 10)}%` }}
                   />
                 </div>
@@ -80,13 +81,13 @@ export default async function TrendsPage() {
 
       {/* Historial reciente */}
       {history && history.length > 0 && (
-        <div className="bg-white rounded-xl border p-4">
+        <div className="bg-white rounded-2xl border border-gray-200 p-4">
           <h2 className="text-sm font-semibold text-gray-700 mb-3">Últimas tendencias registradas</h2>
           <div className="flex flex-wrap gap-2">
             {Array.from(new Set(history.map((h: any) => h.keyword))).slice(0, 30).map(kw => (
-              <span key={kw as string} className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full">
+              <TagBadge key={kw as string} color="#6B7280">
                 {kw as string}
-              </span>
+              </TagBadge>
             ))}
           </div>
         </div>

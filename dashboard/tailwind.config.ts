@@ -7,7 +7,16 @@ const config: Config = {
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
-    extend: {},
+    extend: {
+      colors: {
+        "rpp-yellow": "#F5D414",
+        "rpp-ink": "#111827",
+        "rpp-teal": "#0D9488",
+      },
+      fontFamily: {
+        sans: ["var(--font-inter)", "system-ui", "sans-serif"],
+      },
+    },
   },
   plugins: [],
 }

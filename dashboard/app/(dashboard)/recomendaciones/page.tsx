@@ -1,11 +1,12 @@
 import { supabase } from "@/lib/supabase"
+import { TagBadge } from "@/components/ui/Pill"
 
 export const revalidate = 60
 
-const URGENCY_COLORS: Record<string, string> = {
-  INMEDIATO:    "bg-red-100 text-red-700 border-red-200",
-  HOY:          "bg-orange-100 text-orange-700 border-orange-200",
-  "ESTA SEMANA": "bg-blue-100 text-blue-700 border-blue-200",
+const URGENCY_COLOR: Record<string, string> = {
+  INMEDIATO:      "#DC2626",
+  HOY:            "#F97316",
+  "ESTA SEMANA":  "#2563EB",
 }
 
 export default async function RecomendacionesPage() {
@@ -25,28 +26,24 @@ export default async function RecomendacionesPage() {
       </div>
 
       {!recs?.length && (
-        <div className="bg-white rounded-xl border p-8 text-center text-gray-500 text-sm">
+        <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center text-gray-500 text-sm">
           Sin recomendaciones para hoy. El agente aún no ha corrido o no encontró señales suficientes.
         </div>
       )}
 
       <div className="grid gap-4">
         {recs?.map((rec: any) => (
-          <div key={rec.id} className="bg-white rounded-xl border p-5 space-y-3">
+          <div key={rec.id} className="bg-white rounded-2xl border border-gray-200 p-5 space-y-3">
             {/* Header */}
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-lg font-bold text-gray-400">#{rec.rank}</span>
-                <span className={`text-xs font-bold px-2 py-0.5 rounded border ${URGENCY_COLORS[rec.urgency] ?? "bg-gray-100 text-gray-600"}`}>
-                  {rec.urgency}
-                </span>
-                <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{rec.format}</span>
-                {rec.section && (
-                  <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">📂 {rec.section}</span>
-                )}
+                <TagBadge color={URGENCY_COLOR[rec.urgency] ?? "#6b7280"}>{rec.urgency}</TagBadge>
+                <TagBadge color="#6b7280">{rec.format}</TagBadge>
+                {rec.section && <TagBadge color="#8B5CF6">📂 {rec.section}</TagBadge>}
               </div>
               <div className="text-right shrink-0">
-                <span className="text-xl font-bold text-red-600">{rec.score}</span>
+                <span className="text-xl font-bold text-gray-900">{rec.score}</span>
                 <span className="text-xs text-gray-400">/100</span>
               </div>
             </div>

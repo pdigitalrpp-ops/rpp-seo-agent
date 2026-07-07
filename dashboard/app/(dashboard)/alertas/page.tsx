@@ -52,13 +52,13 @@ export default async function AlertasPage() {
       {/* Alertas activas */}
       <div className="space-y-3">
         {!activeAlerts?.length && (
-          <div className="bg-green-50 border border-green-200 rounded-xl p-6 text-center">
+          <div className="bg-green-50 border border-green-200 rounded-2xl p-6 text-center">
             <p className="text-green-700 font-medium">Sin alertas activas</p>
             <p className="text-green-600 text-sm mt-1">El agente no detectó caídas significativas.</p>
           </div>
         )}
         {activeAlerts?.map((alert: any) => (
-          <div key={alert.id} className={`rounded-xl p-4 ${SEVERITY_STYLES[alert.severity] ?? "bg-gray-50 border-l-4 border-gray-300"}`}>
+          <div key={alert.id} className={`rounded-2xl p-4 ${SEVERITY_STYLES[alert.severity] ?? "bg-gray-50 border-l-4 border-gray-300"}`}>
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className={`text-xs font-bold px-2 py-0.5 rounded ${SEVERITY_BADGE[alert.severity] ?? "bg-gray-100 text-gray-600"}`}>
@@ -93,7 +93,7 @@ export default async function AlertasPage() {
       {decayList && decayList.length > 0 && (
         <div>
           <h2 className="text-lg font-semibold text-gray-800 mb-3">Content Decay detectado</h2>
-          <div className="bg-white rounded-xl border overflow-hidden">
+          <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
             <div className="px-4 py-3 border-b bg-gray-50">
               <p className="text-xs text-gray-500">Artículos cuyo tráfico cayó más del 20% respecto a su pico histórico</p>
             </div>
