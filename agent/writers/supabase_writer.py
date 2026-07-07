@@ -33,6 +33,9 @@ def save_trends(trends_list, run_date):
     if not trends_list:
         return
     sb = _get_client()
+    # El radar corre cada ~10 min: cada corrida REEMPLAZA el snapshot del día
+    # con las tendencias vigentes (no histórico intradía acumulado).
+    sb.table("daily_trends").delete().eq("date", str(run_date)).execute()
     rows = [{
         "date":         str(run_date),
         "keyword":      t["keyword"],
@@ -49,6 +52,9 @@ def save_gsc_data(gsc_rows, run_date):
     if not gsc_rows:
         return
     sb = _get_client()
+    # Borra la fecha y reinserta: re-correr el benchmark reemplaza el snapshot
+    # (append-only duplicaba todo el set en cada corrida del día).
+    sb.table("gsc_daily").delete().eq("date", str(run_date)).execute()
     rows = [{
         "date":        str(run_date),
         "page":        r["page"],
@@ -68,6 +74,9 @@ def save_traffic(traffic_rows, run_date):
     if not traffic_rows:
         return
     sb = _get_client()
+    # Idempotente por fecha (grano: 1 fila/artículo/día). No toca otros días,
+    # así que el histórico que usa el decay queda intacto.
+    sb.table("own_traffic").delete().eq("date", str(run_date)).execute()
     rows = [{
         "date":                 str(run_date),
         "page_path":            r["page_path"],
