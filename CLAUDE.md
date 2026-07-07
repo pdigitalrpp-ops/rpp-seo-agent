@@ -180,6 +180,14 @@ rpp-seo-agent/
   `Client.__init__() got an unexpected keyword argument 'proxy'` y bloquean la escritura.
 - Tablas con RLS + política `public_read` (`SELECT USING true`). Dashboard usa anon key
   (lectura), agente usa service_role (escritura).
+- **REGLA para saves (aprendida 2026-07-07): todo snapshot debe ser idempotente
+  por fecha** — borrar la fecha y reinsertar (o upsert por clave natural), NUNCA
+  insert append-only. Un append-only + re-correr el workflow duplicó gsc_daily ×5
+  (Search Console mostraba todo repetido). Únicas excepciones: tablas de EVENTOS
+  (`alerts`). Patrones vigentes: delete+insert (gsc_daily, own_traffic,
+  daily_trends, own_traffic_channels, recommendations, onpage_audits,
+  daily_insights, scoring_weights) · upsert (competitor_articles por url,
+  content_decay por page_path, publishing_windows por fecha).
 
 ### Dashboard Next.js
 - App Router + RSC. `export const revalidate = 60` en todas las páginas (el radar
