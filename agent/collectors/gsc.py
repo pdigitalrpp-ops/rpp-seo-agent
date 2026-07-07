@@ -72,11 +72,13 @@ def _resolve_site_url(service):
 
 def fetch_search_performance(days_back=3, row_limit=500):
     """
-    GSC tiene latencia de ~2 días. days_back=3 garantiza datos confiables.
+    Con dataState="all" Google entrega data fresca (parcial) de hasta ayer, así
+    que la ventana termina AYER (con end=hoy-2 el dashboard mostraba partidos de
+    hace 3-5 días como si fueran actuales).
     """
     service = _get_service()
-    end_date   = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
-    start_date = (datetime.now() - timedelta(days=days_back + 1)).strftime("%Y-%m-%d")
+    end_date   = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+    start_date = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
 
     request = {
         "startDate":  start_date,
@@ -106,8 +108,8 @@ def fetch_search_performance(days_back=3, row_limit=500):
 
 def fetch_discover_performance(days_back=7):
     service = _get_service()
-    end_date   = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
-    start_date = (datetime.now() - timedelta(days=days_back + 1)).strftime("%Y-%m-%d")
+    end_date   = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+    start_date = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
 
     request = {
         "startDate":  start_date,

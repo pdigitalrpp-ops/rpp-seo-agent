@@ -3,14 +3,23 @@ import { supabase } from "@/lib/supabase"
 export const revalidate = 60
 
 export default async function SearchConsolePage() {
-  const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0]
+  // Cada corrida del benchmark guarda un SNAPSHOT completo (ventana de ~3 días
+  // de GSC) con date = día de corrida. Mostrar solo el snapshot más reciente:
+  // mezclar varios días duplica todo (las ventanas se solapan) y revive data vieja.
+  const { data: latestRow } = await supabase
+    .from("gsc_daily")
+    .select("date")
+    .order("date", { ascending: false })
+    .limit(1)
+    .single()
+  const latestDate = latestRow?.date
 
   const [{ data: quickWins }, { data: lowCtr }, { data: topQueries }] = await Promise.all([
     // Quick wins: posición 4-10 con impresiones altas
     supabase
       .from("gsc_daily")
       .select("page, query, position, impressions, clicks, ctr")
-      .gte("date", sevenDaysAgo)
+      .eq("date", latestDate)
       .gte("position", 4)
       .lte("position", 10)
       .gte("impressions", 200)
@@ -21,7 +30,7 @@ export default async function SearchConsolePage() {
     supabase
       .from("gsc_daily")
       .select("page, query, impressions, clicks, ctr")
-      .gte("date", sevenDaysAgo)
+      .eq("date", latestDate)
       .gte("impressions", 500)
       .lte("ctr", 2)
       .order("impressions", { ascending: false })
@@ -31,7 +40,7 @@ export default async function SearchConsolePage() {
     supabase
       .from("gsc_daily")
       .select("query, clicks, impressions, ctr, position")
-      .gte("date", sevenDaysAgo)
+      .eq("date", latestDate)
       .order("clicks", { ascending: false })
       .limit(15),
   ])
@@ -95,7 +104,7 @@ export default async function SearchConsolePage() {
       {/* Top queries */}
       <div className="bg-white rounded-xl border overflow-hidden">
         <div className="px-4 py-3 border-b bg-gray-50">
-          <h2 className="text-sm font-semibold text-gray-700">Top queries por clics (últimos 7 días)</h2>
+          <h2 className="text-sm font-semibold text-gray-700">Top queries por clics (últimos 3 días de GSC)</h2>
         </div>
         <table className="w-full text-sm">
           <thead>
