@@ -53,11 +53,11 @@ def _generate(prompt, system=None, want_json=True, retries=2):
             resp = requests.post(url, json=body, timeout=GEMINI_TIMEOUT_SECONDS)
             if not resp.ok:
                 # Captura el motivo exacto de Gemini (cuota, región, key inválida…)
-                last_err = f"{resp.status_code}: {resp.text[:400]}"
+                last_err = f"{resp.status_code}: {resp.text[:2000]}"
                 if resp.status_code == 429 and attempt < retries:
                     time.sleep(12 * (attempt + 1))   # 12s, 24s
                     continue
-                logger.warning(f"Gemini {resp.status_code}: {resp.text[:400]}")
+                logger.warning(f"Gemini {resp.status_code}: {resp.text[:2000]}")
                 return None
             data = resp.json()
             return data["candidates"][0]["content"]["parts"][0]["text"]
