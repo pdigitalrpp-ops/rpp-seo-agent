@@ -11,11 +11,15 @@ dashboard web.
 
 ## Estado actual
 
-**Fecha último avance:** 2026-07-01
+**Fecha último avance:** 2026-07-08
 **Estado:** v2 en producción y **funcionando end-to-end**. El radar corre en
 GitHub Actions, recolecta de Marfeel + Google Trends + competencia, puntúa y
 guarda recomendaciones en Supabase; el dashboard las muestra en vivo. El
 benchmark matutino también quedó **verificado escribiendo data real** (ver abajo).
+Rediseño visual "RPP Digital" en producción (ver sección Dashboard Next.js).
+Benchmark matutino del 2026-07-08 corrido y verificado (run #24, Success):
+179 artículos, 500 filas GSC, 41 en content decay, 3 insights, 7 auditorías
+on-page (sin sugerencias IA — Gemini sigue bloqueado, ver Fase 2 LLM).
 
 - **Repo:** `https://github.com/pdigitalrpp-ops/rpp-seo-agent` (rama `master`)
 - **Dashboard:** `https://rpp-seo-agent.vercel.app` (Vercel, team PDIGITAL RPP)
@@ -327,6 +331,38 @@ alternativa**. Mientras, el agente corre rules-first sin degradarse.
 (`categorize_topics`, `rewrite_onpage_batch`) con salida JSON. Crear un cliente
 equivalente (p.ej. `llm/groq.py` u otro con free tier) o adaptar `gemini.py` —
 los orquestadores no cambian. Presupuesto: radar = 1 call/corrida (~100/día),
+
+### Análisis de consumo de la API (2026-07-08)
+Volumen real medido (no teórico): el cron del radar NO cumple los `*/10 min`
+— GitHub Actions lo retrasa/saltea en repos poco activos, así que en la
+práctica corre **~4-6 veces/día**, no ~114. Con eso: `categorize_topics`
+~4-6 llamadas/día, `rewrite_onpage_batch` 1/día → **~5-7 llamadas lógicas/día**.
+No es un problema de volumen bruto.
+
+**Dónde sí hay desperdicio (si algún día hay quota real que cuidar):**
+1. `_generate()` en `gemini.py:30` reintenta 2 veces más en 429 (`retries=2`,
+   backoff 12s/24s) — con `limit:0` el 429 es inevitable, así que cada llamada
+   lógica cuesta **3 requests reales** y ~36s perdidos por corrida.
+2. Sin caché: el feed de Trends apenas cambia entre corridas consecutivas
+   (verificado: `daily_trends` de un día completo trae hasta 44 keywords con
+   alto solape) y se re-clasifica la lista completa cada vez.
+3. `categorize_topics` manda TODAS las keywords a Gemini, incluidas las que
+   `_infer_category_from_keyword` (reglas) ya resuelve bien.
+
+**Recordatorio clave:** el bloqueo es `limit: 0` (cero cuota gratuita en ese
+proyecto de Google), no una cuota baja — bajar el consumo NO destraba el
+free tier. Solo lo destraba habilitar billing en ese proyecto de Google Cloud
+o usar una key de otro proyecto/cuenta con free tier real.
+
+**Opciones de optimización (si llega una key funcional y el costo importa),
+de mayor a menor impacto:** (1) caché `keyword→categoría` en Supabase con TTL
+~24h, solo mandar a Gemini las keywords nuevas; (2) enviar a Gemini solo lo
+que las reglas no resuelven ("otros"); (3) no reintentar en 429 (dejar que la
+siguiente corrida del radar sea el reintento natural); (4) `GEMINI_MODEL=
+gemini-2.0-flash-lite` por env, sin tocar código; (5) throttle explícito
+(1 categorización/hora) si el cron algún día corre más seguido de verdad.
+Ninguna implementada aún — quedó como informe, pendiente de decisión del
+usuario sobre cuál aplicar.
 morning = 1 call/día. Volumen mínimo; batch SIEMPRE (aprendido: por-nota saturó
 el rate limit).
 
