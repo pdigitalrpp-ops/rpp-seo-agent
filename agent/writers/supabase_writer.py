@@ -281,3 +281,27 @@ def save_onpage_audits(audits, run_date):
     } for a in audits]
     sb.table("onpage_audits").insert(rows).execute()
     logger.info(f"Guardadas {len(rows)} auditorías on-page")
+
+
+def save_serp_opportunities(opportunities, run_date):
+    if not opportunities:
+        return
+    sb = _get_client()
+    # Snapshot del día: borra y reinserta (mismo patrón que gsc_daily/onpage_audits).
+    sb.table("serp_opportunities").delete().eq("date", str(run_date)).execute()
+    rows = [{
+        "date":                    str(run_date),
+        "query":                   o["query"],
+        "gsc_page":                o.get("gsc_page"),
+        "gsc_position":            o.get("gsc_position"),
+        "has_featured_snippet":    bool(o.get("featured_snippet")),
+        "featured_snippet_source": (o.get("featured_snippet") or {}).get("source"),
+        "rpp_has_snippet":         o.get("rpp_has_snippet", False),
+        "paa_questions":           o.get("paa_questions") or [],
+        "top_stories":             o.get("top_stories") or [],
+        "rpp_in_top_stories":      o.get("rpp_in_top_stories", False),
+        "has_image_pack":          o.get("has_image_pack", False),
+        "has_local_pack":          o.get("has_local_pack", False),
+    } for o in opportunities]
+    sb.table("serp_opportunities").insert(rows).execute()
+    logger.info(f"Guardadas {len(rows)} oportunidades SERP")

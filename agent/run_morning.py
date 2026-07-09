@@ -7,6 +7,7 @@ scoring) que el radar de tiempo real usa el resto del día.
 """
 
 import logging
+import os
 import re
 import sys
 from datetime import datetime, date
@@ -15,14 +16,16 @@ from urllib.parse import urlparse
 from dotenv import load_dotenv
 load_dotenv()
 
-from collectors import marfeel, gsc, competitors
+from config import SITE_DOMAIN, SERPAPI_QUERIES_PER_RUN
+from collectors import marfeel, gsc, competitors, serpapi
 from collectors.rpp_articles import parse_article
 from analyzers import decay, onpage_audit, opportunities
 from llm import gemini
 from writers.supabase_writer import (
     save_run_log, save_traffic, save_traffic_channels, save_gsc_data,
     save_competitor_articles, save_decay, save_daily_insights,
-    save_scoring_weights, save_onpage_audits, get_historical_traffic,
+    save_scoring_weights, save_onpage_audits, save_serp_opportunities,
+    get_historical_traffic,
 )
 
 logging.basicConfig(
@@ -123,6 +126,46 @@ def compute_insights_and_weights(marfeel_perf, traffic_sources, quick_wins):
     return insights, weights
 
 
+def collect_serp_opportunities(quick_wins, run_data):
+    """
+    Rules-first: sin SERPAPI_KEY simplemente no hay oportunidades SERP (no
+    bloquea el resto del benchmark). Consulta como máximo SERPAPI_QUERIES_PER_RUN
+    queries — las quick wins de GSC (posición 4-10) ya priorizadas por impresiones
+    — para no acercarse al límite diario del free tier.
+    """
+    if not os.environ.get("SERPAPI_KEY") or not quick_wins:
+        return []
+    opportunities_out = []
+    seen = set()
+    for qw in quick_wins[:SERPAPI_QUERIES_PER_RUN]:
+        q = qw.get("query")
+        if not q or q in seen:
+            continue
+        seen.add(q)
+        try:
+            features = serpapi.fetch_serp_features(q)
+        except Exception as e:
+            logger.warning(f"SerpAPI falló para '{q}': {e}")
+            continue
+        snippet = features.get("featured_snippet")
+        top_stories = features.get("top_stories") or []
+        opportunities_out.append({
+            "query":              q,
+            "gsc_page":           qw.get("page"),
+            "gsc_position":       qw.get("position"),
+            "featured_snippet":   snippet,
+            "rpp_has_snippet":    bool(snippet and SITE_DOMAIN in (snippet.get("source") or "")),
+            "paa_questions":      features.get("paa_questions"),
+            "top_stories":        top_stories,
+            "rpp_in_top_stories": any(SITE_DOMAIN in (s.get("link") or "") for s in top_stories),
+            "has_image_pack":     features.get("has_image_pack", False),
+            "has_local_pack":     features.get("has_local_pack", False),
+        })
+    if opportunities_out:
+        run_data["sources_ok"].append("serpapi")
+    return opportunities_out
+
+
 def run():
     today = date.today()
     run_data = {"started_at": datetime.now(), "sources_ok": [], "sources_failed": []}
@@ -133,6 +176,7 @@ def run():
     marfeel_channel = safe_collect("marfeel_by_channel", marfeel.fetch_yesterday_by_channel, run_data)
     traffic_sources = safe_collect("marfeel_sources",   marfeel.fetch_traffic_sources,       run_data)
     gsc_search      = safe_collect("gsc_search",        gsc.fetch_search_performance,        run_data)
+    gsc_discover    = safe_collect("gsc_discover",      gsc.fetch_discover_performance,      run_data)
     gsc_drops       = safe_collect("gsc_drops",         gsc.find_position_drops,             run_data)
     competitor_data = safe_collect("competitors",       competitors.fetch_all_competitors,   run_data)
 
@@ -144,6 +188,10 @@ def run():
     # --- ANÁLISIS ---
     quick_wins = opportunities.find_gsc_quick_wins(gsc_search or [])
     insights, weights = compute_insights_and_weights(marfeel_perf or [], traffic_sources or [], quick_wins)
+
+    # SerpApi: featured snippet / PAA / top stories para las quick wins de GSC
+    # (rules-first: sin SERPAPI_KEY o sin quick wins, simplemente no hay datos).
+    serp_opportunities = collect_serp_opportunities(quick_wins, run_data)
 
     # Content decay (tráfico de Marfeel vs histórico en Supabase)
     decay_list = []
@@ -208,14 +256,16 @@ def run():
         "title":        r.get("title"),
         "source":       "marfeel",
     } for r in (marfeel_perf or []) if r.get("label")]
+    gsc_rows_all = (gsc_search or []) + (gsc_discover or [])
     safe_save("own_traffic",          save_traffic,             run_data, traffic_rows, today)
     safe_save("own_traffic_channels", save_traffic_channels,    run_data, marfeel_channel or [], today)
-    safe_save("gsc_daily",            save_gsc_data,            run_data, gsc_search or [], today)
+    safe_save("gsc_daily",            save_gsc_data,            run_data, gsc_rows_all, today)
     safe_save("competitor_articles",  save_competitor_articles, run_data, competitor_data or [])
     safe_save("content_decay",        save_decay,               run_data, decay_list, today)
     safe_save("daily_insights",       save_daily_insights,      run_data, insights, today)
     safe_save("scoring_weights",      save_scoring_weights,     run_data, weights, today)
     safe_save("onpage_audits",        save_onpage_audits,       run_data, audits, today)
+    safe_save("serp_opportunities",   save_serp_opportunities,  run_data, serp_opportunities, today)
     if run_data.get("save_errors"):
         run_data["error_log"] = "save_errors: " + ", ".join(run_data["save_errors"])
 

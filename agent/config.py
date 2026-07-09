@@ -99,8 +99,13 @@ ALERT_MAX_PER_SECTION_PER_HOUR = 3    # anti-spam
 
 # ---------------------------------------------------------------------------
 # SerpAPI (cuota escasa: free tier 100/mes). Mantener bajo.
+# Se usa 1 vez/día (benchmark matutino) sobre los quick wins de GSC (posición
+# 4-10, ya priorizados): identifica featured snippet / PAA / top stories para
+# esas queries. Con margen bajo el límite diario (10) por si el benchmark se
+# re-corre manualmente el mismo día.
 # ---------------------------------------------------------------------------
 SERPAPI_DAILY_LIMIT = 10
+SERPAPI_QUERIES_PER_RUN = 8
 
 # ---------------------------------------------------------------------------
 # Umbrales de análisis

@@ -50,7 +50,7 @@ export default async function AuditoriaPage() {
 
       {!rows.length && (
         <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center text-gray-500 text-sm">
-          Aún no hay auditorías. El benchmark de la mañana revisa las notas publicadas y los quick wins de Search Console.
+          Aún no hay auditorías. El benchmark de la mañana revisa las notas publicadas y los quick wins de Búsqueda & Discover.
         </div>
       )}
 

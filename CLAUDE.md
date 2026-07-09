@@ -11,7 +11,7 @@ dashboard web.
 
 ## Estado actual
 
-**Fecha último avance:** 2026-07-08
+**Fecha último avance:** 2026-07-09
 **Estado:** v2 en producción y **funcionando end-to-end**. El radar corre en
 GitHub Actions, recolecta de Marfeel + Google Trends + competencia, puntúa y
 guarda recomendaciones en Supabase; el dashboard las muestra en vivo. El
@@ -20,6 +20,18 @@ Rediseño visual "RPP Digital" en producción (ver sección Dashboard Next.js).
 Benchmark matutino del 2026-07-08 corrido y verificado (run #24, Success):
 179 artículos, 500 filas GSC, 41 en content decay, 3 insights, 7 auditorías
 on-page (sin sugerencias IA — Gemini sigue bloqueado, ver Fase 2 LLM).
+
+**2026-07-09 — GSC Discover + SerpApi integrados, pestaña renombrada:** el
+usuario se suscribió a SerpApi y pidió combinarla con GSC (que ya traía
+Discover implementado pero sin usar) en vez de reemplazarla. Ver detalle en
+"Google Search Console" y "SerpApi" más abajo. Pestaña `/search-console` →
+`/busqueda` ("Búsqueda & Discover" en el nav), ahora con 3 secciones: búsqueda
+web (igual que antes), Discover (nuevo), oportunidades SERP en vivo (nuevo,
+SerpApi). Tabla nueva `serp_opportunities` en Supabase. **Pendiente de
+verificación real:** el usuario debe pegar `SERPAPI_KEY` en GitHub Secrets (ya
+está referenciado en ambos workflows desde antes) — sin eso, `serp_opportunities`
+queda vacía (rules-first, no rompe nada) hasta la próxima corrida de
+`run_morning.py` con la key configurada.
 
 - **Repo:** `https://github.com/pdigitalrpp-ops/rpp-seo-agent` (rama `master`)
 - **Dashboard:** `https://rpp-seo-agent.vercel.app` (Vercel, team PDIGITAL RPP)
@@ -45,7 +57,9 @@ on-page (sin sugerencias IA — Gemini sigue bloqueado, ver Fase 2 LLM).
 - **Alertas Etapa 3 (Teams/WhatsApp):** definir `SECTION_RESPONSIBLES` (canal por
   sección). Hasta entonces las alertas quedan solo en Supabase/dashboard. (El
   usuario lo dejó para el final.)
-- **Secreto opcional:** `SERPAPI_KEY` (rankings/SERP). El agente funciona sin él.
+- **Secreto pendiente:** `SERPAPI_KEY` — el usuario ya se suscribió a SerpApi,
+  falta pegar la key en GitHub Secrets. El código ya está integrado (ver
+  sección "SerpApi" más abajo); el agente funciona sin ella (rules-first).
 - **Filtrar no-artículos (RESUELTO):** solo se considera contenido editorial de rpp.pe lo
   que matchea `-(noticia|live)-<id>` (notas + coberturas en vivo tipo minuto-a-minuto).
   Se descarta home, homes de sección (`/deportes`), landings/herramientas
@@ -109,7 +123,7 @@ rpp-seo-agent/
 │   ├── writers/supabase_writer.py  ← escribe todas las tablas
 │   └── db/schema.sql               ← 12 tablas (9 v1 + v2: daily_insights, scoring_weights, onpage_audits)
 ├── dashboard/app/(dashboard)/      ← Next.js: page, recomendaciones, trends, competencia,
-│                                       trafico, search-console, auditoria, alertas
+│                                       trafico, busqueda, auditoria, alertas
 ├── requirements.txt
 └── .env.example
 ```
@@ -153,7 +167,7 @@ rpp-seo-agent/
   llama `sites().list()`, loguea las propiedades visibles (diagnóstico definitivo
   de permisos) y usa la de rpp.pe (dominio > prefijo). `GSC_SITE_URL` por env
   fuerza una propiedad específica; vacío = auto-detección (default).
-- Con esto `gsc_daily` se puebla y /search-console muestra quick wins, CTR bajo
+- Con esto `gsc_daily` se puebla y /busqueda muestra quick wins, CTR bajo
   y top queries.
 - **Frescura (fix 2026-07-07):** la ventana del collector termina AYER (hoy-1),
   no hoy-2: con `dataState: "all"` Google entrega data fresca (parcial) de hasta
@@ -165,6 +179,37 @@ rpp-seo-agent/
   (`eq date = max(date)`), nunca `gte` de varios días (duplica todo y revive data
   vieja — bug visto 2026-07-07). Una query puede repetirse legítimamente en el
   snapshot si rankea con varias páginas (dimensiones page+query).
+- **Discover conectado (2026-07-09):** `fetch_discover_performance()` existía
+  desde antes pero nunca se llamaba. Ahora `run_morning.py` la invoca junto a
+  `fetch_search_performance` y ambos resultados se guardan JUNTOS en
+  `gsc_daily`, distinguidos por la columna `search_type` (`"web"` default vs
+  `"Discover"`). **Importante:** las queries del dashboard que leen `gsc_daily`
+  para quick wins/low CTR/top queries deben filtrar `.eq("search_type", "web")`
+  explícitamente, o mezclan filas de Discover (que no traen `query` ni
+  `position`) — ya aplicado en `dashboard/app/(dashboard)/busqueda/page.tsx`.
+
+### SerpApi (conectado 2026-07-09 — complementa a GSC, no lo reemplaza)
+- **División del trabajo:** GSC mide el pasado medido de rpp.pe (clics/
+  impresiones/posición reales, con 1+ día de rezago); SerpApi mira el SERP en
+  vivo, cualquier dominio, y expone lo que GSC no puede (featured snippet,
+  People Also Ask, carrusel de noticias). No tiene sentido usar SerpApi para
+  medir tráfico propio — para eso ya está GSC.
+- **Presupuesto:** `SERPAPI_DAILY_LIMIT = 10`/día (`config.py`, free tier). En
+  vez de gastarlo en todas las keywords del radar, `collect_serp_opportunities()`
+  en `run_morning.py` lo gasta SOLO en las quick wins de GSC (posición 4-10, ya
+  priorizadas por impresiones), hasta `SERPAPI_QUERIES_PER_RUN = 8` por corrida
+  (margen bajo 10 por si el benchmark se re-corre el mismo día). Corre 1
+  vez/día (dentro de `run_morning.py`), no en el radar.
+- Usa `serpapi.fetch_serp_features(query)` (ya existía en `collectors/serpapi.py`,
+  no se tocó) → featured snippet + PAA + top stories + image/local pack. Se
+  guarda en la tabla nueva `serp_opportunities` (delete+insert por fecha, mismo
+  patrón que `gsc_daily`), marcando `rpp_has_snippet`/`rpp_in_top_stories` si
+  `SITE_DOMAIN` aparece en la fuente del snippet o en los links del carrusel.
+- Rules-first: sin `SERPAPI_KEY` en el entorno, `collect_serp_opportunities`
+  devuelve `[]` de inmediato — no rompe el resto del benchmark.
+- **Pendiente del usuario:** pegar `SERPAPI_KEY` en GitHub Secrets (el
+  workflow `morning.yml` ya lo referencia desde antes). Sin eso, la sección
+  "Oportunidades en el SERP" del dashboard queda vacía.
 
 ### Google Trends
 - **pytrends NO funciona desde GitHub Actions** (bloqueo por IP de datacenter).
@@ -280,6 +325,7 @@ rpp-seo-agent/
 | `daily_insights` | morning (borra+reinserta) | dashboard home |
 | `scoring_weights` | morning | radar (lee aprendizajes) |
 | `onpage_audits` | morning | dashboard auditoria |
+| `serp_opportunities` | morning (borra+reinserta, solo si hay `SERPAPI_KEY`) | dashboard busqueda |
 | `publishing_windows` | (reusable) | dashboard home |
 | `agent_runs` | ambos | dashboard home (semáforo) |
 
