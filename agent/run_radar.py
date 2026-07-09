@@ -20,7 +20,7 @@ from config import (
 )
 from collectors import marfeel, trends, competitors
 from analyzers import scoring, opportunities
-from llm import gemini
+from llm import provider as llm
 from notifiers import notify
 from writers.supabase_writer import (
     save_run_log, save_recommendations, save_alerts, save_trends,
@@ -94,13 +94,14 @@ def run():
     except Exception as e:
         logger.warning(f"No se pudieron leer los pesos de aprendizaje: {e}")
 
-    # Categorización: Gemini clasifica todos los temas en 1 llamada (razona sobre
-    # nombres propios donde las reglas fallan: 'haaland'→deportes, no 'otros').
-    # Si Gemini no está o falla, cae a la inferencia por keywords.
+    # Categorización: el proveedor activo (Bedrock o Gemini, ver llm/provider.py)
+    # clasifica todos los temas en 1 llamada (razona sobre nombres propios donde
+    # las reglas fallan: 'haaland'→deportes, no 'otros'). Si no hay proveedor o
+    # falla, cae a la inferencia por keywords.
     categories = list(CATEGORY_KEYWORDS.keys()) + ["otros"]
-    llm_cats = gemini.categorize_topics([t["keyword"] for t in trends_data], categories)
+    llm_cats = llm.categorize_topics([t["keyword"] for t in trends_data], categories)
     if llm_cats:
-        logger.info(f"✅ Gemini categorizó {len(llm_cats)}/{len(trends_data)} temas")
+        logger.info(f"✅ LLM categorizó {len(llm_cats)}/{len(trends_data)} temas")
 
     # Momentum propio: categorías con tracción en tiempo real (Marfeel)
     realtime_titles = " ".join((r.get("title") or "") for r in (realtime or [])).lower()

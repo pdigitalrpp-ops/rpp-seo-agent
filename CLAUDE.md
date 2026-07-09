@@ -27,11 +27,24 @@ Discover implementado pero sin usar) en vez de reemplazarla. Ver detalle en
 "Google Search Console" y "SerpApi" más abajo. Pestaña `/search-console` →
 `/busqueda` ("Búsqueda & Discover" en el nav), ahora con 3 secciones: búsqueda
 web (igual que antes), Discover (nuevo), oportunidades SERP en vivo (nuevo,
-SerpApi). Tabla nueva `serp_opportunities` en Supabase. **Pendiente de
-verificación real:** el usuario debe pegar `SERPAPI_KEY` en GitHub Secrets (ya
-está referenciado en ambos workflows desde antes) — sin eso, `serp_opportunities`
-queda vacía (rules-first, no rompe nada) hasta la próxima corrida de
-`run_morning.py` con la key configurada.
+SerpApi). Tabla nueva `serp_opportunities` en Supabase.
+**Verificado end-to-end (run #26, manual, 2026-07-09):** `sources_ok` incluyó
+`gsc_discover` y `serpapi`; 200 filas de Discover y 8 de `serp_opportunities`
+con datos reales (RPP ya detectado en un carrusel de noticias, 0 featured
+snippets propios → oportunidades libres). Ver query de ejemplo en el historial
+de la sesión si hace falta repetir la verificación.
+
+**2026-07-09 — Amazon Bedrock (Claude) como proveedor LLM preferido:** el
+usuario obtuvo credenciales AWS con acceso a modelos Claude en Bedrock. Se creó
+`agent/llm/bedrock.py` (mismo contrato que `gemini.py`: `categorize_topics`,
+`rewrite_onpage_batch`, rules-first) y `agent/llm/provider.py` — un facade que
+los orquestadores importan (`from llm import provider as llm`) en vez de un
+proveedor específico. Orden de preferencia: **Bedrock > Gemini > reglas**,
+porque Bedrock cobra por uso real (sin el `limit: 0` que bloquea a Gemini
+hoy). Ver sección "Amazon Bedrock" más abajo. **Pendiente del usuario:** pegar
+`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_REGION` en GitHub Secrets
+(ya referenciados en ambos workflows) — sin eso, el facade cae a Gemini
+(bloqueado) y de ahí a reglas, sin romper nada.
 
 - **Repo:** `https://github.com/pdigitalrpp-ops/rpp-seo-agent` (rama `master`)
 - **Dashboard:** `https://rpp-seo-agent.vercel.app` (Vercel, team PDIGITAL RPP)
@@ -352,31 +365,44 @@ PASS_EDITORIAL / PASS_DIRECCION / PASS_ADMIN   (contraseñas temporales: <rol>20
 
 ---
 
-## Fase 2 — capa LLM (CÓDIGO LISTO, bloqueada por cuota de API)
+## Fase 2 — capa LLM (Bedrock preferido, Gemini como fallback bloqueado)
 
-**Estado (2026-07-06):** la capa LLM está **implementada y validada end-to-end**,
-pero la key de Gemini no tiene cuota (`generate_content_free_tier_requests,
-limit: 0` → 429 desde la primera llamada). El usuario buscará una **API gratuita
-alternativa**. Mientras, el agente corre rules-first sin degradarse.
+**Estado (2026-07-09):** la capa LLM está **implementada, validada, y con un
+proveedor real disponible (Bedrock)**. Gemini sigue con `limit: 0` (bloqueo de
+cuota del free tier), pero ya no es el único proveedor: `agent/llm/provider.py`
+es un facade que los orquestadores importan (`from llm import provider as llm`)
+en vez de un cliente específico; internamente elige **Bedrock si hay
+credenciales AWS, si no Gemini, si no reglas**. Cambiar de proveedor o añadir
+uno nuevo no toca `run_morning.py` ni `run_radar.py`, solo `provider.py`.
 
 **Lo que ya existe (no reescribir):**
-- `agent/llm/gemini.py` — cliente REST (requests, sin SDK). `is_enabled()` por
-  `GEMINI_API_KEY`; TODA función devuelve None si no hay key o falla → los
-  orquestadores caen a reglas automáticamente. Loguea el body exacto en errores.
+- `agent/llm/provider.py` — facade/selector, ver arriba.
+- `agent/llm/bedrock.py` — cliente boto3 (`bedrock-runtime.invoke_model`,
+  Anthropic Messages API). `is_enabled()` por `AWS_ACCESS_KEY_ID` +
+  `AWS_SECRET_ACCESS_KEY`. Modelo por `BEDROCK_MODEL_ID` (default Claude 3
+  Haiku, invocable on-demand sin inference profile; ver comentario en
+  `config.py` para IDs de Sonnet/Opus/3.7 si se quiere más calidad — algunos
+  requieren inference profile ARN, no el ID plano del modelo).
+- `agent/llm/gemini.py` — cliente REST (requests, sin SDK), sigue intacto como
+  fallback. `GEMINI_MODEL` overrideable por env (default gemini-2.0-flash).
 - **A) Categorización (radar):** `categorize_topics(keywords, categories)` — 1
-  llamada batch para los ~10 trends. Enchufada en `run_radar.py`; `scoring.py`
-  respeta `item["category"]` pre-asignada. Arregla "haaland → otros".
+  llamada batch para los ~10 trends. Enchufada en `run_radar.py` vía el
+  facade; `scoring.py` respeta `item["category"]` pre-asignada. Arregla
+  "haaland → otros".
 - **B) Reescritura (auditoría):** `rewrite_onpage_batch(items)` — 1 llamada batch
-  para todas las notas con issues editoriales. Enchufada en `run_morning.py`;
-  se guarda en `onpage_audits.suggestions` (jsonb, columna ya migrada) y el
+  para todas las notas con issues editoriales. Enchufada en `run_morning.py`
+  vía el facade; se guarda en `onpage_audits.suggestions` (jsonb) y el
   dashboard la muestra como "✨ Sugerencia IA" (título/meta/H2 con contador de chars).
-- Workflows ya pasan `GEMINI_API_KEY` (secret configurado). `GEMINI_MODEL`
-  overrideable por env (default gemini-2.0-flash).
+- Workflows ya pasan `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
+  `AWS_REGION`, `BEDROCK_MODEL_ID` y `GEMINI_API_KEY` (los AWS son secrets
+  pendientes de configurar por el usuario; sin ellos el facade cae a Gemini →
+  reglas, sin romper nada).
+- `requirements.txt` incluye `boto3==1.34.144`.
 
-**Para cambiar de proveedor LLM:** el contrato son 2 funciones batch
-(`categorize_topics`, `rewrite_onpage_batch`) con salida JSON. Crear un cliente
-equivalente (p.ej. `llm/groq.py` u otro con free tier) o adaptar `gemini.py` —
-los orquestadores no cambian. Presupuesto: radar = 1 call/corrida (~100/día),
+**Pendiente de verificación real:** correr `run_morning.py` o `run_radar.py`
+con los secrets AWS configurados y confirmar en los logs `sources_ok` /
+`✅ LLM categorizó` / `✅ LLM reescribió` que Bedrock respondió (no solo que
+compiló). Aún no se corrió con credenciales reales.
 
 ### Análisis de consumo de la API (2026-07-08)
 Volumen real medido (no teórico): el cron del radar NO cumple los `*/10 min`

@@ -20,7 +20,7 @@ from config import SITE_DOMAIN, SERPAPI_QUERIES_PER_RUN
 from collectors import marfeel, gsc, competitors, serpapi
 from collectors.rpp_articles import parse_article
 from analyzers import decay, onpage_audit, opportunities
-from llm import gemini
+from llm import provider as llm
 from writers.supabase_writer import (
     save_run_log, save_traffic, save_traffic_channels, save_gsc_data,
     save_competitor_articles, save_decay, save_daily_insights,
@@ -238,15 +238,15 @@ def run():
             }))
         audits.append(result)
 
-    # Fase 2 (LLM): Gemini reescribe título/meta/H2 de TODAS las notas con
-    # problemas editoriales en UNA sola llamada (evita el 429 del free tier).
-    # Rules-first: si Gemini no está o falla, simplemente no hay sugerencias.
+    # Fase 2 (LLM): el proveedor activo (Bedrock o Gemini, ver llm/provider.py)
+    # reescribe título/meta/H2 de TODAS las notas con problemas editoriales en
+    # UNA sola llamada. Rules-first: si no hay proveedor o falla, sin sugerencias.
     if rewrite_items:
-        suggestions = gemini.rewrite_onpage_batch([it for _, it in rewrite_items])
+        suggestions = llm.rewrite_onpage_batch([it for _, it in rewrite_items])
         if suggestions:
             for (result, _), sug in zip(rewrite_items, suggestions):
                 result["suggestions"] = sug
-            logger.info(f"✅ Gemini reescribió {sum(1 for s in suggestions if s)}/{len(rewrite_items)} notas")
+            logger.info(f"✅ LLM reescribió {sum(1 for s in suggestions if s)}/{len(rewrite_items)} notas")
 
     # --- GUARDAR (cada save aislado: un fallo no bota a los demás) ---
     traffic_rows = [{

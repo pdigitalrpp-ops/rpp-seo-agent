@@ -148,3 +148,26 @@ GEMINI_API_KEY  = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL    = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
 GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 GEMINI_TIMEOUT_SECONDS = 30
+
+# ---------------------------------------------------------------------------
+# Capa LLM — Amazon Bedrock (Anthropic Claude). Preferido sobre Gemini cuando
+# hay credenciales AWS: a diferencia del free tier de Gemini (limit: 0),
+# Bedrock cobra por uso real desde el primer token, sin bloqueo de cuota.
+# BEDROCK_MODEL_ID acepta el ID del modelo o un inference profile ARN/ID
+# (algunos modelos Claude 3.5/3.7 en Bedrock solo se invocan vía profile,
+# p.ej. "us.anthropic.claude-3-5-sonnet-20241022-v2:0" en vez del ID plano).
+# Default: Claude 3 Haiku (barato, ampliamente invocable on-demand sin
+# inference profile). Cambiar por env si se prefiere más calidad:
+#   Claude 3 Sonnet      → anthropic.claude-3-sonnet-20240229-v1:0
+#   Claude 3.5 Sonnet     → anthropic.claude-3-5-sonnet-20240620-v1:0 (o el
+#                           inference profile "us.anthropic...-v2:0" según región)
+#   Claude 3.7 Sonnet     → inference profile "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
+#   Claude Opus           → anthropic.claude-3-opus-20240229-v1:0
+# ---------------------------------------------------------------------------
+AWS_ACCESS_KEY_ID     = os.environ.get("AWS_ACCESS_KEY_ID", "")
+AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
+# El workflow siempre define estas dos env vars (aunque el secret no exista,
+# GitHub Actions las pasa como cadena vacía) — usar "or" para que el default
+# aplique también cuando el secret opcional no está configurado.
+AWS_REGION            = os.environ.get("AWS_REGION") or "us-east-1"
+BEDROCK_MODEL_ID      = os.environ.get("BEDROCK_MODEL_ID") or "anthropic.claude-3-haiku-20240307-v1:0"
