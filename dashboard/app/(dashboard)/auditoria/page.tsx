@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase"
+import { InfoTooltip } from "@/components/ui/InfoTooltip"
 
 export const revalidate = 60
 
@@ -44,7 +45,15 @@ export default async function AuditoriaPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Auditoría SEO on-page</h1>
+        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          Auditoría SEO on-page
+          <InfoTooltip align="left">
+            Revisión automática de los elementos SEO dentro de cada nota (título, meta
+            description, H1/H2, keyword, enlazado interno, imágenes…). El benchmark de la
+            mañana audita las notas donde más rinde optimizar y les pone un score 0–100.
+            Sirve para saber qué corregir en cada artículo, con guía concreta.
+          </InfoTooltip>
+        </h1>
         <span className="text-sm text-gray-500">{today}</span>
       </div>
 
@@ -57,7 +66,15 @@ export default async function AuditoriaPage() {
       {/* Pendientes técnicos del sitio (sistémicos, para dev/SEO técnico) */}
       {platformIssues.length > 0 && (
         <div className="bg-white rounded-2xl border border-amber-200 p-4">
-          <h2 className="text-sm font-semibold text-gray-800">Pendientes técnicos del sitio</h2>
+          <h2 className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
+            Pendientes técnicos del sitio
+            <InfoTooltip align="left">
+              Problemas de plantilla/CMS que se repiten en muchas notas (og:image,
+              canonical, datos estructurados…). No dependen del redactor: los resuelve el
+              equipo técnico/dev. Se muestran una sola vez con cuántas notas afecta cada
+              uno y no penalizan el score por nota.
+            </InfoTooltip>
+          </h2>
           <p className="text-xs text-gray-500 mb-3">
             Issues de plantilla/CMS que se repiten en muchas notas. No dependen del redactor;
             los resuelve el equipo técnico y no afectan el score por nota.
@@ -77,6 +94,18 @@ export default async function AuditoriaPage() {
       )}
 
       {/* Auditoría editorial por nota (lo que el redactor puede arreglar) */}
+      {rows.length > 0 && (
+        <h2 className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
+          Auditoría editorial por nota
+          <InfoTooltip align="left">
+            Lo que el redactor sí puede arreglar en cada nota: título, meta description,
+            H1/H2, keyword en el intro, profundidad, enlazado interno, alt de imágenes,
+            frescura. El score 0–100 refleja solo estos puntos editoriales. Verde ≥80,
+            naranja ≥60, rojo &lt;60. Si hay ✨ Sugerencia IA, es una reescritura propuesta
+            del título/meta/H2.
+          </InfoTooltip>
+        </h2>
+      )}
       <div className="space-y-3">
         {rows.map((a: any) => {
           const editorial = (a.issues ?? []).filter((it: any) => issueClass(it) === "editorial")

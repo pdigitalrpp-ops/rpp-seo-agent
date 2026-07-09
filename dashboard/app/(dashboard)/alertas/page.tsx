@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase"
+import { InfoTooltip } from "@/components/ui/InfoTooltip"
 
 export const revalidate = 60
 
@@ -41,7 +42,15 @@ export default async function AlertasPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Alertas</h1>
+        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          Alertas
+          <InfoTooltip align="left">
+            Avisos automáticos cuando el agente detecta algo que revisar: caídas de
+            tráfico, caídas de posición en Google o content decay (notas que perdieron
+            fuerza). Cada alerta trae severidad, sección afectada y la nota involucrada.
+            Es el panel para reaccionar rápido a problemas.
+          </InfoTooltip>
+        </h1>
         <span className={`text-sm font-medium px-3 py-1 rounded-full ${
           !activeAlerts?.length ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
         }`}>
@@ -92,7 +101,15 @@ export default async function AlertasPage() {
       {/* Content Decay */}
       {decayList && decayList.length > 0 && (
         <div>
-          <h2 className="text-lg font-semibold text-gray-800 mb-3">Content Decay detectado</h2>
+          <h2 className="text-lg font-semibold text-gray-800 mb-3 flex items-center gap-1.5">
+            Content Decay detectado
+            <InfoTooltip align="left">
+              Notas cuyo tráfico cayó más del 20% frente a su pico histórico. Suelen ser
+              buenas candidatas para actualizar y republicar (recuperar posiciones)
+              antes de perderlas del todo. Se muestra el pico, el tráfico actual y la
+              acción sugerida.
+            </InfoTooltip>
+          </h2>
           <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
             <div className="px-4 py-3 border-b bg-gray-50">
               <p className="text-xs text-gray-500">Artículos cuyo tráfico cayó más del 20% respecto a su pico histórico</p>

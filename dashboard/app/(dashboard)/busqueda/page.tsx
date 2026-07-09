@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase"
+import { InfoTooltip } from "@/components/ui/InfoTooltip"
 
 export const revalidate = 60
 
@@ -79,7 +80,16 @@ export default async function BusquedaPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Búsqueda &amp; Discover</h1>
+        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          Búsqueda &amp; Discover
+          <InfoTooltip align="left">
+            Cómo rinde RPP en Google. Combina tres fuentes: Search Console (clics,
+            impresiones y posición reales, con 1 día de rezago), Google Discover (el
+            feed de recomendados) y SerpApi (el SERP en vivo, para ver featured
+            snippets y carruseles). Sirve para encontrar oportunidades concretas de
+            optimización.
+          </InfoTooltip>
+        </h1>
         <p className="text-sm text-gray-500 mt-0.5">
           Rendimiento en Google Search, Google Discover, y oportunidades detectadas en el SERP en vivo
         </p>
@@ -89,7 +99,15 @@ export default async function BusquedaPage() {
       <div className="grid md:grid-cols-2 gap-6">
         <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
           <div className="px-4 py-3 border-b bg-amber-50">
-            <h2 className="text-sm font-semibold text-amber-800">Quick Wins (posición 4–10)</h2>
+            <h2 className="text-sm font-semibold text-amber-800 flex items-center gap-1.5">
+              Quick Wins (posición 4–10)
+              <InfoTooltip align="left">
+                Consultas donde RPP ya aparece en posición 4 a 10 de Google con muchas
+                impresiones. Están a un paso del top 3: un pequeño empujón de
+                optimización (título, contenido, enlazado) puede subirlas rápido y ganar
+                clics sin crear contenido nuevo.
+              </InfoTooltip>
+            </h2>
             <p className="text-xs text-amber-600 mt-0.5">Optimizar estos artículos puede subir posición rápidamente</p>
           </div>
           <div className="divide-y max-h-96 overflow-y-auto">
@@ -112,7 +130,15 @@ export default async function BusquedaPage() {
 
         <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
           <div className="px-4 py-3 border-b bg-blue-50">
-            <h2 className="text-sm font-semibold text-blue-800">CTR bajo (≤2%)</h2>
+            <h2 className="text-sm font-semibold text-blue-800 flex items-center gap-1.5">
+              CTR bajo (≤2%)
+              <InfoTooltip align="left">
+                Consultas con muchas impresiones pero poquísimos clics (CTR ≤ 2%): la
+                gente ve el resultado de RPP pero no entra. Suele arreglarse reescribiendo
+                el título y la meta description para que sean más atractivos, sin cambiar
+                la posición.
+              </InfoTooltip>
+            </h2>
             <p className="text-xs text-blue-600 mt-0.5">Reescribir title/meta puede multiplicar los clics</p>
           </div>
           <div className="divide-y max-h-96 overflow-y-auto">
@@ -136,7 +162,14 @@ export default async function BusquedaPage() {
 
       <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
         <div className="px-4 py-3 border-b bg-gray-50">
-          <h2 className="text-sm font-semibold text-gray-700">Top queries por clics (últimos 3 días, búsqueda web)</h2>
+          <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+            Top queries por clics (últimos 3 días, búsqueda web)
+            <InfoTooltip align="left">
+              Las búsquedas que más clics le traen a RPP desde Google en los últimos
+              días, con sus impresiones, CTR y posición promedio. Muestra por qué temas
+              llega hoy la audiencia de búsqueda y dónde RPP es fuerte.
+            </InfoTooltip>
+          </h2>
         </div>
         <table className="w-full text-sm">
           <thead>
@@ -169,7 +202,15 @@ export default async function BusquedaPage() {
       <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
         <div className="px-4 py-3 border-b bg-purple-50 flex items-center justify-between">
           <div>
-            <h2 className="text-sm font-semibold text-purple-800">Google Discover (últimos 7 días)</h2>
+            <h2 className="text-sm font-semibold text-purple-800 flex items-center gap-1.5">
+              Google Discover (últimos 7 días)
+              <InfoTooltip align="left">
+                Rendimiento en el feed de Google Discover (los recomendados del móvil), no
+                en el buscador. Es una fuente clave de tráfico para noticias. Se mide por
+                página (clics, impresiones, CTR): Discover no reporta ni query ni
+                posición.
+              </InfoTooltip>
+            </h2>
             <p className="text-xs text-purple-600 mt-0.5">Sin dimensión de query ni posición — Discover no las reporta</p>
           </div>
           {discoverTotalClicks > 0 && (
@@ -198,7 +239,15 @@ export default async function BusquedaPage() {
       {/* Oportunidades SERP en vivo (SerpApi) */}
       <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
         <div className="px-4 py-3 border-b bg-teal-50">
-          <h2 className="text-sm font-semibold text-teal-800">Oportunidades en el SERP (en vivo)</h2>
+          <h2 className="text-sm font-semibold text-teal-800 flex items-center gap-1.5">
+            Oportunidades en el SERP (en vivo)
+            <InfoTooltip align="left">
+              Cómo se ve la página de resultados de Google en vivo (vía SerpApi) para las
+              quick wins del día: si hay featured snippet y de quién es, las preguntas de
+              "La gente también pregunta", y quién está en el carrusel de noticias.
+              Señala espacios que RPP podría ganar. Requiere la clave SERPAPI_KEY.
+            </InfoTooltip>
+          </h2>
           <p className="text-xs text-teal-600 mt-0.5">
             Featured snippet, preguntas relacionadas y carrusel de noticias para las quick wins del día
           </p>

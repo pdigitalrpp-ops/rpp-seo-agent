@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase"
 import { TagBadge } from "@/components/ui/Pill"
+import { InfoTooltip } from "@/components/ui/InfoTooltip"
 
 export const revalidate = 60
 
@@ -21,7 +22,15 @@ export default async function RecomendacionesPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Recomendaciones del día</h1>
+        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          Recomendaciones del día
+          <InfoTooltip align="left">
+            Oportunidades de contenido que el agente sugiere cubrir hoy, ordenadas por
+            un score 0–100 que combina tendencia de mercado, brecha frente a la
+            competencia y potencial en Discover. Cada tarjeta trae un título sugerido,
+            el ángulo diferencial, por qué es momento de publicarlo y la ventana ideal.
+          </InfoTooltip>
+        </h1>
         <span className="text-sm text-gray-500">{today}</span>
       </div>
 

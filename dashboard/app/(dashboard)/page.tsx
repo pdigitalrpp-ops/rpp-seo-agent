@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase"
 import { StatCard } from "@/components/ui/StatCard"
 import { TagBadge } from "@/components/ui/Pill"
+import { InfoTooltip } from "@/components/ui/InfoTooltip"
 
 export const revalidate = 60
 
@@ -29,7 +30,14 @@ export default async function DashboardHome() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Resumen del día</h1>
+        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          Resumen del día
+          <InfoTooltip align="left">
+            Vista rápida del estado SEO del día: salud del sitio, recomendaciones y
+            tendencias del momento. Es el punto de partida cada mañana para decidir
+            qué priorizar. Se actualiza automáticamente con cada corrida del agente.
+          </InfoTooltip>
+        </h1>
         <span className="text-sm text-gray-500">
           Última actualización:{" "}
           {lastRun?.finished_at
@@ -45,31 +53,42 @@ export default async function DashboardHome() {
           value={alertCount === 0 ? "Estable" : `${alertCount} alerta(s)`}
           subtitle={alertCount === 0 ? "sin alertas activas" : "revisar sección Alertas"}
           accent={healthAccent}
+          info="Semáforo general del sitio según las alertas activas (caídas de tráfico, de posición o content decay). Verde = todo estable; rojo = hay caídas que revisar en la pestaña Alertas."
         />
         <StatCard
           label="Recomendaciones"
           value={recs?.length ?? 0}
           subtitle="del día"
           accent="#F97316"
+          info="Cuántas oportunidades de contenido priorizó el agente para hoy. El detalle (título, ángulo y por qué ahora) está en la pestaña Recomendaciones."
         />
         <StatCard
           label="Tendencias"
           value={trends?.length ?? 0}
           subtitle="detectadas ahora"
           accent="#0D9488"
+          info="Temas que están creciendo en Google Trends Perú en este momento. Sirven para detectar de qué está hablando la gente y anticipar coberturas."
         />
         <StatCard
           label="Fuentes OK"
           value={`${lastRun?.sources_ok?.length ?? 0}/${(lastRun?.sources_ok?.length ?? 0) + (lastRun?.sources_failed?.length ?? 0)}`}
           subtitle="último run"
           accent="#8B5CF6"
+          info="Cuántas fuentes de datos (Marfeel, Search Console, Trends, competencia…) respondieron bien en la última corrida. Si el número baja, algún dato del dashboard puede estar incompleto."
         />
       </div>
 
       {/* Fuentes del último run */}
       {lastRun && (
         <div className="bg-white rounded-2xl border border-gray-200 p-4">
-          <h2 className="text-sm font-semibold text-gray-700 mb-2">Fuentes del último run</h2>
+          <h2 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
+            Fuentes del último run
+            <InfoTooltip align="left">
+              Estado de cada fuente en la última corrida del agente. ✓ = respondió con
+              datos; ✗ = falló o no devolvió nada. Útil para saber si algún panel está
+              vacío por un problema de la fuente y no por falta de actividad.
+            </InfoTooltip>
+          </h2>
           <div className="flex flex-wrap gap-2">
             {lastRun.sources_ok?.map((s: string) => (
               <TagBadge key={s} color="#16A34A">{s} ✓</TagBadge>
@@ -84,7 +103,14 @@ export default async function DashboardHome() {
       {/* Insights del benchmark de la mañana */}
       {insights && insights.length > 0 && (
         <div>
-          <h2 className="text-lg font-semibold text-gray-800 mb-3">Aprendizajes de hoy</h2>
+          <h2 className="text-lg font-semibold text-gray-800 mb-3 flex items-center gap-1.5">
+            Aprendizajes de hoy
+            <InfoTooltip align="left">
+              Conclusiones que sacó el benchmark de la mañana al medir qué funcionó ayer
+              (qué temas, formatos y secciones rindieron). Estos aprendizajes ajustan
+              cómo el radar puntúa los temas el resto del día.
+            </InfoTooltip>
+          </h2>
           <div className="grid gap-3 md:grid-cols-2">
             {insights.map((ins: any) => (
               <div key={ins.id} className="bg-white rounded-2xl border border-gray-200 p-4">
@@ -98,7 +124,14 @@ export default async function DashboardHome() {
 
       {/* Top recomendaciones */}
       <div>
-        <h2 className="text-lg font-semibold text-gray-800 mb-3">Top recomendaciones del día</h2>
+        <h2 className="text-lg font-semibold text-gray-800 mb-3 flex items-center gap-1.5">
+          Top recomendaciones del día
+          <InfoTooltip align="left">
+            Las 3 mejores oportunidades de contenido según el score del agente (0–100),
+            con la urgencia de publicación y por qué es momento de cubrirlas. La lista
+            completa está en la pestaña Recomendaciones.
+          </InfoTooltip>
+        </h2>
         <div className="grid gap-3">
           {recs?.slice(0, 3).map((rec: any) => (
             <div key={rec.id} className="bg-white rounded-2xl border border-gray-200 p-4">
@@ -126,7 +159,14 @@ export default async function DashboardHome() {
       {/* Tendencias del día */}
       {trends && trends.length > 0 && (
         <div>
-          <h2 className="text-lg font-semibold text-gray-800 mb-3">Tendencias en Perú ahora</h2>
+          <h2 className="text-lg font-semibold text-gray-800 mb-3 flex items-center gap-1.5">
+            Tendencias en Perú ahora
+            <InfoTooltip align="left">
+              Los temas que más crecen en Google Trends Perú en este momento, con su
+              categoría y un score de crecimiento (0–10). Sirven para detectar temas
+              calientes antes que la competencia.
+            </InfoTooltip>
+          </h2>
           <div className="bg-white rounded-2xl border border-gray-200 divide-y">
             {trends.map((t: any) => (
               <div key={t.id} className="flex items-center justify-between px-4 py-2">

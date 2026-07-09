@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase"
 import { TagBadge } from "@/components/ui/Pill"
+import { InfoTooltip } from "@/components/ui/InfoTooltip"
 
 export const revalidate = 60
 
@@ -33,7 +34,15 @@ export default async function TrendsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Tendencias en Perú</h1>
+        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          Tendencias en Perú
+          <InfoTooltip align="left">
+            Qué está buscando la gente en Perú ahora mismo, según Google Trends. Cada
+            tema trae una categoría y un score de crecimiento (0–10) basado en su
+            volumen de búsquedas. Sirve para detectar temas calientes y decidir
+            coberturas antes que la competencia.
+          </InfoTooltip>
+        </h1>
         <span className="text-sm text-gray-500">{today}</span>
       </div>
 
@@ -46,7 +55,14 @@ export default async function TrendsPage() {
       {/* Lista de tendencias */}
       <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
         <div className="px-4 py-3 border-b bg-gray-50">
-          <h2 className="text-sm font-semibold text-gray-700">Top tendencias de hoy — Google Trends Perú</h2>
+          <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+            Top tendencias de hoy — Google Trends Perú
+            <InfoTooltip align="left">
+              Las tendencias del día ordenadas por relevancia. La barra teal indica el
+              score de crecimiento (0–10): a mayor barra, más tracción está ganando el
+              tema en las búsquedas de Perú.
+            </InfoTooltip>
+          </h2>
         </div>
         <div className="divide-y">
           {trends?.map((t: any) => (
@@ -82,7 +98,14 @@ export default async function TrendsPage() {
       {/* Historial reciente */}
       {history && history.length > 0 && (
         <div className="bg-white rounded-2xl border border-gray-200 p-4">
-          <h2 className="text-sm font-semibold text-gray-700 mb-3">Últimas tendencias registradas</h2>
+          <h2 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1.5">
+            Últimas tendencias registradas
+            <InfoTooltip align="left">
+              Historial de temas que han sido tendencia en las corridas recientes (no
+              solo hoy). Da contexto de qué se ha movido en los últimos días para
+              detectar temas recurrentes o que siguen vigentes.
+            </InfoTooltip>
+          </h2>
           <div className="flex flex-wrap gap-2">
             {Array.from(new Set(history.map((h: any) => h.keyword))).slice(0, 30).map(kw => (
               <TagBadge key={kw as string} color="#6B7280">

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react"
 import { Pill } from "@/components/ui/Pill"
 import { StatCard } from "@/components/ui/StatCard"
+import { InfoTooltip } from "@/components/ui/InfoTooltip"
 
 export type ChannelRow = {
   page_path: string
@@ -126,7 +127,15 @@ export default function TraficoClient({
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Tráfico (Marfeel)</h1>
+        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          Tráfico (Marfeel)
+          <InfoTooltip align="left">
+            Rendimiento de las notas de RPP según Marfeel (la fuente de audiencia).
+            Muestra page views y usuarios por artículo, y permite desglosar por sección
+            y por canal de adquisición (Google, directo, redes…). Sirve para ver qué
+            contenido rinde y de dónde llega el tráfico.
+          </InfoTooltip>
+        </h1>
         <span className="text-sm text-gray-500">{date}</span>
       </div>
 
@@ -139,7 +148,14 @@ export default function TraficoClient({
 
       {/* Filtro de Sección (arriba) */}
       <div className="bg-white rounded-2xl border border-gray-200 p-4">
-        <h2 className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-3">Sección</h2>
+        <h2 className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-3 flex items-center gap-1.5">
+          Sección
+          <InfoTooltip align="left">
+            Filtra el tráfico por sección de rpp.pe (deportes, política, etc.), derivada
+            de la URL de cada nota. Al elegir una sección, las tarjetas, los canales y la
+            lista de artículos se recalculan solo para esa sección.
+          </InfoTooltip>
+        </h2>
         <div className="flex flex-wrap gap-2">
           <Pill variant="solid" active={section === TODOS} onClick={() => setSection(TODOS)}>
             Todas
@@ -154,16 +170,37 @@ export default function TraficoClient({
 
       {/* Tarjetas resumen (según filtro activo) */}
       <div className="grid grid-cols-3 gap-4">
-        <StatCard label="Page views" value={fmt(totalPv)} accent="#F97316" />
-        <StatCard label="Usuarios únicos" value={fmt(totalUsers)} accent="#0D9488" />
-        <StatCard label="Artículos" value={fmt(articles.length)} accent="#8B5CF6" />
+        <StatCard
+          label="Page views"
+          value={fmt(totalPv)}
+          accent="#F97316"
+          info="Total de vistas de página de los artículos según el filtro activo (sección y canal). Es el volumen bruto de consumo del contenido."
+        />
+        <StatCard
+          label="Usuarios únicos"
+          value={fmt(totalUsers)}
+          accent="#0D9488"
+          info="Personas distintas que leyeron esos artículos (según el filtro activo). A diferencia de page views, no cuenta las visitas repetidas del mismo usuario."
+        />
+        <StatCard
+          label="Artículos"
+          value={fmt(articles.length)}
+          accent="#8B5CF6"
+          info="Cuántas notas distintas entran en el filtro actual de sección y canal."
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-6">
         {/* Sidebar: canal de adquisición (reacciona a la sección) */}
         <div className="bg-white rounded-2xl border border-gray-200 p-4 self-start">
-          <h2 className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-3">
+          <h2 className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-3 flex items-center gap-1.5">
             Canal de adquisición
+            <InfoTooltip align="left">
+              De dónde llega el tráfico: Google (búsqueda/Discover), directo, redes
+              sociales, etc. La barra muestra el peso relativo de cada canal. Haz clic
+              para filtrar los artículos por ese canal y ver qué contenido rinde en cada
+              fuente.
+            </InfoTooltip>
           </h2>
           <ul className="space-y-1.5">
             <ChannelItem
@@ -196,10 +233,17 @@ export default function TraficoClient({
         {/* Lista de artículos */}
         <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden self-start">
           <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-700">
-              Artículos
-              {channel !== TODOS ? ` · ${channel}` : ""}
-              {section !== TODOS ? ` · ${section}` : ""}
+            <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+              <span>
+                Artículos
+                {channel !== TODOS ? ` · ${channel}` : ""}
+                {section !== TODOS ? ` · ${section}` : ""}
+              </span>
+              <InfoTooltip align="left">
+                Ranking de notas por page views según los filtros activos de sección y
+                canal. Cada fila muestra el título, la URL y los usuarios únicos. Es el
+                detalle de qué contenido concreto está trayendo el tráfico.
+              </InfoTooltip>
             </h2>
             <span className="text-xs text-gray-400">Por page views</span>
           </div>

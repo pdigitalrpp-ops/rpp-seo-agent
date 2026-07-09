@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react"
 import { Pill } from "@/components/ui/Pill"
+import { InfoTooltip } from "@/components/ui/InfoTooltip"
 
 export type Article = {
   id: string
@@ -116,13 +117,28 @@ export default function CompetenciaClient({
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Competencia</h1>
+        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          Competencia
+          <InfoTooltip align="left">
+            Qué están publicando hoy los principales medios peruanos (El Comercio, La
+            República, Gestión, Perú21, Infobae). Puedes filtrar por medio y por
+            categoría para ver dónde están poniendo foco y detectar temas que RPP no
+            está cubriendo. Los datos vienen de los feeds RSS de cada medio.
+          </InfoTooltip>
+        </h1>
         <span className="text-sm text-gray-500">{date}</span>
       </div>
 
       {/* Categorías clicables */}
       <div className="bg-white rounded-2xl border border-gray-200 p-4">
-        <h2 className="text-sm font-semibold text-gray-700 mb-3">Cobertura por categoría hoy</h2>
+        <h2 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1.5">
+          Cobertura por categoría hoy
+          <InfoTooltip align="left">
+            Cuántas notas publicó la competencia hoy en cada categoría. Haz clic en una
+            categoría para filtrar todo el tablero (medios y notas). Ayuda a ver qué
+            temas están saturados y en cuáles hay espacio.
+          </InfoTooltip>
+        </h2>
         <div className="flex flex-wrap gap-2">
           <Pill variant="solid" active={category === TODAS} onClick={() => setCategory(TODAS)}>
             Todas: {categoryCounts.reduce((s, [, c]) => s + c, 0)}
@@ -143,7 +159,14 @@ export default function CompetenciaClient({
       <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-6">
         {/* Navegador de medios */}
         <div className="bg-white rounded-2xl border border-gray-200 p-4 self-start">
-          <h2 className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-3">Medios</h2>
+          <h2 className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-3 flex items-center gap-1.5">
+            Medios
+            <InfoTooltip align="left">
+              Filtra las notas por medio. El número es cuántas notas publicó ese medio
+              (según el filtro de categoría activo). Selecciona uno para ver solo sus
+              notas; vuelve a hacer clic para quitar el filtro.
+            </InfoTooltip>
+          </h2>
           <ul className="space-y-1">
             <MediumItem
               label="TODOS"
