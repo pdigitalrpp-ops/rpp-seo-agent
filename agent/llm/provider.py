@@ -40,6 +40,45 @@ def categorize_topics(keywords, categories):
     return provider.categorize_topics(keywords, categories)
 
 
+# Tamaño de lote para categorizar titulares de competencia. ~470 titulares por
+# corrida → ~5 llamadas. Ojo con el límite free de OpenRouter (50 req/día con
+# <$10 de crédito): morning (1×) + radar (4-6×/día reales) ≈ 30-35 req/día,
+# dentro del límite. Si el radar algún día corre de verdad cada 10 min, esto
+# necesitará caché por título en Supabase.
+_ARTICLE_CHUNK = 100
+
+
+def categorize_articles(articles, categories):
+    """
+    Re-categoriza titulares (p.ej. de competencia) con el LLM, en lotes de
+    _ARTICLE_CHUNK. MUTA article["category"] in-place solo donde el LLM
+    respondió con una categoría válida; el resto conserva la categoría por
+    reglas (rules-first). Devuelve cuántos artículos quedaron con categoría
+    del LLM, o None si no hay proveedor activo.
+    """
+    provider = _active_provider()
+    if not provider or not articles:
+        return None
+
+    # Títulos únicos (la competencia repite titulares entre feeds/corridas)
+    titles = list(dict.fromkeys(a.get("title") for a in articles if a.get("title")))
+    mapping = {}
+    for i in range(0, len(titles), _ARTICLE_CHUNK):
+        result = provider.categorize_topics(titles[i:i + _ARTICLE_CHUNK], categories)
+        if result:
+            mapping.update(result)
+    if not mapping:
+        return None
+
+    updated = 0
+    for a in articles:
+        cat = mapping.get(a.get("title"))
+        if cat:
+            a["category"] = cat
+            updated += 1
+    return updated
+
+
 def rewrite_onpage_batch(items, **kwargs):
     provider = _active_provider()
     if not provider:

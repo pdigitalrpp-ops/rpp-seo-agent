@@ -83,6 +83,15 @@ def run():
     competitor_data = safe_collect("competitors",     competitors.fetch_all_competitors, run_data,
                                    hours_back=6)
 
+    # LLM: re-categoriza los titulares de competencia (las reglas por keyword
+    # fallan seguido: "Canal 5..." → política, Haaland → política, etc.).
+    # Rules-first: si no hay proveedor o falla, quedan las categorías por reglas.
+    if competitor_data:
+        cats_articles = list(dict.fromkeys(list(CATEGORY_KEYWORDS.keys()) + ["otros"]))
+        n_cat = llm.categorize_articles(competitor_data, cats_articles)
+        if n_cat is not None:
+            logger.info(f"✅ LLM categorizó {n_cat}/{len(competitor_data)} titulares de competencia")
+
     if not trends_data:
         logger.info("Sin tendencias; nada que puntuar en este ciclo")
         run_data["finished_at"] = datetime.now()

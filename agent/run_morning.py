@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 from dotenv import load_dotenv
 load_dotenv()
 
-from config import SITE_DOMAIN, SERPAPI_QUERIES_PER_RUN
+from config import SITE_DOMAIN, SERPAPI_QUERIES_PER_RUN, CATEGORY_KEYWORDS
 from collectors import marfeel, gsc, competitors, serpapi
 from collectors.rpp_articles import parse_article
 from analyzers import decay, onpage_audit, opportunities
@@ -185,6 +185,15 @@ def run():
     gsc_discover    = safe_collect("gsc_discover",      gsc.fetch_discover_performance,      run_data)
     gsc_drops       = safe_collect("gsc_drops",         gsc.find_position_drops,             run_data)
     competitor_data = safe_collect("competitors",       competitors.fetch_all_competitors,   run_data)
+
+    # LLM: re-categoriza los titulares de competencia (las reglas por keyword
+    # fallan seguido: "Canal 5..." → política, Haaland → política, etc.).
+    # Rules-first: si no hay proveedor o falla, quedan las categorías por reglas.
+    if competitor_data:
+        cats = list(dict.fromkeys(list(CATEGORY_KEYWORDS.keys()) + ["otros"]))
+        n_cat = llm.categorize_articles(competitor_data, cats)
+        if n_cat is not None:
+            logger.info(f"✅ LLM categorizó {n_cat}/{len(competitor_data)} titulares de competencia")
 
     # Deja solo contenido editorial (fuera home, secciones, landings, mrf.io, audio/tv en vivo)
     marfeel_perf    = [r for r in (marfeel_perf or [])    if is_real_article(r.get("label"))]

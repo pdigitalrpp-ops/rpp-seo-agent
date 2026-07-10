@@ -76,7 +76,25 @@ def _generate(prompt, system=None, max_tokens=2000, retries=1):
                 logger.warning(f"OpenRouter {resp.status_code}: {resp.text[:2000]}")
                 return None
             data = resp.json()
-            return data["choices"][0]["message"]["content"]
+            msg = data["choices"][0]["message"]
+            content = msg.get("content") or ""
+            # Modelos razonadores (como Tencent Hy3) pueden devolver content
+            # vacío y el texto real en "reasoning" (p.ej. si max_tokens se
+            # agotó pensando). Se intenta rescatar en vez de fallar mudo.
+            if not content.strip() and msg.get("reasoning"):
+                logger.warning(
+                    "OpenRouter devolvió content vacío; usando el campo 'reasoning' "
+                    f"(finish_reason={data['choices'][0].get('finish_reason')})"
+                )
+                content = msg["reasoning"]
+            if not content.strip():
+                logger.warning(
+                    "OpenRouter respondió 200 pero sin texto utilizable "
+                    f"(finish_reason={data['choices'][0].get('finish_reason')}); "
+                    "se usa el fallback por reglas"
+                )
+                return None
+            return content
         except Exception as e:
             last_err = e
             if attempt < retries:
@@ -85,9 +103,9 @@ def _generate(prompt, system=None, max_tokens=2000, retries=1):
     return None
 
 
-def _generate_json(prompt, system=None):
+def _generate_json(prompt, system=None, max_tokens=2000):
     """Como _generate pero parsea el JSON. Devuelve el objeto o None."""
-    raw = _generate(prompt, system=system)
+    raw = _generate(prompt, system=system, max_tokens=max_tokens)
     if not raw:
         return None
     raw = raw.strip()
@@ -100,9 +118,18 @@ def _generate_json(prompt, system=None):
         raw = raw.strip()
     try:
         return json.loads(raw)
-    except (json.JSONDecodeError, TypeError) as e:
-        logger.warning(f"OpenRouter devolvió JSON inválido: {e}")
-        return None
+    except (json.JSONDecodeError, TypeError):
+        pass
+    # Último recurso: extraer el primer objeto JSON embebido en texto (modelos
+    # razonadores a veces anteponen/agregan prosa pese a la instrucción).
+    start, end = raw.find("{"), raw.rfind("}")
+    if start != -1 and end > start:
+        try:
+            return json.loads(raw[start:end + 1])
+        except (json.JSONDecodeError, TypeError):
+            pass
+    logger.warning(f"OpenRouter devolvió JSON inválido; primeros 200 chars: {raw[:200]!r}")
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -132,8 +159,10 @@ def categorize_topics(keywords, categories):
         f"Temas:\n{numbered}\n\n"
         'Responde SOLO un JSON: {"items": [{"i": <indice>, "categoria": "<categoria>"}]}'
     )
-    data = _generate_json(prompt, system=system)
+    data = _generate_json(prompt, system=system, max_tokens=4000)
     if not isinstance(data, dict) or not isinstance(data.get("items"), list):
+        if data is not None:
+            logger.warning(f"OpenRouter: JSON de categorización con forma inesperada: {str(data)[:200]!r}")
         return None
 
     valid = set(categories)
@@ -187,8 +216,10 @@ def rewrite_onpage_batch(items, title_max=60, meta_min=120, meta_max=160):
         'Responde SOLO un JSON: {"items": [{"i": <indice>, "title": "...", '
         '"meta_description": "...", "h2": ["...","..."]}]}'
     )
-    data = _generate_json(prompt, system=system)
+    data = _generate_json(prompt, system=system, max_tokens=4000)
     if not isinstance(data, dict) or not isinstance(data.get("items"), list):
+        if data is not None:
+            logger.warning(f"OpenRouter: JSON de reescritura con forma inesperada: {str(data)[:200]!r}")
         return None
 
     out = [None] * len(items)
