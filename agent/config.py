@@ -171,3 +171,18 @@ AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
 # aplique también cuando el secret opcional no está configurado.
 AWS_REGION            = os.environ.get("AWS_REGION") or "us-east-1"
 BEDROCK_MODEL_ID      = os.environ.get("BEDROCK_MODEL_ID") or "anthropic.claude-3-haiku-20240307-v1:0"
+
+# ---------------------------------------------------------------------------
+# Capa LLM — OpenRouter (proveedor preferido desde 2026-07-10, reemplaza a
+# Bedrock: la cuenta AWS del usuario tiene los Claude de gen. 3 marcados
+# Legacy/sin acceso, Bedrock nunca llegó a responder en producción).
+# API REST compatible con OpenAI Chat Completions (POST /chat/completions).
+# Modelo default: Tencent Hy3 ("tencent/hy3:free"), gratis en OpenRouter del
+# 2026-07-06 al 2026-07-21 (295B MoE, 21B activos). Si la promo termina o el
+# modelo deja de estar disponible, apuntar OPENROUTER_MODEL a otro (gratis o
+# de pago) por env, sin tocar código — ver catálogo en openrouter.ai/models.
+# ---------------------------------------------------------------------------
+OPENROUTER_API_KEY  = os.environ.get("OPENROUTER_API_KEY", "")
+OPENROUTER_MODEL    = os.environ.get("OPENROUTER_MODEL") or "tencent/hy3:free"
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+OPENROUTER_TIMEOUT_SECONDS = 30

@@ -36,6 +36,8 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION:            ${{ secrets.AWS_REGION }}
           BEDROCK_MODEL_ID:      ${{ secrets.BEDROCK_MODEL_ID }}
+          OPENROUTER_API_KEY:    ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL:      ${{ secrets.OPENROUTER_MODEL }}
           TZ: America/Lima
         run: |
           cd agent

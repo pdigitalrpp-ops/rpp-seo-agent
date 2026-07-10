@@ -11,7 +11,7 @@ dashboard web.
 
 ## Estado actual
 
-**Fecha último avance:** 2026-07-09
+**Fecha último avance:** 2026-07-10
 **Estado:** v2 en producción y **funcionando end-to-end**. El radar corre en
 GitHub Actions, recolecta de Marfeel + Google Trends + competencia, puntúa y
 guarda recomendaciones en Supabase; el dashboard las muestra en vivo. El
@@ -46,6 +46,23 @@ hoy). Ver sección "Amazon Bedrock" más abajo. **Pendiente del usuario:** pegar
 (ya referenciados en ambos workflows) — sin eso, el facade cae a Gemini
 (bloqueado) y de ahí a reglas, sin romper nada.
 
+**2026-07-10 — Dashboard: tooltips explicativos en las 8 pestañas + OpenRouter
+(Tencent Hy3) reemplaza a Bedrock como proveedor LLM preferido:**
+(1) Componente `dashboard/components/ui/InfoTooltip.tsx` (ícono "?" con panel
+por hover/tap, portal a `document.body` con posición fija para no recortarse
+en tarjetas `overflow-hidden`) añadido al título y secciones core de las 8
+pestañas del dashboard. Desplegado y verificado en Vercel (READY).
+(2) `agent/llm/openrouter.py` nuevo + `provider.py` actualizado: orden
+**OpenRouter > Bedrock > Gemini > reglas** (Bedrock nunca respondió en
+producción, cuenta AWS con modelos Claude gen. 3 marcados Legacy). Ver detalle
+completo en "Fase 2 — capa LLM" más abajo. **Pendiente del usuario:** pegar
+`OPENROUTER_API_KEY` en GitHub Secrets y correr `morning.yml`/`radar.yml`
+manualmente para verificar (la prueba local falló por bloqueo de red de RPP a
+`openrouter.ai`, no por el código — ver gotcha de red en esa sección).
+(3) Corregido: el GitHub MCP no está bloqueado por sesión — la red corporativa
+de RPP lo bloquea y activarlo requiere permisos de admin que el usuario no
+tiene. Ver nota actualizada en "Conexiones MCP" más abajo.
+
 - **Repo:** `https://github.com/pdigitalrpp-ops/rpp-seo-agent` (rama `master`)
 - **Dashboard:** `https://rpp-seo-agent.vercel.app` (Vercel, team PDIGITAL RPP)
 - **Supabase:** project ref `tfrnpjbvxulswvqtosoq`
@@ -58,13 +75,13 @@ hoy). Ver sección "Amazon Bedrock" más abajo. **Pendiente del usuario:** pegar
   Proyectos: `rpp-seo-agent` = `prj_2w37k5pifcwXtoQlVNZ1qszB8ect` (el dashboard real),
   `rpp-dashboard` = `prj_HQsOhCJALxcVutbXs595EJjQVS8U` (sin usar por ahora). Con esto se puede
   listar deployments/logs de build sin navegador (`list_deployments`, `get_deployment`).
-- **GitHub MCP: PENDIENTE.** El usuario conectó el plugin de GitHub en la app, pero sus
-  herramientas NO se exponen en sesiones ya iniciadas (los conectores cargan tools solo al
-  arrancar la sesión). Probado y confirmado 2026-07-07. Para que funcione: abrir un **chat
-  nuevo** después de conectar el plugin. Alternativa no probada: MCP oficial de GitHub vía
-  config (`api.githubcopilot.com/mcp/`) con un PAT de `pdigitalrpp-ops` que pega el usuario.
-  Mientras tanto, GitHub se opera con `git push` (código) + navegador (workflows/secrets),
-  que es el flujo que se ha usado en toda la sesión y funciona bien.
+- **GitHub MCP: BLOQUEADO, no es un problema de sesión.** Causa real (corregido 2026-07-10):
+  la red corporativa de Grupo RPP bloquea la conexión, y activar el conector requiere permisos
+  de administrador que el usuario no tiene — no se soluciona abriendo un chat nuevo. (Nota
+  histórica: el 2026-07-07 se pensó que era un problema de que los conectores cargan tools
+  solo al arrancar sesión; esa hipótesis quedó descartada.) Mientras tanto, GitHub se opera con
+  `git push` (código) + navegador (workflows/secrets), que es el flujo que se ha usado en toda
+  la sesión y funciona bien.
 
 ### Pendientes
 - **Alertas Etapa 3 (Teams/WhatsApp):** definir `SECTION_RESPONSIBLES` (canal por
@@ -365,26 +382,39 @@ PASS_EDITORIAL / PASS_DIRECCION / PASS_ADMIN   (contraseñas temporales: <rol>20
 
 ---
 
-## Fase 2 — capa LLM (Bedrock preferido, Gemini como fallback bloqueado)
+## Fase 2 — capa LLM (OpenRouter preferido desde 2026-07-10, Bedrock y Gemini como fallback)
 
-**Estado (2026-07-09):** la capa LLM está **implementada, validada, y con un
-proveedor real disponible (Bedrock)**. Gemini sigue con `limit: 0` (bloqueo de
-cuota del free tier), pero ya no es el único proveedor: `agent/llm/provider.py`
+**Estado (2026-07-10):** la capa LLM está **implementada y con un proveedor
+nuevo preferido: OpenRouter** (modelo Tencent Hy3, gratis). `agent/llm/provider.py`
 es un facade que los orquestadores importan (`from llm import provider as llm`)
-en vez de un cliente específico; internamente elige **Bedrock si hay
-credenciales AWS, si no Gemini, si no reglas**. Cambiar de proveedor o añadir
-uno nuevo no toca `run_morning.py` ni `run_radar.py`, solo `provider.py`.
+en vez de un cliente específico; internamente elige **OpenRouter si hay
+`OPENROUTER_API_KEY`, si no Bedrock si hay credenciales AWS, si no Gemini, si
+no reglas**. Cambiar de proveedor o añadir uno nuevo no toca `run_morning.py`
+ni `run_radar.py`, solo `provider.py`.
+
+**Por qué OpenRouter reemplaza a Bedrock como preferido:** Bedrock nunca llegó
+a responder en producción — los 3 IDs de modelo Claude probados (Sonnet v1,
+v2, Haiku default) dieron `ResourceNotFoundException`, la cuenta AWS del
+usuario tiene los Claude de generación 3 marcados Legacy/sin acceso activo
+(requeriría reactivar model access en la consola AWS, pendiente). Bedrock y
+Gemini se dejaron en el facade como fallback en cadena (no cuesta nada
+mantenerlos, rules-first) mientras eso no se resuelva.
 
 **Lo que ya existe (no reescribir):**
 - `agent/llm/provider.py` — facade/selector, ver arriba.
+- `agent/llm/openrouter.py` — cliente REST (requests, formato OpenAI Chat
+  Completions, `POST {OPENROUTER_BASE_URL}/chat/completions`). `is_enabled()`
+  por `OPENROUTER_API_KEY`. Modelo por `OPENROUTER_MODEL`, default
+  `tencent/hy3:free` (295B MoE, 21B activos, **gratis en OpenRouter solo del
+  2026-07-06 al 2026-07-21** — si la promo termina o el modelo deja de estar
+  disponible, cambiar `OPENROUTER_MODEL` por env sin tocar código; ver catálogo
+  en openrouter.ai/models).
 - `agent/llm/bedrock.py` — cliente boto3 (`bedrock-runtime.invoke_model`,
   Anthropic Messages API). `is_enabled()` por `AWS_ACCESS_KEY_ID` +
   `AWS_SECRET_ACCESS_KEY`. Modelo por `BEDROCK_MODEL_ID` (default Claude 3
-  Haiku, invocable on-demand sin inference profile; ver comentario en
-  `config.py` para IDs de Sonnet/Opus/3.7 si se quiere más calidad — algunos
-  requieren inference profile ARN, no el ID plano del modelo).
+  Haiku; bloqueado hoy, ver arriba).
 - `agent/llm/gemini.py` — cliente REST (requests, sin SDK), sigue intacto como
-  fallback. `GEMINI_MODEL` overrideable por env (default gemini-2.0-flash).
+  último fallback. `GEMINI_MODEL` overrideable por env (default gemini-2.0-flash).
 - **A) Categorización (radar):** `categorize_topics(keywords, categories)` — 1
   llamada batch para los ~10 trends. Enchufada en `run_radar.py` vía el
   facade; `scoring.py` respeta `item["category"]` pre-asignada. Arregla
@@ -393,16 +423,27 @@ uno nuevo no toca `run_morning.py` ni `run_radar.py`, solo `provider.py`.
   para todas las notas con issues editoriales. Enchufada en `run_morning.py`
   vía el facade; se guarda en `onpage_audits.suggestions` (jsonb) y el
   dashboard la muestra como "✨ Sugerencia IA" (título/meta/H2 con contador de chars).
-- Workflows ya pasan `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
-  `AWS_REGION`, `BEDROCK_MODEL_ID` y `GEMINI_API_KEY` (los AWS son secrets
-  pendientes de configurar por el usuario; sin ellos el facade cae a Gemini →
-  reglas, sin romper nada).
-- `requirements.txt` incluye `boto3==1.34.144`.
+- Workflows ya pasan `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`,
+  `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`,
+  `BEDROCK_MODEL_ID` y `GEMINI_API_KEY`. `OPENROUTER_API_KEY` es el único
+  secret pendiente de pegar en GitHub Secrets por el usuario; sin él el
+  facade cae a Bedrock (bloqueado) → Gemini (bloqueado) → reglas, sin romper nada.
+- `requirements.txt` incluye `boto3==1.34.144` (Bedrock); OpenRouter reutiliza
+  `requests`, ya presente por Gemini — sin dependencias nuevas.
 
-**Pendiente de verificación real:** correr `run_morning.py` o `run_radar.py`
-con los secrets AWS configurados y confirmar en los logs `sources_ok` /
-`✅ LLM categorizó` / `✅ LLM reescribió` que Bedrock respondió (no solo que
-compiló). Aún no se corrió con credenciales reales.
+**Gotcha de red (2026-07-10, importante para probar localmente):** la red
+corporativa de Grupo RPP bloquea `openrouter.ai` puntualmente (confirmado:
+otros dominios en Cloudflare como discord.com/anthropic.com sí responden,
+solo openrouter.ai da timeout de conexión). No probar `openrouter.py` desde
+un sandbox/máquina en la red de RPP — el workflow de GitHub Actions corre en
+infraestructura de GitHub, sin esa restricción, así que ahí sí debe funcionar.
+
+**Pendiente de verificación real:** el usuario debe pegar `OPENROUTER_API_KEY`
+en GitHub Secrets y correr `run_morning.py` o `run_radar.py` manualmente
+(workflow_dispatch) para confirmar en los logs `sources_ok` /
+`✅ LLM categorizó` / `✅ LLM reescribió` que OpenRouter/Tencent Hy3 respondió
+(no solo que compiló). Aún no se corrió con credenciales reales — el intento
+de prueba local falló por el bloqueo de red de RPP, no por el código.
 
 ### Análisis de consumo de la API (2026-07-08)
 Volumen real medido (no teórico): el cron del radar NO cumple los `*/10 min`
