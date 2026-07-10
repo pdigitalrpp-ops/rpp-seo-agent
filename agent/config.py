@@ -3,6 +3,21 @@ import os
 SITE_URL = "https://rpp.pe/"
 SITE_DOMAIN = "rpp.pe"
 
+# Feed propio de RPP (qué acaba de publicar rpp.pe, sin sesgo de tráfico).
+# Se usa para comparar contra la competencia y marcar cobertura
+# (rpp_has_coverage) en el dashboard. Validado 2026-07-10: RSS 2.0, ~60 items,
+# ~48 dentro de 5h. El endpoint /sitemap-news.xml devuelve HTML (soft-404).
+RPP_RSS_URL = "https://rpp.pe/rss"
+# Ventana de comparación de cobertura (horas). El feed cubre ~20h, así que 5h
+# entra holgado; es el mismo horizonte que pidió el equipo editorial.
+RPP_OWN_WINDOW_HOURS = int(os.environ.get("RPP_OWN_WINDOW_HOURS", "5"))
+# Tope de titulares de competencia que se mandan al LLM para el match de
+# cobertura por corrida (los más recientes). TODOS reciben match por reglas; el
+# LLM solo refina hasta este tope, para no agotar la cuota free de OpenRouter
+# (~50 req/día). 60 titulares ≈ 3 llamadas (chunk 25). Los demás quedan con el
+# match por reglas, que ya da un badge razonable.
+RPP_COVERAGE_LLM_MAX = int(os.environ.get("RPP_COVERAGE_LLM_MAX", "60"))
+
 # Propiedad de Search Console. Vacío = auto-detectar: el collector lista las
 # propiedades a las que la service account tiene acceso (sites().list) y elige
 # la que corresponda a rpp.pe (prefiere dominio "sc-domain:rpp.pe" sobre

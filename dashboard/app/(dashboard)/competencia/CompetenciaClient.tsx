@@ -11,7 +11,14 @@ export type Article = {
   url: string | null
   published_at: string | null
   category: string | null
+  rpp_has_coverage: boolean | null
+  rpp_matched_title: string | null
+  rpp_matched_url: string | null
 }
+
+const COV_TODAS = "__cov_todas__"
+const COV_PUBLICADO = "publicado"
+const COV_PENDIENTE = "pendiente"
 
 const TODOS = "__todos__"
 const TODAS = "__todas__"
@@ -90,6 +97,26 @@ export default function CompetenciaClient({
 }) {
   const [site, setSite] = useState<string>(TODOS)
   const [category, setCategory] = useState<string>(TODAS)
+  const [coverage, setCoverage] = useState<string>(COV_TODAS)
+
+  // ¿Se calculó cobertura para esta corrida? (si ninguna nota trae el flag, el
+  // benchmark aún no corrió con la feature — ocultamos el filtro y los badges).
+  const hasCoverageData = useMemo(
+    () => articles.some((a) => a.rpp_has_coverage !== null && a.rpp_has_coverage !== undefined),
+    [articles],
+  )
+  const pendingCount = useMemo(
+    () => articles.filter((a) => a.rpp_has_coverage === false).length,
+    [articles],
+  )
+  const publishedCount = useMemo(
+    () => articles.filter((a) => a.rpp_has_coverage === true).length,
+    [articles],
+  )
+  const matchesCoverage = (a: Article) =>
+    coverage === COV_TODAS ||
+    (coverage === COV_PUBLICADO && a.rpp_has_coverage === true) ||
+    (coverage === COV_PENDIENTE && a.rpp_has_coverage === false)
 
   // Conteos con filtrado cruzado (facetas)
   const siteCounts = useMemo(() => {
@@ -108,9 +135,11 @@ export default function CompetenciaClient({
 
   const list = useMemo(() => {
     return articles
-      .filter((a) => (site === TODOS || a.site === site) && (category === TODAS || catOf(a) === category))
+      .filter((a) => (site === TODOS || a.site === site)
+        && (category === TODAS || catOf(a) === category)
+        && matchesCoverage(a))
       .sort((a, b) => (b.published_at ?? "").localeCompare(a.published_at ?? ""))
-  }, [articles, site, category])
+  }, [articles, site, category, coverage])
 
   const totalCross = category === TODAS ? articles.length : articles.filter((a) => catOf(a) === category).length
 
@@ -155,6 +184,31 @@ export default function CompetenciaClient({
           ))}
         </div>
       </div>
+
+      {/* Filtro de cobertura RPP */}
+      {hasCoverageData && (
+        <div className="bg-white rounded-2xl border border-gray-200 p-4">
+          <h2 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1.5">
+            ¿RPP ya lo publicó?
+            <InfoTooltip align="left">
+              Compara cada titular de la competencia contra las notas que RPP publicó en
+              las últimas horas (feed de rpp.pe) usando IA. &quot;⚠ Pendiente&quot; marca
+              temas que la competencia cubre y RPP todavía no — son las brechas a cerrar.
+            </InfoTooltip>
+          </h2>
+          <div className="flex flex-wrap gap-2">
+            <Pill variant="solid" active={coverage === COV_TODAS} onClick={() => setCoverage(COV_TODAS)}>
+              Todas: {publishedCount + pendingCount}
+            </Pill>
+            <Pill variant="solid" active={coverage === COV_PENDIENTE} onClick={() => setCoverage(coverage === COV_PENDIENTE ? COV_TODAS : COV_PENDIENTE)}>
+              ⚠ Pendientes: {pendingCount}
+            </Pill>
+            <Pill variant="solid" active={coverage === COV_PUBLICADO} onClick={() => setCoverage(coverage === COV_PUBLICADO ? COV_TODAS : COV_PUBLICADO)}>
+              ✓ Publicadas: {publishedCount}
+            </Pill>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-6">
         {/* Navegador de medios */}
@@ -220,6 +274,7 @@ export default function CompetenciaClient({
                     </span>
                     {site === TODOS && <span className="text-xs text-gray-500">{a.site}</span>}
                     {a.published_at && <span className="text-xs text-gray-400">{fmtTime(a.published_at)}</span>}
+                    <CoverageBadge article={a} />
                   </div>
                 </div>
               </div>
@@ -231,6 +286,35 @@ export default function CompetenciaClient({
         </div>
       </div>
     </div>
+  )
+}
+
+/** Badge de cobertura: ✓ Publicado en RPP / ⚠ Pendiente. */
+function CoverageBadge({ article }: { article: Article }) {
+  if (article.rpp_has_coverage === null || article.rpp_has_coverage === undefined) return null
+  if (article.rpp_has_coverage) {
+    const badge = (
+      <span className="text-xs rounded px-1.5 py-0.5 bg-teal-50 text-teal-700 border border-teal-200">
+        ✓ Publicado en RPP
+      </span>
+    )
+    // Si hay match, enlaza a la nota de RPP; el title muestra cuál.
+    return article.rpp_matched_url ? (
+      <a
+        href={article.rpp_matched_url}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={article.rpp_matched_title ?? undefined}
+        className="hover:opacity-80"
+      >
+        {badge}
+      </a>
+    ) : badge
+  }
+  return (
+    <span className="text-xs rounded px-1.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200">
+      ⚠ Pendiente
+    </span>
   )
 }
 

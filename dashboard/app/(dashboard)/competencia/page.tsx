@@ -8,7 +8,7 @@ export default async function CompetenciaPage() {
 
   const { data } = await supabase
     .from("competitor_articles")
-    .select("id, site, title, url, published_at, category")
+    .select("id, site, title, url, published_at, category, rpp_has_coverage, rpp_matched_title, rpp_matched_url")
     .eq("fetched_date", today)
     .order("published_at", { ascending: false })
     .limit(500)

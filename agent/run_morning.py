@@ -8,15 +8,14 @@ scoring) que el radar de tiempo real usa el resto del día.
 
 import logging
 import os
-import re
 import sys
 from datetime import datetime, date
-from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 load_dotenv()
 
 from config import SITE_DOMAIN, SERPAPI_QUERIES_PER_RUN, CATEGORY_KEYWORDS
+from article_filter import is_real_article
 from collectors import marfeel, gsc, competitors, serpapi
 from collectors.rpp_articles import parse_article
 from analyzers import decay, onpage_audit, opportunities
@@ -34,25 +33,6 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger("run_morning")
-
-
-# Contenido real de rpp.pe = notas (…-noticia-<id>) y coberturas en vivo (…-live-<id>).
-# Todo lo demás (home, homes de sección /deportes, landings/herramientas, buscador,
-# /ultimas-noticias, /tv-vivo, /audio/en-vivo, listados /noticias/..., widget mrf.io)
-# NO es contenido editorial y se descarta antes de guardar/analizar.
-_ARTICLE_RE = re.compile(r"-(noticia|live)-\d+", re.IGNORECASE)
-
-
-def is_real_article(url):
-    if not url:
-        return False
-    try:
-        host = (urlparse(url).hostname or "").replace("www.", "")
-    except Exception:
-        return False
-    if host != "rpp.pe" and not host.endswith(".rpp.pe"):
-        return False
-    return bool(_ARTICLE_RE.search(url))
 
 
 def safe_collect(name, func, run_data, **kwargs):
@@ -194,6 +174,11 @@ def run():
         n_cat = llm.categorize_articles(competitor_data, cats)
         if n_cat is not None:
             logger.info(f"✅ LLM categorizó {n_cat}/{len(competitor_data)} titulares de competencia")
+
+    # Nota: la cobertura RPP (rpp_has_coverage) se calcula SOLO en el radar, no
+    # aquí. El benchmark trae competencia de 24h pero el feed propio de RPP es de
+    # ~5h: comparar ventanas tan distintas marcaría como "pendiente" notas que
+    # RPP sí cubrió hace >5h. En el radar ambas ventanas (~6h vs 5h) coinciden.
 
     # Deja solo contenido editorial (fuera home, secciones, landings, mrf.io, audio/tv en vivo)
     marfeel_perf    = [r for r in (marfeel_perf or [])    if is_real_article(r.get("label"))]

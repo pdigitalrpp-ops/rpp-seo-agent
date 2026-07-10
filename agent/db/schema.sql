@@ -43,7 +43,13 @@ CREATE TABLE IF NOT EXISTS competitor_articles (
   url          text UNIQUE,
   published_at timestamptz,
   category     text,
-  created_at   timestamptz DEFAULT now()
+  created_at   timestamptz DEFAULT now(),
+  -- Cobertura: ¿RPP ya publicó una nota del mismo tema? (analyzers/coverage.py,
+  -- rules-first + LLM, comparando contra el RSS propio de rpp.pe en ~5h)
+  rpp_has_coverage    boolean,
+  rpp_matched_title   text,
+  rpp_matched_url     text,
+  coverage_checked_at timestamptz
 );
 
 CREATE TABLE IF NOT EXISTS recommendations (

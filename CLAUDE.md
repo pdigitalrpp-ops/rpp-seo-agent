@@ -63,6 +63,18 @@ manualmente para verificar (la prueba local falló por bloqueo de red de RPP a
 de RPP lo bloquea y activarlo requiere permisos de admin que el usuario no
 tiene. Ver nota actualizada en "Conexiones MCP" más abajo.
 
+**2026-07-10 — Cobertura RPP en la pestaña Competencia (feature nueva):** por cada
+titular de competencia se marca si RPP ya publicó una nota del mismo tema
+(badge "✓ Publicado en RPP" / "⚠ Pendiente" + filtro "¿RPP ya lo publicó?").
+Fuente de lo propio: `collectors/rpp_own_feed.py` (RSS `https://rpp.pe/rss`, no
+Marfeel — Marfeel mide tráfico, no "lo último publicado"). Matching en
+`analyzers/coverage.py`: rules-first (solapamiento de tokens ponderado por IDF)
++ refinamiento LLM (`provider.match_coverage`). Corre **solo en el radar** (no
+en el morning: allí la ventana de competencia es 24h vs 5h del feed propio →
+falsos "pendiente"). Columnas nuevas en `competitor_articles`
+(`rpp_has_coverage`, `rpp_matched_title`, `rpp_matched_url`,
+`coverage_checked_at`). Ver sección "Cobertura RPP" más abajo.
+
 - **Repo:** `https://github.com/pdigitalrpp-ops/rpp-seo-agent` (rama `master`)
 - **Dashboard:** `https://rpp-seo-agent.vercel.app` (Vercel, team PDIGITAL RPP)
 - **Supabase:** project ref `tfrnpjbvxulswvqtosoq`
@@ -251,6 +263,44 @@ rpp-seo-agent/
 - El Comercio y Gestión usan su RSS `arcio` directo. La República, Peru21 e Infobae
   usan **Google News RSS por dominio** (`news.google.com/rss/search?q=when:1d site:...`)
   porque sus feeds propios cambiaron/fallan.
+- **Categorización con LLM (2026-07-10):** las reglas por keyword clasificaban
+  mal muchos titulares (nombres propios: "Canal 5 y TUDN…" → política, Haaland →
+  política). `provider.categorize_articles(articles, categories)` re-categoriza
+  con el LLM en lotes de 40 títulos únicos (rules-first: sin proveedor conserva
+  la categoría por reglas). Corre SIEMPRE tras recolectar competencia, en
+  morning y radar.
+- **Guardado idempotente (gotcha):** `save_competitor_articles` hace upsert real
+  `on_conflict="url"` (NO `ignore_duplicates=True`). Con ignore_duplicates un
+  artículo ya visto quedaba con su primera categoría para siempre — la
+  re-categorización del LLM no se propagaba a URLs ya guardadas.
+
+### Cobertura RPP (2026-07-10) — ¿RPP ya publicó lo que publicó la competencia?
+- **Objetivo:** por cada titular de competencia, badge "✓ Publicado en RPP" /
+  "⚠ Pendiente" en el dashboard. "Pendiente" = brecha (la competencia lo cubre,
+  RPP no).
+- **Fuente de lo propio:** `collectors/rpp_own_feed.py` lee el RSS oficial
+  `https://rpp.pe/rss` (~60 items, ~48 en 5h). **No Marfeel:** Marfeel mide
+  tráfico, una nota recién publicada con pocas visitas no aparece; el RSS lista
+  lo último sin ese sesgo. `/sitemap-news.xml` devuelve HTML (soft-404), no usar.
+- **Matching (`analyzers/coverage.py`):** rules-first (solapamiento de tokens
+  ponderado por IDF sobre los titulares de RPP, umbral ≥2 tokens y score ≥2.5) +
+  refinamiento LLM (`provider.match_coverage` → `openrouter.match_coverage`,
+  devuelve por titular el índice de la nota de RPP que lo cubre o -1). El LLM
+  corrige lo que las reglas confunden por tokens genéricos (p.ej. "precio del
+  euro" vs "precio del dólar" comparten precio/perú/julio → las reglas matchean,
+  el LLM no). Rules-first da un badge a TODOS aunque el LLM no esté.
+- **Solo en el radar, no en el morning:** la competencia del morning es de 24h y
+  el feed propio de 5h → comparar ventanas tan distintas marca "pendiente" notas
+  que RPP cubrió hace >5h. En el radar ambas ventanas (~6h vs 5h) coinciden.
+- **Tope de costo:** `RPP_COVERAGE_LLM_MAX=60` (config, por env) — solo los 60
+  titulares más recientes van al LLM (≈3 llamadas, chunk 25 en `provider.py`);
+  el resto queda con rules-first. Con la categorización (que también gasta),
+  días activos pueden rozar el límite free de OpenRouter (~50 req/día) — es el
+  argumento para un modelo de pago/mejor.
+- **Filtro editorial compartido:** `is_real_article` se movió de `run_morning.py`
+  a `agent/article_filter.py` (módulo nuevo) para que `rpp_own_feed` lo reuse sin
+  import circular. El dashboard mantiene su copia en TS (`isRealArticle` en
+  `TraficoClient`): si cambia el regex, actualizar AMBOS.
 
 ### Scoring 0-100
 - `SCORE_WEIGHTS` (suman 100): market_trend 30, competition_gap 20, rpp_relevance 15,
@@ -345,7 +395,7 @@ rpp-seo-agent/
 | Tabla | Escribe | Lee |
 |-------|---------|-----|
 | `daily_trends` | radar | dashboard trends, home |
-| `competitor_articles` | radar (upsert por url) | dashboard competencia |
+| `competitor_articles` | radar/morning (upsert por url; radar añade cobertura RPP) | dashboard competencia |
 | `recommendations` | radar (borra+reinserta por fecha) | dashboard recomendaciones, home |
 | `alerts` | radar | dashboard alertas |
 | `own_traffic` | morning | dashboard trafico (fallback), decay |

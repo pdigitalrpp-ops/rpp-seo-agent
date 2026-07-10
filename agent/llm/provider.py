@@ -88,3 +88,33 @@ def rewrite_onpage_batch(items, **kwargs):
     if not provider:
         return None
     return provider.rewrite_onpage_batch(items, **kwargs)
+
+
+# Lote para el match de cobertura: por cada llamada se comparan _COVERAGE_CHUNK
+# titulares de competencia contra TODA la lista de titulares de RPP (~48 en 5h).
+# Chunk chico para no agotar el presupuesto de razonamiento de Hy3 (mismo
+# problema de finish_reason=length que en la categorización).
+_COVERAGE_CHUNK = 25
+
+
+def match_coverage(competitor_titles, own_titles):
+    """
+    Empareja titulares de competencia con titulares de RPP usando el LLM.
+    Devuelve dict {indice_competencia: indice_rpp | -1} o None si no hay
+    proveedor activo o el proveedor no implementa match_coverage (p.ej.
+    Bedrock/Gemini, que hoy no lo tienen — cae al matcher por reglas).
+    -1 significa "el LLM afirma que RPP NO lo cubre".
+    """
+    provider = _active_provider()
+    fn = getattr(provider, "match_coverage", None) if provider else None
+    if not fn or not competitor_titles or not own_titles:
+        return None
+
+    merged = {}
+    for i in range(0, len(competitor_titles), _COVERAGE_CHUNK):
+        chunk = competitor_titles[i:i + _COVERAGE_CHUNK]
+        part = fn(chunk, own_titles)
+        if part:
+            for local_idx, own_idx in part.items():
+                merged[i + local_idx] = own_idx
+    return merged or None

@@ -1,6 +1,6 @@
 import os
 import logging
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from supabase import create_client, Client
 
 logger = logging.getLogger(__name__)
@@ -114,14 +114,26 @@ def save_competitor_articles(articles):
     if not articles:
         return
     sb = _get_client()
-    rows = [{
-        "fetched_date": str(date.today()),
-        "site":         a["site"],
-        "title":        a["title"],
-        "url":          a.get("url"),
-        "published_at": a.get("published_at"),
-        "category":     a.get("category"),
-    } for a in articles]
+    now_iso = datetime.now(timezone.utc).isoformat()
+    rows = []
+    for a in articles:
+        row = {
+            "fetched_date": str(date.today()),
+            "site":         a["site"],
+            "title":        a["title"],
+            "url":          a.get("url"),
+            "published_at": a.get("published_at"),
+            "category":     a.get("category"),
+        }
+        # Cobertura RPP: solo se escribe si se calculó en esta corrida (la clave
+        # existe en el dict). Así una corrida sin feed propio no pisa con NULL
+        # una cobertura ya calculada antes para la misma URL.
+        if "rpp_has_coverage" in a:
+            row["rpp_has_coverage"]   = a.get("rpp_has_coverage")
+            row["rpp_matched_title"]  = a.get("rpp_matched_title")
+            row["rpp_matched_url"]    = a.get("rpp_matched_url")
+            row["coverage_checked_at"] = now_iso
+        rows.append(row)
     # ignore_duplicates=False (default): upsert real, no solo insert-if-new.
     # Con ignore_duplicates=True (como estaba) un artículo ya visto quedaba
     # PARA SIEMPRE con su primera categoría (típicamente la de reglas, antes

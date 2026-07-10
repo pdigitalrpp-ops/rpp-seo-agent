@@ -248,3 +248,50 @@ def rewrite_onpage_batch(items, title_max=60, meta_min=120, meta_max=160):
         if sug["title"] or sug["meta_description"]:
             out[idx] = sug
     return out
+
+
+# ---------------------------------------------------------------------------
+# C) Cobertura: ¿RPP ya publicó lo que publicó la competencia?
+# ---------------------------------------------------------------------------
+
+def match_coverage(competitor_titles, own_titles):
+    """
+    Para cada titular de competencia, decide si alguno de los `own_titles`
+    (notas recientes de RPP) cubre el MISMO hecho/tema, y cuál. Devuelve dict
+    {indice_competencia: indice_rpp | -1} o None. -1 = RPP no lo cubre.
+    """
+    if not is_enabled() or not competitor_titles or not own_titles:
+        return None
+
+    comp_num = "\n".join(f"{i}. {t}" for i, t in enumerate(competitor_titles))
+    own_num = "\n".join(f"{i}. {t}" for i, t in enumerate(own_titles))
+    system = (
+        "Eres un editor de RPP Noticias (Perú). Comparas titulares de otros "
+        "medios contra los titulares ya publicados por RPP y determinas si RPP "
+        "cubre el MISMO hecho o tema (no basta que compartan una palabra: debe "
+        "ser la misma noticia). Respondes exclusivamente en JSON, sin texto "
+        "adicional ni markdown."
+    )
+    prompt = (
+        "TITULARES DE RPP (ya publicados):\n" + own_num + "\n\n"
+        "TITULARES DE LA COMPETENCIA (¿RPP los cubre?):\n" + comp_num + "\n\n"
+        "Para CADA titular de competencia indica el índice del titular de RPP "
+        "que cubre el mismo hecho, o -1 si RPP no lo ha cubierto.\n"
+        'Responde SOLO un JSON: {"items": [{"i": <indice_competencia>, "rpp": <indice_rpp_o_-1>}]}'
+    )
+    data = _generate_json(prompt, system=system, max_tokens=4000)
+    if not isinstance(data, dict) or not isinstance(data.get("items"), list):
+        if data is not None:
+            logger.warning(f"OpenRouter: JSON de cobertura con forma inesperada: {str(data)[:200]!r}")
+        return None
+
+    out = {}
+    for entry in data["items"]:
+        try:
+            ci = int(entry["i"])
+            oi = int(entry["rpp"])
+        except (KeyError, ValueError, TypeError):
+            continue
+        if 0 <= ci < len(competitor_titles):
+            out[ci] = oi if (0 <= oi < len(own_titles)) else -1
+    return out or None

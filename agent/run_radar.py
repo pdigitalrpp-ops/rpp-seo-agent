@@ -18,8 +18,8 @@ from config import (
     KNOWN_SECTIONS_FALLBACK, ALERT_SCORE_THRESHOLD, ALERT_MAX_PER_SECTION_PER_HOUR,
     CATEGORY_KEYWORDS,
 )
-from collectors import marfeel, trends, competitors
-from analyzers import scoring, opportunities
+from collectors import marfeel, trends, competitors, rpp_own_feed
+from analyzers import scoring, opportunities, coverage
 from llm import provider as llm
 from notifiers import notify
 from writers.supabase_writer import (
@@ -91,6 +91,12 @@ def run():
         n_cat = llm.categorize_articles(competitor_data, cats_articles)
         if n_cat is not None:
             logger.info(f"✅ LLM categorizó {n_cat}/{len(competitor_data)} titulares de competencia")
+
+        # Cobertura: ¿RPP ya publicó lo que publicó la competencia? (rules-first
+        # + refinamiento LLM). Marca rpp_has_coverage en cada artículo.
+        own_recent = safe_collect("rpp_own_feed", rpp_own_feed.fetch_recent_articles, run_data)
+        n_cov = coverage.compute_coverage(competitor_data, own_recent or [])
+        logger.info(f"📰 Cobertura RPP: {n_cov}/{len(competitor_data)} titulares ya publicados")
 
     if not trends_data:
         logger.info("Sin tendencias; nada que puntuar en este ciclo")
