@@ -122,7 +122,15 @@ def save_competitor_articles(articles):
         "published_at": a.get("published_at"),
         "category":     a.get("category"),
     } for a in articles]
-    sb.table("competitor_articles").upsert(rows, on_conflict="url", ignore_duplicates=True).execute()
+    # ignore_duplicates=False (default): upsert real, no solo insert-if-new.
+    # Con ignore_duplicates=True (como estaba) un artículo ya visto quedaba
+    # PARA SIEMPRE con su primera categoría (típicamente la de reglas, antes
+    # de que el LLM categorice) — la corrida de hoy podía re-categorizar bien
+    # un titular, pero si la URL ya existía en la tabla, el upsert lo
+    # ignoraba entero y la categoría vieja nunca se corregía. Con upsert real,
+    # cada re-fetch de la misma URL sobreescribe con la categoría más reciente
+    # (y más precisa, gracias al LLM).
+    sb.table("competitor_articles").upsert(rows, on_conflict="url").execute()
     logger.info(f"Guardados {len(rows)} artículos de competencia")
 
 
