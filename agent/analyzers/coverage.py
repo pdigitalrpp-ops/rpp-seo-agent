@@ -59,10 +59,17 @@ def _idf(own_token_sets):
 
 
 # Umbrales del matcher por reglas (calibrados con datos reales de 2026-07-10).
-# score = suma de IDF de los tokens compartidos; se exige además >=2 tokens en
-# común para evitar falsos positivos por un solo término genérico.
-_MATCH_MIN_SHARED = 2
-_MATCH_MIN_SCORE  = 2.5
+# score = suma de IDF de los tokens compartidos. Además de score, se exige:
+#  - >=2 tokens compartidos, y
+#  - al menos un token compartido "distintivo" (largo >=6), para evitar
+#    falsos positivos por 2 tokens genéricos/temporales ("julio"+"2026" hacían
+#    match entre "vacaciones escolares julio 2026" y "gratificación julio 2026").
+# Nota: matches que comparten SOLO una entidad (Haaland, Keiko) pero son
+# noticias distintas ("bebés llamados Haaland" vs "pronóstico de Haaland") aún
+# pasan estas reglas — eso lo corrige la verificación LLM (ver compute_coverage).
+_MATCH_MIN_SHARED   = 2
+_MATCH_MIN_SCORE    = 2.5
+_DISTINCTIVE_MIN_LEN = 6
 
 
 def _rules_match(competitor_articles, own_articles):
@@ -76,14 +83,16 @@ def _rules_match(competitor_articles, own_articles):
     results = []
     for c in competitor_articles:
         ctok = _tokens(c.get("title", ""))
-        best_idx, best_score, best_shared = None, 0.0, 0
+        best_idx, best_score = None, 0.0
         for i, otok in enumerate(own_tok):
             shared = ctok & otok
             if len(shared) < _MATCH_MIN_SHARED:
                 continue
+            if not any(len(t) >= _DISTINCTIVE_MIN_LEN for t in shared):
+                continue  # solo tokens cortos/genéricos → no es señal fiable
             score = sum(idf.get(t, 1.0) for t in shared)
             if score > best_score:
-                best_idx, best_score, best_shared = i, score, len(shared)
+                best_idx, best_score = i, score
         if best_idx is not None and best_score >= _MATCH_MIN_SCORE:
             results.append((best_idx, best_score))
         else:
@@ -121,17 +130,25 @@ def compute_coverage(competitor_articles, own_articles, use_llm=True):
             c["rpp_matched_title"] = None
             c["rpp_matched_url"] = None
 
-    # 2) Refinamiento LLM (autoritativo) — el LLM entiende sinónimos/paráfrasis
-    #    que las reglas no (p.ej. "precio del euro" != "precio del dólar"). Para
-    #    no agotar la cuota free, solo se refinan los RPP_COVERAGE_LLM_MAX
-    #    titulares MÁS RECIENTES; el resto conserva el match por reglas. Se
-    #    mantiene el mapeo índice-local-LLM → índice-global para aplicar bien.
+    # 2) Refinamiento LLM (autoritativo) — el LLM entiende que dos titulares que
+    #    comparten palabras/entidad pueden ser NOTICIAS DISTINTAS (p.ej. "bebés
+    #    llamados Haaland" vs "pronóstico de Haaland", o "precio del euro" vs
+    #    "precio del dólar"). Presupuesto limitado (RPP_COVERAGE_LLM_MAX) para no
+    #    agotar la cuota free, así que se PRIORIZA: primero verificar los que las
+    #    reglas marcaron "publicado" (ahí están los falsos positivos que hay que
+    #    tumbar), y con lo que sobre, revisar los "pendiente" más recientes (por
+    #    si las reglas se perdieron un match real). Dentro de cada grupo, por
+    #    recencia.
     if use_llm and competitor_articles:
-        order = sorted(
+        by_recency = sorted(
             range(len(competitor_articles)),
             key=lambda i: competitor_articles[i].get("published_at") or "",
             reverse=True,
-        )[:RPP_COVERAGE_LLM_MAX]
+        )
+        covered = [i for i in by_recency if competitor_articles[i].get("rpp_has_coverage")]
+        pending = [i for i in by_recency if not competitor_articles[i].get("rpp_has_coverage")]
+        order = (covered + pending)[:RPP_COVERAGE_LLM_MAX]
+
         own_titles = [a["title"] for a in own_articles]
         comp_titles = [competitor_articles[i].get("title", "") for i in order]
         llm_map = llm.match_coverage(comp_titles, own_titles)

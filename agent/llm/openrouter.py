@@ -268,15 +268,18 @@ def match_coverage(competitor_titles, own_titles):
     system = (
         "Eres un editor de RPP Noticias (Perú). Comparas titulares de otros "
         "medios contra los titulares ya publicados por RPP y determinas si RPP "
-        "cubre el MISMO hecho o tema (no basta que compartan una palabra: debe "
-        "ser la misma noticia). Respondes exclusivamente en JSON, sin texto "
-        "adicional ni markdown."
+        "cubre el MISMO HECHO NOTICIOSO. Regla estricta: que compartan una "
+        "persona, equipo o tema NO basta — debe ser el mismo evento concreto. "
+        "Ejemplos de lo que NO es el mismo hecho: 'bebés llamados Haaland' vs "
+        "'el pronóstico de Haaland'; 'precio del euro' vs 'precio del dólar'; "
+        "'vacaciones escolares de julio' vs 'gratificación de julio'. En la duda, "
+        "responde -1. Respondes exclusivamente en JSON, sin texto ni markdown."
     )
     prompt = (
         "TITULARES DE RPP (ya publicados):\n" + own_num + "\n\n"
-        "TITULARES DE LA COMPETENCIA (¿RPP los cubre?):\n" + comp_num + "\n\n"
+        "TITULARES DE LA COMPETENCIA (¿RPP cubre el mismo hecho?):\n" + comp_num + "\n\n"
         "Para CADA titular de competencia indica el índice del titular de RPP "
-        "que cubre el mismo hecho, o -1 si RPP no lo ha cubierto.\n"
+        "que cubre EXACTAMENTE el mismo hecho, o -1 si RPP no lo ha cubierto.\n"
         'Responde SOLO un JSON: {"items": [{"i": <indice_competencia>, "rpp": <indice_rpp_o_-1>}]}'
     )
     data = _generate_json(prompt, system=system, max_tokens=4000)
