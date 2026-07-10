@@ -1,5 +1,7 @@
 import { supabase } from "@/lib/supabase"
 import { InfoTooltip } from "@/components/ui/InfoTooltip"
+import { LastUpdated } from "@/components/ui/LastUpdated"
+import { getLastRunFinishedAt } from "@/lib/lastRun"
 
 export const revalidate = 60
 
@@ -39,6 +41,8 @@ export default async function AlertasPage() {
       .limit(20),
   ])
 
+  const lastRun = await getLastRunFinishedAt("radar")
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -51,11 +55,14 @@ export default async function AlertasPage() {
             Es el panel para reaccionar rápido a problemas.
           </InfoTooltip>
         </h1>
-        <span className={`text-sm font-medium px-3 py-1 rounded-full ${
-          !activeAlerts?.length ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
-        }`}>
-          {activeAlerts?.length ?? 0} activa(s)
-        </span>
+        <div className="flex flex-col items-end gap-1">
+          <span className={`text-sm font-medium px-3 py-1 rounded-full ${
+            !activeAlerts?.length ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+          }`}>
+            {activeAlerts?.length ?? 0} activa(s)
+          </span>
+          <LastUpdated kind="radar" finishedAt={lastRun} />
+        </div>
       </div>
 
       {/* Alertas activas */}

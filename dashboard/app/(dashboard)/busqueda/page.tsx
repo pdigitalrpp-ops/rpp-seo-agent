@@ -1,5 +1,7 @@
 import { supabase } from "@/lib/supabase"
 import { InfoTooltip } from "@/components/ui/InfoTooltip"
+import { LastUpdated } from "@/components/ui/LastUpdated"
+import { getLastRunFinishedAt } from "@/lib/lastRun"
 
 export const revalidate = 60
 
@@ -23,6 +25,8 @@ export default async function BusquedaPage() {
     .limit(1)
     .single()
   const latestSerpDate = latestSerpRow?.date
+
+  const lastRun = await getLastRunFinishedAt("morning")
 
   const [{ data: quickWins }, { data: lowCtr }, { data: topQueries }, { data: discover }, { data: serpOpps }] =
     await Promise.all([
@@ -79,20 +83,23 @@ export default async function BusquedaPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          Búsqueda &amp; Discover
-          <InfoTooltip align="left">
-            Cómo rinde RPP en Google. Combina tres fuentes: Search Console (clics,
-            impresiones y posición reales, con 1 día de rezago), Google Discover (el
-            feed de recomendados) y SerpApi (el SERP en vivo, para ver featured
-            snippets y carruseles). Sirve para encontrar oportunidades concretas de
-            optimización.
-          </InfoTooltip>
-        </h1>
-        <p className="text-sm text-gray-500 mt-0.5">
-          Rendimiento en Google Search, Google Discover, y oportunidades detectadas en el SERP en vivo
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+            Búsqueda &amp; Discover
+            <InfoTooltip align="left">
+              Cómo rinde RPP en Google. Combina tres fuentes: Search Console (clics,
+              impresiones y posición reales, con 1 día de rezago), Google Discover (el
+              feed de recomendados) y SerpApi (el SERP en vivo, para ver featured
+              snippets y carruseles). Sirve para encontrar oportunidades concretas de
+              optimización.
+            </InfoTooltip>
+          </h1>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Rendimiento en Google Search, Google Discover, y oportunidades detectadas en el SERP en vivo
+          </p>
+        </div>
+        <LastUpdated kind="morning" finishedAt={lastRun} />
       </div>
 
       {/* Búsqueda web */}

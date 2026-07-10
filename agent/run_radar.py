@@ -68,7 +68,7 @@ def build_alerts(scored_topics):
 
 def run():
     today = date.today()
-    run_data = {"started_at": datetime.now(), "sources_ok": [], "sources_failed": []}
+    run_data = {"started_at": datetime.now(), "sources_ok": [], "sources_failed": [], "kind": "radar"}
     logger.info(f"📡 Radar en tiempo real — {datetime.now():%H:%M}")
     logger.info(
         "🔑 Proveedores LLM detectados (solo presencia de credenciales, no validez): "

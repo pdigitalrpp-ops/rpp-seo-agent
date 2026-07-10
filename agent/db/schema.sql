@@ -109,6 +109,7 @@ CREATE TABLE IF NOT EXISTS publishing_windows (
 CREATE TABLE IF NOT EXISTS agent_runs (
   id              uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   run_date        date NOT NULL,
+  kind            text,                    -- "morning" | "radar" (para "última actualización" por pestaña)
   started_at      timestamptz,
   finished_at     timestamptz,
   status          text,

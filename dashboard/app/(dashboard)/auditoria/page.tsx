@@ -1,5 +1,7 @@
 import { supabase } from "@/lib/supabase"
 import { InfoTooltip } from "@/components/ui/InfoTooltip"
+import { LastUpdated } from "@/components/ui/LastUpdated"
+import { getLastRunFinishedAt } from "@/lib/lastRun"
 
 export const revalidate = 60
 
@@ -15,14 +17,15 @@ const issueClass = (it: any) =>
   it.class ?? (PLATFORM_CHECKS.has(it.check) ? "platform" : "editorial")
 
 export default async function AuditoriaPage() {
-  const today = new Date().toISOString().split("T")[0]
-
-  const { data: audits } = await supabase
-    .from("onpage_audits")
-    .select("*")
-    .order("audited_date", { ascending: false })
-    .order("score", { ascending: true })
-    .limit(30)
+  const [{ data: audits }, lastRun] = await Promise.all([
+    supabase
+      .from("onpage_audits")
+      .select("*")
+      .order("audited_date", { ascending: false })
+      .order("score", { ascending: true })
+      .limit(30),
+    getLastRunFinishedAt("morning"),
+  ])
 
   const rows = audits ?? []
 
@@ -54,7 +57,7 @@ export default async function AuditoriaPage() {
             Sirve para saber qué corregir en cada artículo, con guía concreta.
           </InfoTooltip>
         </h1>
-        <span className="text-sm text-gray-500">{today}</span>
+        <LastUpdated kind="morning" finishedAt={lastRun} />
       </div>
 
       {!rows.length && (

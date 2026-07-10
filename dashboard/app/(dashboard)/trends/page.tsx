@@ -1,6 +1,8 @@
 import { supabase } from "@/lib/supabase"
 import { TagBadge } from "@/components/ui/Pill"
 import { InfoTooltip } from "@/components/ui/InfoTooltip"
+import { LastUpdated } from "@/components/ui/LastUpdated"
+import { getLastRunFinishedAt } from "@/lib/lastRun"
 
 export const revalidate = 60
 
@@ -31,6 +33,8 @@ export default async function TrendsPage() {
     .order("date", { ascending: false })
     .limit(100)
 
+  const lastRun = await getLastRunFinishedAt("radar")
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -43,7 +47,7 @@ export default async function TrendsPage() {
             coberturas antes que la competencia.
           </InfoTooltip>
         </h1>
-        <span className="text-sm text-gray-500">{today}</span>
+        <LastUpdated kind="radar" finishedAt={lastRun} />
       </div>
 
       {!trends?.length && (

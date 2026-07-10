@@ -148,7 +148,7 @@ def collect_serp_opportunities(quick_wins, run_data):
 
 def run():
     today = date.today()
-    run_data = {"started_at": datetime.now(), "sources_ok": [], "sources_failed": []}
+    run_data = {"started_at": datetime.now(), "sources_ok": [], "sources_failed": [], "kind": "morning"}
     logger.info(f"🌅 Benchmark de la mañana — {today}")
     logger.info(
         "🔑 Proveedores LLM detectados (solo presencia de credenciales, no validez): "

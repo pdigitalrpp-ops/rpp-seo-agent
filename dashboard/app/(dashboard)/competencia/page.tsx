@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase"
+import { getLastRunFinishedAt } from "@/lib/lastRun"
 import CompetenciaClient, { Article } from "./CompetenciaClient"
 
 export const revalidate = 60
@@ -6,12 +7,15 @@ export const revalidate = 60
 export default async function CompetenciaPage() {
   const today = new Date().toISOString().split("T")[0]
 
-  const { data } = await supabase
-    .from("competitor_articles")
-    .select("id, site, title, url, published_at, category, rpp_has_coverage, rpp_matched_title, rpp_matched_url")
-    .eq("fetched_date", today)
-    .order("published_at", { ascending: false })
-    .limit(500)
+  const [{ data }, lastRun] = await Promise.all([
+    supabase
+      .from("competitor_articles")
+      .select("id, site, title, url, published_at, category, rpp_has_coverage, rpp_matched_title, rpp_matched_url")
+      .eq("fetched_date", today)
+      .order("published_at", { ascending: false })
+      .limit(500),
+    getLastRunFinishedAt("radar"),
+  ])
 
   const articles = (data as Article[]) ?? []
 
@@ -29,5 +33,5 @@ export default async function CompetenciaPage() {
     )
   }
 
-  return <CompetenciaClient articles={articles} date={today} />
+  return <CompetenciaClient articles={articles} date={today} lastRun={lastRun} />
 }

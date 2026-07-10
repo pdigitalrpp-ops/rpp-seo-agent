@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react"
 import { Pill } from "@/components/ui/Pill"
 import { InfoTooltip } from "@/components/ui/InfoTooltip"
+import { LastUpdated } from "@/components/ui/LastUpdated"
 
 export type Article = {
   id: string
@@ -91,9 +92,11 @@ function MediumLogo({ site, url, size = 18 }: { site: string; url: string | null
 export default function CompetenciaClient({
   articles,
   date,
+  lastRun,
 }: {
   articles: Article[]
   date: string
+  lastRun: string | null
 }) {
   const [site, setSite] = useState<string>(TODOS)
   const [category, setCategory] = useState<string>(TODAS)
@@ -155,7 +158,7 @@ export default function CompetenciaClient({
             está cubriendo. Los datos vienen de los feeds RSS de cada medio.
           </InfoTooltip>
         </h1>
-        <span className="text-sm text-gray-500">{date}</span>
+        <LastUpdated kind="radar" finishedAt={lastRun} />
       </div>
 
       {/* Categorías clicables */}

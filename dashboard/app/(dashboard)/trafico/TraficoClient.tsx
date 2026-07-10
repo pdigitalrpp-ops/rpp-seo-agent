@@ -4,6 +4,7 @@ import { useMemo, useState } from "react"
 import { Pill } from "@/components/ui/Pill"
 import { StatCard } from "@/components/ui/StatCard"
 import { InfoTooltip } from "@/components/ui/InfoTooltip"
+import { LastUpdated } from "@/components/ui/LastUpdated"
 
 export type ChannelRow = {
   page_path: string
@@ -55,10 +56,12 @@ export default function TraficoClient({
   rows,
   hasChannelData,
   date,
+  lastRun,
 }: {
   rows: ChannelRow[]
   hasChannelData: boolean
   date: string
+  lastRun: string | null
 }) {
   // Solo notas editoriales (fuera widget mrf.io y audio en vivo)
   const cleanRows = useMemo(() => rows.filter((r) => isRealArticle(r.page_path)), [rows])
@@ -136,7 +139,7 @@ export default function TraficoClient({
             contenido rinde y de dónde llega el tráfico.
           </InfoTooltip>
         </h1>
-        <span className="text-sm text-gray-500">{date}</span>
+        <LastUpdated kind="morning" finishedAt={lastRun} />
       </div>
 
       {!hasChannelData && (

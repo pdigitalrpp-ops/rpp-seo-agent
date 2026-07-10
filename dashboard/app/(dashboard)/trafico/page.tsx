@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase"
+import { getLastRunFinishedAt } from "@/lib/lastRun"
 import TraficoClient, { ChannelRow } from "./TraficoClient"
 
 export const revalidate = 60
@@ -52,5 +53,7 @@ export default async function TraficoPage() {
     }
   }
 
-  return <TraficoClient rows={rows} hasChannelData={hasChannelData} date={date} />
+  const lastRun = await getLastRunFinishedAt("morning")
+
+  return <TraficoClient rows={rows} hasChannelData={hasChannelData} date={date} lastRun={lastRun} />
 }

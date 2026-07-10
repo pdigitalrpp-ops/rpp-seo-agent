@@ -1,6 +1,8 @@
 import { supabase } from "@/lib/supabase"
 import { TagBadge } from "@/components/ui/Pill"
 import { InfoTooltip } from "@/components/ui/InfoTooltip"
+import { LastUpdated } from "@/components/ui/LastUpdated"
+import { getLastRunFinishedAt } from "@/lib/lastRun"
 
 export const revalidate = 60
 
@@ -13,11 +15,10 @@ const URGENCY_COLOR: Record<string, string> = {
 export default async function RecomendacionesPage() {
   const today = new Date().toISOString().split("T")[0]
 
-  const { data: recs } = await supabase
-    .from("recommendations")
-    .select("*")
-    .eq("date", today)
-    .order("rank")
+  const [{ data: recs }, lastRun] = await Promise.all([
+    supabase.from("recommendations").select("*").eq("date", today).order("rank"),
+    getLastRunFinishedAt("radar"),
+  ])
 
   return (
     <div className="space-y-6">
@@ -31,7 +32,7 @@ export default async function RecomendacionesPage() {
             el ángulo diferencial, por qué es momento de publicarlo y la ventana ideal.
           </InfoTooltip>
         </h1>
-        <span className="text-sm text-gray-500">{today}</span>
+        <LastUpdated kind="radar" finishedAt={lastRun} />
       </div>
 
       {!recs?.length && (

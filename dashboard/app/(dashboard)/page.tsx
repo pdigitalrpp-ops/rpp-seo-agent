@@ -2,6 +2,7 @@ import { supabase } from "@/lib/supabase"
 import { StatCard } from "@/components/ui/StatCard"
 import { TagBadge } from "@/components/ui/Pill"
 import { InfoTooltip } from "@/components/ui/InfoTooltip"
+import { LastUpdated } from "@/components/ui/LastUpdated"
 
 export const revalidate = 60
 
@@ -15,7 +16,7 @@ export default async function DashboardHome() {
   const today = new Date().toISOString().split("T")[0]
 
   const [{ data: runs }, { data: recs }, { data: alerts }, { data: trends }, { data: insights }] = await Promise.all([
-    supabase.from("agent_runs").select("*").order("run_date", { ascending: false }).limit(1),
+    supabase.from("agent_runs").select("*").order("finished_at", { ascending: false }).limit(1),
     supabase.from("recommendations").select("*").eq("date", today).order("rank"),
     supabase.from("alerts").select("*").eq("resolved", false).order("created_at", { ascending: false }).limit(10),
     supabase.from("daily_trends").select("*").eq("date", today).order("rank").limit(5),
@@ -38,12 +39,7 @@ export default async function DashboardHome() {
             qué priorizar. Se actualiza automáticamente con cada corrida del agente.
           </InfoTooltip>
         </h1>
-        <span className="text-sm text-gray-500">
-          Última actualización:{" "}
-          {lastRun?.finished_at
-            ? new Date(lastRun.finished_at).toLocaleString("es-PE", { timeZone: "America/Lima" })
-            : "Sin datos"}
-        </span>
+        <LastUpdated kind="mixed" finishedAt={lastRun?.finished_at} />
       </div>
 
       {/* Fila de KPIs */}
