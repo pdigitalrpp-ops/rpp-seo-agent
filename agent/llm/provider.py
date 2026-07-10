@@ -40,12 +40,16 @@ def categorize_topics(keywords, categories):
     return provider.categorize_topics(keywords, categories)
 
 
-# Tamaño de lote para categorizar titulares de competencia. ~470 titulares por
-# corrida → ~5 llamadas. Ojo con el límite free de OpenRouter (50 req/día con
-# <$10 de crédito): morning (1×) + radar (4-6×/día reales) ≈ 30-35 req/día,
-# dentro del límite. Si el radar algún día corre de verdad cada 10 min, esto
-# necesitará caché por título en Supabase.
-_ARTICLE_CHUNK = 100
+# Tamaño de lote para categorizar titulares de competencia. Con Tencent Hy3
+# (razonador, vía OpenRouter) un lote de 100 agotaba max_tokens PENSANDO y
+# nunca llegaba a responder (finish_reason=length, visto en producción
+# 2026-07-10) — se baja a 40 para que la respuesta quepa con margen.
+# ~470 titulares/corrida → ~12 llamadas. Ojo con el límite free de OpenRouter
+# (50 req/día con <$10 de crédito): morning (1×) + radar (4-6×/día reales) ≈
+# 70-85 req/día — por encima del límite si el radar corre seguido. Si eso pasa
+# en la práctica, cachear keyword→categoría en Supabase con TTL (evita
+# reclasificar lo ya visto) en vez de subir el chunk de nuevo.
+_ARTICLE_CHUNK = 40
 
 
 def categorize_articles(articles, categories):

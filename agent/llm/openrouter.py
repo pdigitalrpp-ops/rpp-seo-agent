@@ -32,10 +32,23 @@ def is_enabled():
     return bool(OPENROUTER_API_KEY)
 
 
-def _generate(prompt, system=None, max_tokens=2000, retries=1):
+def _generate(prompt, system=None, max_tokens=4000, retries=1):
     """
     Llama a /chat/completions (formato OpenAI). Devuelve el texto (str) o None
     si falla — nunca lanza, para no bloquear al orquestador.
+
+    Tencent Hy3 es un modelo razonador (chain-of-thought): antes de responder
+    "piensa" y esos tokens de razonamiento salen del mismo `max_tokens`. Con
+    poco presupuesto, el modelo se queda pensando y corta ANTES de escribir
+    la respuesta (`finish_reason: "length"`, `content` vacío, solo el
+    razonamiento a medias en `reasoning`) — visto en producción con
+    max_tokens=2000/4000 en lotes de ~80-100 ítems. Por eso: (a) se limita el
+    razonamiento con `reasoning.effort: "low"` (deja el grueso del
+    presupuesto para la respuesta) vía el parámetro unificado de OpenRouter
+    (openrouter.ai/docs/guides/best-practices/reasoning-tokens), y (b) el
+    default de `max_tokens` sube a 4000. El campo `reasoning` NUNCA se usa
+    como respuesta si `content` viene vacío — es el pensamiento truncado del
+    modelo, no la salida estructurada que se pidió.
     """
     if not is_enabled():
         return None
@@ -50,6 +63,7 @@ def _generate(prompt, system=None, max_tokens=2000, retries=1):
         "messages":    messages,
         "temperature": 0.4,
         "max_tokens":  max_tokens,
+        "reasoning":   {"effort": "low", "exclude": True},
     }
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
@@ -76,21 +90,17 @@ def _generate(prompt, system=None, max_tokens=2000, retries=1):
                 logger.warning(f"OpenRouter {resp.status_code}: {resp.text[:2000]}")
                 return None
             data = resp.json()
-            msg = data["choices"][0]["message"]
-            content = msg.get("content") or ""
-            # Modelos razonadores (como Tencent Hy3) pueden devolver content
-            # vacío y el texto real en "reasoning" (p.ej. si max_tokens se
-            # agotó pensando). Se intenta rescatar en vez de fallar mudo.
-            if not content.strip() and msg.get("reasoning"):
-                logger.warning(
-                    "OpenRouter devolvió content vacío; usando el campo 'reasoning' "
-                    f"(finish_reason={data['choices'][0].get('finish_reason')})"
+            choice = data["choices"][0]
+            content = (choice["message"].get("content") or "").strip()
+            if not content:
+                finish = choice.get("finish_reason")
+                hint = (
+                    " — se agotó max_tokens pensando, sin llegar a responder "
+                    "(subir max_tokens o bajar el tamaño del lote)"
+                    if finish == "length" else ""
                 )
-                content = msg["reasoning"]
-            if not content.strip():
                 logger.warning(
-                    "OpenRouter respondió 200 pero sin texto utilizable "
-                    f"(finish_reason={data['choices'][0].get('finish_reason')}); "
+                    f"OpenRouter respondió 200 pero sin content (finish_reason={finish}){hint}; "
                     "se usa el fallback por reglas"
                 )
                 return None
@@ -159,7 +169,7 @@ def categorize_topics(keywords, categories):
         f"Temas:\n{numbered}\n\n"
         'Responde SOLO un JSON: {"items": [{"i": <indice>, "categoria": "<categoria>"}]}'
     )
-    data = _generate_json(prompt, system=system, max_tokens=4000)
+    data = _generate_json(prompt, system=system, max_tokens=6000)
     if not isinstance(data, dict) or not isinstance(data.get("items"), list):
         if data is not None:
             logger.warning(f"OpenRouter: JSON de categorización con forma inesperada: {str(data)[:200]!r}")
