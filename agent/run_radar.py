@@ -70,6 +70,12 @@ def run():
     today = date.today()
     run_data = {"started_at": datetime.now(), "sources_ok": [], "sources_failed": []}
     logger.info(f"📡 Radar en tiempo real — {datetime.now():%H:%M}")
+    logger.info(
+        "🔑 Proveedores LLM detectados (solo presencia de credenciales, no validez): "
+        f"openrouter={llm.openrouter.is_enabled()} "
+        f"bedrock={llm.bedrock.is_enabled()} "
+        f"gemini={llm.gemini.is_enabled()}"
+    )
 
     # --- RECOLECCIÓN (ligera) ---
     realtime       = safe_collect("marfeel_realtime", marfeel.fetch_realtime_top,        run_data)

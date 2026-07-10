@@ -170,6 +170,12 @@ def run():
     today = date.today()
     run_data = {"started_at": datetime.now(), "sources_ok": [], "sources_failed": []}
     logger.info(f"🌅 Benchmark de la mañana — {today}")
+    logger.info(
+        "🔑 Proveedores LLM detectados (solo presencia de credenciales, no validez): "
+        f"openrouter={llm.openrouter.is_enabled()} "
+        f"bedrock={llm.bedrock.is_enabled()} "
+        f"gemini={llm.gemini.is_enabled()}"
+    )
 
     # --- RECOLECCIÓN ---
     marfeel_perf    = safe_collect("marfeel_yesterday", marfeel.fetch_yesterday_performance, run_data)
