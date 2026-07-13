@@ -64,6 +64,20 @@ case-sensitive aparte), validada contra ~200 titulares reales — para ajustar
 qué se considera SEO, editar esa lista (costo $0, sin tocar el agente ni la
 DB; aplica también al histórico). Todo el tablero (categorías, medios,
 cobertura RPP, notas) opera sobre el grupo seleccionado.
+(7) **Categoría "opinión" (calculada, no viene de la DB)** en la misma
+pestaña: se oculta de "Todas" y solo se ve al seleccionarla explícitamente en
+el filtro de categorías (pedido: "mantener el contenido de valor arriba,
+mostrar opinión a demanda"). Detección: El Comercio (y cualquier medio con
+URL propia) por **ruta** — `/opinion/` o `-opinion-` en el slug (señal
+confiable, ej. columnas de Día 1 en `/economia/...-opinion-...`). **Perú21
+por firma de autor en el titular** (`PERU21_OPINION_AUTHORS`: Fernando Tuesta
+Soldevilla, Carlos Galdós, Richard Arce, Aníbal Quiroga, + patrón "cortitas de
+hoy") porque Perú21 llega vía proxy de Google News RSS
+(`news.google.com/rss/articles/...`), sin URL propia de peru21.pe para
+detectar por ruta. También se excluyen **páginas de etiqueta/tema** (ej.
+"Noticias de JNE | JNE - Perú 21", que no son notas sino índices) con un
+patrón genérico por formato del titular (`^noticias de .+\|`) — a pedido
+explícito, sin lista de temas: cualquier etiqueta nueva cae sola.
 
 **2026-07-09 — GSC Discover + SerpApi integrados, pestaña renombrada:** el
 usuario se suscribió a SerpApi y pidió combinarla con GSC (que ya traía
