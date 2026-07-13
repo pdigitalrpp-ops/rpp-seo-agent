@@ -9,7 +9,7 @@ scoring) que el radar de tiempo real usa el resto del día.
 import logging
 import os
 import sys
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -148,7 +148,9 @@ def collect_serp_opportunities(quick_wins, run_data):
 
 def run():
     today = date.today()
-    run_data = {"started_at": datetime.now(), "sources_ok": [], "sources_failed": [], "kind": "morning"}
+    # timestamps aware en UTC: la columna es timestamptz y un naive local (TZ=Lima
+    # en el workflow) se interpretaba como UTC → dashboard restaba 5h dos veces
+    run_data = {"started_at": datetime.now(timezone.utc), "sources_ok": [], "sources_failed": [], "kind": "morning"}
     logger.info(f"🌅 Benchmark de la mañana — {today}")
     logger.info(
         "🔑 Proveedores LLM detectados (solo presencia de credenciales, no validez): "
@@ -270,7 +272,7 @@ def run():
         run_data["error_log"] = "save_errors: " + ", ".join(run_data["save_errors"])
 
     # --- LOG ---
-    run_data["finished_at"] = datetime.now()
+    run_data["finished_at"] = datetime.now(timezone.utc)
     run_data["status"] = (
         "success" if not run_data["sources_failed"]
         else "partial" if run_data["sources_ok"] else "failed"

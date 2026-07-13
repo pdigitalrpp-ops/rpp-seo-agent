@@ -21,8 +21,8 @@ def save_run_log(run_data):
     sb.table("agent_runs").insert({
         "run_date":      str(date.today()),
         "kind":          run_data.get("kind"),   # "morning" | "radar"
-        "started_at":    run_data.get("started_at", datetime.now()).isoformat(),
-        "finished_at":   run_data.get("finished_at", datetime.now()).isoformat(),
+        "started_at":    run_data.get("started_at", datetime.now(timezone.utc)).isoformat(),
+        "finished_at":   run_data.get("finished_at", datetime.now(timezone.utc)).isoformat(),
         "status":        run_data.get("status", "unknown"),
         "sources_ok":    run_data.get("sources_ok", []),
         "sources_failed": run_data.get("sources_failed", []),

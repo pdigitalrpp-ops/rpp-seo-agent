@@ -9,7 +9,7 @@ el umbral. Las recomendaciones se publican en el dashboard.
 
 import logging
 import sys
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -68,7 +68,9 @@ def build_alerts(scored_topics):
 
 def run():
     today = date.today()
-    run_data = {"started_at": datetime.now(), "sources_ok": [], "sources_failed": [], "kind": "radar"}
+    # timestamps aware en UTC: la columna es timestamptz y un naive local (TZ=Lima
+    # en el workflow) se interpretaba como UTC → dashboard restaba 5h dos veces
+    run_data = {"started_at": datetime.now(timezone.utc), "sources_ok": [], "sources_failed": [], "kind": "radar"}
     logger.info(f"📡 Radar en tiempo real — {datetime.now():%H:%M}")
     logger.info(
         "🔑 Proveedores LLM detectados (solo presencia de credenciales, no validez): "
@@ -100,7 +102,7 @@ def run():
 
     if not trends_data:
         logger.info("Sin tendencias; nada que puntuar en este ciclo")
-        run_data["finished_at"] = datetime.now()
+        run_data["finished_at"] = datetime.now(timezone.utc)
         run_data["status"] = "partial" if run_data["sources_ok"] else "failed"
         try:
             save_run_log(run_data)
@@ -165,7 +167,7 @@ def run():
         logger.error(f"❌ Error guardando en Supabase: {e}")
         run_data["error_log"] = str(e)
 
-    run_data["finished_at"] = datetime.now()
+    run_data["finished_at"] = datetime.now(timezone.utc)
     run_data["status"] = (
         "success" if not run_data["sources_failed"]
         else "partial" if run_data["sources_ok"] else "failed"
