@@ -64,6 +64,19 @@ function isSeoContent(title: string): boolean {
   return SEO_PATTERNS.some((re) => re.test(t)) || SEO_PATTERNS_CS.some((re) => re.test(title))
 }
 
+// ── Detección de columnas de opinión ───────────────────────────────────────
+// Por URL, que es la señal confiable: El Comercio (y otros medios) publican
+// opinión bajo /opinion/ (columnistas, editorial, colaboradores, efemérides)
+// o con "-opinion-" en el slug (p.ej. las columnas de Día 1 en /economia/).
+// Se muestran SOLO al seleccionar la categoría "opinión" — fuera de la vista
+// por defecto ("Todas"), que es donde ensuciaban con titulares cortos.
+const OPINION_CATEGORY = "opinión"
+
+function isOpinion(a: Article): boolean {
+  const u = a.url ?? ""
+  return u.includes("/opinion/") || u.includes("-opinion-")
+}
+
 // Orden y metadatos de medios (dominio para el favicon + color de respaldo)
 const SITES = ["El Comercio", "La República", "Gestión", "Peru21", "Infobae Perú"]
 const SITE_META: Record<string, { domain: string; color: string }> = {
@@ -88,6 +101,7 @@ function colorOf(site: string): string {
 }
 
 function catOf(a: Article): string {
+  if (isOpinion(a)) return OPINION_CATEGORY
   return a.category ?? "otros"
 }
 
@@ -170,9 +184,14 @@ export default function CompetenciaClient({
     (coverage === COV_PUBLICADO && a.rpp_has_coverage === true) ||
     (coverage === COV_PENDIENTE && a.rpp_has_coverage === false)
 
+  // "Todas" NO incluye opinión: las columnas solo se ven seleccionando su
+  // categoría explícitamente (piden verlas a demanda, no en la vista default).
+  const matchesCategory = (a: Article) =>
+    category === TODAS ? catOf(a) !== OPINION_CATEGORY : catOf(a) === category
+
   // Conteos con filtrado cruzado (facetas)
   const siteCounts = useMemo(() => {
-    const base = category === TODAS ? pool : pool.filter((a) => catOf(a) === category)
+    const base = pool.filter(matchesCategory)
     const acc: Record<string, number> = {}
     for (const a of base) acc[a.site] = (acc[a.site] ?? 0) + 1
     return acc
@@ -188,12 +207,12 @@ export default function CompetenciaClient({
   const list = useMemo(() => {
     return pool
       .filter((a) => (site === TODOS || a.site === site)
-        && (category === TODAS || catOf(a) === category)
+        && matchesCategory(a)
         && matchesCoverage(a))
       .sort((a, b) => (b.published_at ?? "").localeCompare(a.published_at ?? ""))
   }, [pool, site, category, coverage])
 
-  const totalCross = category === TODAS ? pool.length : pool.filter((a) => catOf(a) === category).length
+  const totalCross = pool.filter(matchesCategory).length
 
   return (
     <div className="space-y-6">
@@ -217,12 +236,14 @@ export default function CompetenciaClient({
           <InfoTooltip align="left">
             Cuántas notas publicó la competencia hoy en cada categoría. Haz clic en una
             categoría para filtrar todo el tablero (medios y notas). Ayuda a ver qué
-            temas están saturados y en cuáles hay espacio.
+            temas están saturados y en cuáles hay espacio. Las columnas de opinión no
+            aparecen en &quot;Todas&quot;: selecciona la categoría &quot;opinión&quot;
+            para verlas.
           </InfoTooltip>
         </h2>
         <div className="flex flex-wrap gap-2">
           <Pill variant="solid" active={category === TODAS} onClick={() => setCategory(TODAS)}>
-            Todas: {categoryCounts.reduce((s, [, c]) => s + c, 0)}
+            Todas: {categoryCounts.reduce((s, [cat, c]) => (cat === OPINION_CATEGORY ? s : s + c), 0)}
           </Pill>
           {categoryCounts.map(([cat, count]) => (
             <Pill
