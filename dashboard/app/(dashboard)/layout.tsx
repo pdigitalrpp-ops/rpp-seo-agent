@@ -5,7 +5,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <div className="min-h-screen bg-gray-50">
       {/* Navbar */}
       <nav className="bg-rpp-yellow sticky top-0 z-10">
-        <div className="max-w-screen-xl mx-auto px-4 flex items-center gap-4 h-16 flex-wrap py-2">
+        <div className="max-w-screen-xl mx-auto px-4 flex items-center gap-4 min-h-[4rem] flex-wrap py-2">
           <div className="flex items-center gap-2 mr-2 shrink-0">
             <span className="font-extrabold text-rpp-ink text-base">RPP SEO</span>
             <span className="hidden sm:inline-flex items-center rounded-full bg-white border border-rpp-ink/10 px-3 py-1 text-xs font-semibold text-rpp-ink/80">
