@@ -72,9 +72,24 @@ function isSeoContent(title: string): boolean {
 // por defecto ("Todas"), que es donde ensuciaban con titulares cortos.
 const OPINION_CATEGORY = "opinión"
 
+// Perú21 llega vía Google News RSS (news.google.com/rss/articles/...), no
+// desde peru21.pe, así que no hay URL propia para detectar por ruta como en
+// El Comercio. Se detecta por firma de autor en el titular (formatos:
+// "<Nombre>: <texto>", "<texto> por <Nombre>", "<texto> | <Nombre>") más el
+// bloque recurrente "cortitas de hoy" (resumen breve sin valor periodístico
+// propio, mismo trato que una columna). Lista ampliable según se detecten
+// más columnistas.
+const PERU21_OPINION_AUTHORS = ["Fernando Tuesta Soldevilla", "Carlos Galdós", "Richard Arce", "Aníbal Quiroga"]
+
+function isPeru21Opinion(a: Article): boolean {
+  if (a.site !== "Peru21") return false
+  const t = a.title
+  return PERU21_OPINION_AUTHORS.some((name) => t.includes(name)) || /cortitas de hoy/i.test(t)
+}
+
 function isOpinion(a: Article): boolean {
   const u = a.url ?? ""
-  return u.includes("/opinion/") || u.includes("-opinion-")
+  return u.includes("/opinion/") || u.includes("-opinion-") || isPeru21Opinion(a)
 }
 
 // Orden y metadatos de medios (dominio para el favicon + color de respaldo)
