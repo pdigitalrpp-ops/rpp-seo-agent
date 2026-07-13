@@ -24,6 +24,46 @@ const COV_PENDIENTE = "pendiente"
 const TODOS = "__todos__"
 const TODAS = "__todas__"
 
+type ContentType = "valor" | "seo"
+
+// ── Detección de "contenido SEO" (commodity/programático) ─────────────────
+// Notas hechas para posicionar en búsquedas recurrentes, no periodismo del
+// día: loterías, precio del dólar, horóscopo, temblor hoy, clima, dónde ver
+// partidos, mastergrama/carlincatura, contenido para inmigrantes en USA, etc.
+// Se detecta por patrones del titular (los formatos son muy formulaicos).
+// Para ajustar: añadir/quitar regex de esta lista. Se matchea sobre el título
+// en minúsculas y sin tildes (salvo los patrones case-sensitive).
+const SEO_PATTERNS: RegExp[] = [
+  /temblor (en|hoy)/, // "Temblor en Perú HOY...", "Temblor hoy, en Colombia"
+  /reporte sismico|ultimos sismos|sismos? reportados/,
+  /horoscopo|predicciones (para tu|segun tu) signo/,
+  /sorteo zodiaco|la tinka|quini 6|gana diario|kabala|loteria/,
+  /numeros ganadores|bolillas ganadoras|revento el pozo|resultados sorteo/,
+  /precio del (dolar|euro)|cotizacion de (apertura|cierre)|tipo de cambio|usd en mxn/,
+  /precio de la gasolina/,
+  /clima en|pronostico del (clima|tiempo)|prediccion del clima/,
+  /donde ver|a que hora (empieza|empiezan|juega|se juega)|horarios?, canales/,
+  /partidos de hoy/,
+  /en vivo.*transmision|transmision.*en vivo|mira aqui la transmision/,
+  /mastergrama|carlincatura|solucionario/,
+  /efemerides|un dia como hoy/,
+  /alimentos gratis|cupones de alimentos|food stamps|despensas/,
+  /migrantes? en (estados unidos|eeuu|usa)|green card|corte de inmigracion/,
+  /link para consultar|consulta (aqui|en este link)/,
+]
+// Case-sensitive: "ICE" (la agencia migratoria de USA) en mayúsculas, para no
+// matchear palabras que contengan "ice".
+const SEO_PATTERNS_CS: RegExp[] = [/\bICE\b/]
+
+function stripAccents(s: string): string {
+  return s.normalize("NFD").replace(/[̀-ͯ]/g, "")
+}
+
+function isSeoContent(title: string): boolean {
+  const t = stripAccents(title.toLowerCase())
+  return SEO_PATTERNS.some((re) => re.test(t)) || SEO_PATTERNS_CS.some((re) => re.test(title))
+}
+
 // Orden y metadatos de medios (dominio para el favicon + color de respaldo)
 const SITES = ["El Comercio", "La República", "Gestión", "Peru21", "Infobae Perú"]
 const SITE_META: Record<string, { domain: string; color: string }> = {
@@ -101,20 +141,29 @@ export default function CompetenciaClient({
   const [site, setSite] = useState<string>(TODOS)
   const [category, setCategory] = useState<string>(TODAS)
   const [coverage, setCoverage] = useState<string>(COV_TODAS)
+  const [contentType, setContentType] = useState<ContentType>("valor")
+
+  // Split contenido de valor vs contenido SEO: todo el tablero (categorías,
+  // medios, notas, cobertura) opera sobre el grupo seleccionado. Default: valor.
+  const seoTotal = useMemo(() => articles.filter((a) => isSeoContent(a.title)).length, [articles])
+  const pool = useMemo(
+    () => articles.filter((a) => isSeoContent(a.title) === (contentType === "seo")),
+    [articles, contentType],
+  )
 
   // ¿Se calculó cobertura para esta corrida? (si ninguna nota trae el flag, el
   // benchmark aún no corrió con la feature — ocultamos el filtro y los badges).
   const hasCoverageData = useMemo(
-    () => articles.some((a) => a.rpp_has_coverage !== null && a.rpp_has_coverage !== undefined),
-    [articles],
+    () => pool.some((a) => a.rpp_has_coverage !== null && a.rpp_has_coverage !== undefined),
+    [pool],
   )
   const pendingCount = useMemo(
-    () => articles.filter((a) => a.rpp_has_coverage === false).length,
-    [articles],
+    () => pool.filter((a) => a.rpp_has_coverage === false).length,
+    [pool],
   )
   const publishedCount = useMemo(
-    () => articles.filter((a) => a.rpp_has_coverage === true).length,
-    [articles],
+    () => pool.filter((a) => a.rpp_has_coverage === true).length,
+    [pool],
   )
   const matchesCoverage = (a: Article) =>
     coverage === COV_TODAS ||
@@ -123,28 +172,28 @@ export default function CompetenciaClient({
 
   // Conteos con filtrado cruzado (facetas)
   const siteCounts = useMemo(() => {
-    const base = category === TODAS ? articles : articles.filter((a) => catOf(a) === category)
+    const base = category === TODAS ? pool : pool.filter((a) => catOf(a) === category)
     const acc: Record<string, number> = {}
     for (const a of base) acc[a.site] = (acc[a.site] ?? 0) + 1
     return acc
-  }, [articles, category])
+  }, [pool, category])
 
   const categoryCounts = useMemo(() => {
-    const base = site === TODOS ? articles : articles.filter((a) => a.site === site)
+    const base = site === TODOS ? pool : pool.filter((a) => a.site === site)
     const acc: Record<string, number> = {}
     for (const a of base) acc[catOf(a)] = (acc[catOf(a)] ?? 0) + 1
     return Object.entries(acc).sort((a, b) => b[1] - a[1])
-  }, [articles, site])
+  }, [pool, site])
 
   const list = useMemo(() => {
-    return articles
+    return pool
       .filter((a) => (site === TODOS || a.site === site)
         && (category === TODAS || catOf(a) === category)
         && matchesCoverage(a))
       .sort((a, b) => (b.published_at ?? "").localeCompare(a.published_at ?? ""))
-  }, [articles, site, category, coverage])
+  }, [pool, site, category, coverage])
 
-  const totalCross = category === TODAS ? articles.length : articles.filter((a) => catOf(a) === category).length
+  const totalCross = category === TODAS ? pool.length : pool.filter((a) => catOf(a) === category).length
 
   return (
     <div className="space-y-6">
@@ -242,13 +291,39 @@ export default function CompetenciaClient({
               />
             ))}
           </ul>
+
+          {/* Tipo de contenido */}
+          <h2 className="text-xs font-bold uppercase tracking-wide text-gray-500 mt-5 mb-3 flex items-center gap-1.5">
+            Tipo de contenido
+            <InfoTooltip align="left">
+              Separa el periodismo del día (&quot;Contenido de valor&quot;, lo que se
+              muestra por defecto) de las notas hechas para posicionar en búsquedas
+              recurrentes (&quot;Contenido SEO&quot;: loterías, precio del dólar,
+              horóscopo, temblores, clima, dónde ver partidos, etc.). Los filtros de
+              medio y categoría aplican en ambos.
+            </InfoTooltip>
+          </h2>
+          <ul className="space-y-1">
+            <ContentTypeItem
+              label="Contenido de valor"
+              count={articles.length - seoTotal}
+              active={contentType === "valor"}
+              onClick={() => setContentType("valor")}
+            />
+            <ContentTypeItem
+              label="Contenido SEO"
+              count={seoTotal}
+              active={contentType === "seo"}
+              onClick={() => setContentType("seo")}
+            />
+          </ul>
         </div>
 
         {/* Ventana con las notas */}
         <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden self-start">
           <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-gray-700">
-              Notas
+              {contentType === "seo" ? "Notas · Contenido SEO" : "Notas"}
               {site !== TODOS ? ` · ${site}` : ""}
               {category !== TODAS ? ` · ${category}` : ""}
             </h2>
@@ -318,6 +393,33 @@ function CoverageBadge({ article }: { article: Article }) {
     <span className="text-xs rounded px-1.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200">
       ⚠ Pendiente
     </span>
+  )
+}
+
+/** Ítem del selector de tipo de contenido (valor vs SEO), estilo MediumItem. */
+function ContentTypeItem({
+  label,
+  count,
+  active,
+  onClick,
+}: {
+  label: string
+  count: number
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <li>
+      <button
+        onClick={onClick}
+        className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition ${
+          active ? "bg-teal-50 text-rpp-teal font-semibold" : "text-gray-700 hover:bg-gray-50"
+        }`}
+      >
+        <span className="truncate flex-1 text-left">{label}</span>
+        <span className={`text-xs shrink-0 ${active ? "text-rpp-teal" : "text-gray-400"}`}>{count}</span>
+      </button>
+    </li>
   )
 }
 
