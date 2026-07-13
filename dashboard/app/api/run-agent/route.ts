@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getToken } from "next-auth/jwt"
 import { supabase } from "@/lib/supabase"
 
 // Dispara manualmente el workflow del radar en GitHub Actions.
-// Protecciones: sesión NextAuth requerida, cooldown de 30 min contra
-// agent_runs (cuida las cuotas free de OpenRouter/Marfeel), y no despacha
-// si ya hay una corrida queued/in_progress en GitHub.
+// Sin auth por ahora (MVP: el dashboard entero es libre); las protecciones
+// reales son el cooldown de 30 min contra agent_runs (cuida las cuotas free
+// de OpenRouter/Marfeel) y no despachar si ya hay una corrida
+// queued/in_progress en GitHub.
 export const dynamic = "force-dynamic"
 
 const REPO = "pdigitalrpp-ops/rpp-seo-agent"
@@ -24,15 +24,7 @@ async function githubFetch(path: string, init?: RequestInit) {
   })
 }
 
-export async function POST(req: NextRequest) {
-  const session = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
-  if (!session) {
-    return NextResponse.json(
-      { error: "Inicia sesión para actualizar los datos." },
-      { status: 401 }
-    )
-  }
-
+export async function POST(_req: NextRequest) {
   if (!process.env.GITHUB_DISPATCH_TOKEN) {
     return NextResponse.json(
       { error: "Actualización manual no configurada (falta GITHUB_DISPATCH_TOKEN en Vercel)." },
