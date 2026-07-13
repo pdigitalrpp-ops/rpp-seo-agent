@@ -47,33 +47,52 @@ hoy). Ver sección "Amazon Bedrock" más abajo. **Pendiente del usuario:** pegar
 (bloqueado) y de ahí a reglas, sin romper nada.
 
 **2026-07-10 — Dashboard: tooltips explicativos en las 8 pestañas + OpenRouter
-(Tencent Hy3) reemplaza a Bedrock como proveedor LLM preferido:**
-(1) Componente `dashboard/components/ui/InfoTooltip.tsx` (ícono "?" con panel
-por hover/tap, portal a `document.body` con posición fija para no recortarse
-en tarjetas `overflow-hidden`) añadido al título y secciones core de las 8
-pestañas del dashboard. Desplegado y verificado en Vercel (READY).
+(Tencent Hy3) reemplaza a Bedrock como proveedor LLM preferido — VERIFICADO
+en producción:** (1) Componente `dashboard/components/ui/InfoTooltip.tsx`
+(ícono "?" con panel por hover/tap, portal a `document.body` con posición fija
+para no recortarse en tarjetas `overflow-hidden`) añadido al título y secciones
+core de las 8 pestañas del dashboard. Desplegado y verificado en Vercel (READY).
 (2) `agent/llm/openrouter.py` nuevo + `provider.py` actualizado: orden
 **OpenRouter > Bedrock > Gemini > reglas** (Bedrock nunca respondió en
-producción, cuenta AWS con modelos Claude gen. 3 marcados Legacy). Ver detalle
-completo en "Fase 2 — capa LLM" más abajo. **Pendiente del usuario:** pegar
-`OPENROUTER_API_KEY` en GitHub Secrets y correr `morning.yml`/`radar.yml`
-manualmente para verificar (la prueba local falló por bloqueo de red de RPP a
-`openrouter.ai`, no por el código — ver gotcha de red en esa sección).
+producción, cuenta AWS con modelos Claude gen. 3 marcados Legacy). El usuario
+pegó `OPENROUTER_API_KEY` en GitHub Secrets y se corrió `radar.yml` manualmente
+varias veces: **funciona en producción** (`✅ LLM categorizó 177/177 titulares`,
+`10/10 temas`). Hubo que arreglar un bug real en el camino — Tencent Hy3 es un
+modelo razonador y se quedaba sin `max_tokens` pensando antes de responder
+(`finish_reason=length`); el fix fue capar el razonamiento con
+`reasoning: {effort: "low", exclude: true}` (parámetro unificado de
+OpenRouter), no subir tokens a lo bruto. Ver detalle completo en "Fase 2 —
+capa LLM" más abajo.
 (3) Corregido: el GitHub MCP no está bloqueado por sesión — la red corporativa
 de RPP lo bloquea y activarlo requiere permisos de admin que el usuario no
 tiene. Ver nota actualizada en "Conexiones MCP" más abajo.
 
-**2026-07-10 — Cobertura RPP en la pestaña Competencia (feature nueva):** por cada
-titular de competencia se marca si RPP ya publicó una nota del mismo tema
-(badge "✓ Publicado en RPP" / "⚠ Pendiente" + filtro "¿RPP ya lo publicó?").
-Fuente de lo propio: `collectors/rpp_own_feed.py` (RSS `https://rpp.pe/rss`, no
-Marfeel — Marfeel mide tráfico, no "lo último publicado"). Matching en
-`analyzers/coverage.py`: rules-first (solapamiento de tokens ponderado por IDF)
-+ refinamiento LLM (`provider.match_coverage`). Corre **solo en el radar** (no
-en el morning: allí la ventana de competencia es 24h vs 5h del feed propio →
-falsos "pendiente"). Columnas nuevas en `competitor_articles`
-(`rpp_has_coverage`, `rpp_matched_title`, `rpp_matched_url`,
-`coverage_checked_at`). Ver sección "Cobertura RPP" más abajo.
+**2026-07-10 — Categorización de competencia con LLM (siempre) + cobertura RPP
+(feature nueva) + informativo de actualización por pestaña:**
+(1) `provider.categorize_articles` re-categoriza CADA titular de competencia
+con el LLM (las reglas por keyword fallaban con nombres propios: "Canal 5 y
+TUDN…" → política, Haaland → política). Corre siempre en morning y radar.
+Requirió además arreglar `save_competitor_articles`: usaba
+`ignore_duplicates=True`, así que una URL ya vista NUNCA se re-categorizaba
+aunque el LLM mejorara — ahora hace upsert real.
+(2) **Cobertura RPP** en la pestaña Competencia: por cada titular de
+competencia se marca si RPP ya publicó una nota del mismo tema (badge
+"✓ Publicado en RPP" / "⚠ Pendiente" + filtro "¿RPP ya lo publicó?"). Fuente de
+lo propio: `collectors/rpp_own_feed.py` (RSS `https://rpp.pe/rss`, NO Marfeel
+— Marfeel mide tráfico, no "lo último publicado"). Matching en
+`analyzers/coverage.py`: rules-first (solapamiento de tokens ponderado por IDF,
+con umbral de token distintivo) + refinamiento LLM. Corre **solo en el radar**
+(no en el morning: ventanas de competencia 24h vs feed propio 5h → falsos
+"pendiente"). Verificado con datos reales de producción y ajustado dos veces
+tras detectar falsos positivos (tokens temporales genéricos, y misma
+entidad/distinto hecho — p.ej. "bebés llamados Haaland" vs "pronóstico de
+Haaland"). Columnas nuevas en `competitor_articles` (`rpp_has_coverage`,
+`rpp_matched_title`, `rpp_matched_url`, `coverage_checked_at`). Ver sección
+"Cobertura RPP" más abajo.
+(3) **Informativo de actualización:** las 8 pestañas muestran ahora cadencia
+("cada ~10 min" / "1 vez al día") + hora exacta de la última corrida (no solo
+fecha). Requirió columna nueva `agent_runs.kind` ("morning"|"radar") con
+backfill de los registros históricos. Ver "Dashboard Next.js" más abajo.
 
 - **Repo:** `https://github.com/pdigitalrpp-ops/rpp-seo-agent` (rama `master`)
 - **Dashboard:** `https://rpp-seo-agent.vercel.app` (Vercel, team PDIGITAL RPP)
@@ -99,17 +118,17 @@ falsos "pendiente"). Columnas nuevas en `competitor_articles`
 - **Alertas Etapa 3 (Teams/WhatsApp):** definir `SECTION_RESPONSIBLES` (canal por
   sección). Hasta entonces las alertas quedan solo en Supabase/dashboard. (El
   usuario lo dejó para el final.)
-- **Secreto pendiente:** `SERPAPI_KEY` — el usuario ya se suscribió a SerpApi,
-  falta pegar la key en GitHub Secrets. El código ya está integrado (ver
-  sección "SerpApi" más abajo); el agente funciona sin ella (rules-first).
+- **`SERPAPI_KEY` (RESUELTO):** configurada en GitHub Secrets, confirmada en logs
+  de corridas reales (`SERPAPI_KEY: ***` presente en el env del workflow).
 - **Filtrar no-artículos (RESUELTO):** solo se considera contenido editorial de rpp.pe lo
   que matchea `-(noticia|live)-<id>` (notas + coberturas en vivo tipo minuto-a-minuto).
   Se descarta home, homes de sección (`/deportes`), landings/herramientas
   (`/calculadora-...`, `/simulador-...`), buscador, `/ultimas-noticias`, `/tv-vivo`,
   `/audio/en-vivo`, listados `/noticias/...` y el widget `experiences.mrf.io`. Filtro
-  aplicado en DOS sitios (deben coincidir): `run_morning.is_real_article` (pipeline: limpia
-  own_traffic, own_traffic_channels, decay, insights, auditoría) y `isRealArticle` en
-  `TraficoClient.tsx` (dashboard). Si aparece un tipo de contenido con otro sufijo (video,
+  aplicado en DOS lenguajes (deben coincidir): `agent/article_filter.py` (Python — extraído
+  de `run_morning.py` el 2026-07-10 para que `collectors/rpp_own_feed.py` lo reuse sin
+  import circular; usado por `run_morning.py` y ahora también por la cobertura RPP) y
+  `isRealArticle` en `TraficoClient.tsx` (dashboard, TS). Si aparece un tipo de contenido con otro sufijo (video,
   galería…), ampliar el regex en ambos.
 - **Fase 2 — capa LLM (Claude):** ver más abajo. Es lo que corrige la calidad.
 
@@ -379,6 +398,23 @@ rpp-seo-agent/
     ni levantar dev server local para verificar. La verificación real ocurre en el build
     de Vercel (que sí tiene Node) tras el push; usar el Vercel MCP
     (`list_deployments`/`get_deployment_build_logs`) para confirmar `state: "READY"`.
+- **Tooltips informativos (2026-07-10):** `components/ui/InfoTooltip.tsx` — ícono "?"
+  junto al título y secciones core de las 8 pestañas, con panel explicativo por
+  hover (desktop) o tap (touch). Implementado con un portal a `document.body` +
+  `position: fixed` (no `position: absolute` dentro de la tarjeta): varias tarjetas
+  usan `overflow-hidden` y el panel se recortaba, sobre todo en estados "Sin datos"
+  con la tarjeta casi vacía. Cierre por click-fuera, `Escape`, o scroll/resize.
+  `StatCard` acepta prop `info` para mostrarlo junto al KPI.
+- **Informativo de cadencia + última actualización (2026-07-10):**
+  `components/ui/LastUpdated.tsx` — bloque en el header de cada pestaña con (a)
+  cadencia legible ("cada ~10 min" para pestañas del radar, "1 vez al día" para
+  las del morning) y (b) hora exacta (no solo fecha) de la última corrida, vía
+  `lib/lastRun.ts` → `getLastRunFinishedAt(kind)` que lee `agent_runs` filtrando
+  por la columna `kind` ("morning"|"radar", nueva — con backfill de los
+  registros históricos por sus `sources_ok`). Mapeo: recomendaciones/tendencias/
+  competencia/alertas → radar; tráfico/búsqueda/auditoría → morning; home → mixed
+  (usa el último run de cualquier tipo). En los client components (competencia,
+  tráfico) el `page.tsx` hace el fetch y pasa `lastRun` como prop.
 
 ### GitHub Actions
 - **El cron se retrasa/saltea mucho** en repos de poca actividad (hoy corrió ~3 veces,
@@ -407,7 +443,7 @@ rpp-seo-agent/
 | `onpage_audits` | morning | dashboard auditoria |
 | `serp_opportunities` | morning (borra+reinserta, solo si hay `SERPAPI_KEY`) | dashboard busqueda |
 | `publishing_windows` | (reusable) | dashboard home |
-| `agent_runs` | ambos | dashboard home (semáforo) |
+| `agent_runs` | ambos (con `kind`: "morning"\|"radar") | dashboard home (semáforo) + "última actualización" por pestaña |
 
 ---
 
@@ -434,13 +470,18 @@ PASS_EDITORIAL / PASS_DIRECCION / PASS_ADMIN   (contraseñas temporales: <rol>20
 
 ## Fase 2 — capa LLM (OpenRouter preferido desde 2026-07-10, Bedrock y Gemini como fallback)
 
-**Estado (2026-07-10):** la capa LLM está **implementada y con un proveedor
-nuevo preferido: OpenRouter** (modelo Tencent Hy3, gratis). `agent/llm/provider.py`
-es un facade que los orquestadores importan (`from llm import provider as llm`)
-en vez de un cliente específico; internamente elige **OpenRouter si hay
-`OPENROUTER_API_KEY`, si no Bedrock si hay credenciales AWS, si no Gemini, si
-no reglas**. Cambiar de proveedor o añadir uno nuevo no toca `run_morning.py`
-ni `run_radar.py`, solo `provider.py`.
+**Estado (2026-07-10): VERIFICADO EN PRODUCCIÓN.** La capa LLM está
+implementada y funcionando con OpenRouter (modelo Tencent Hy3, gratis) como
+proveedor real. `agent/llm/provider.py` es un facade que los orquestadores
+importan (`from llm import provider as llm`) en vez de un cliente específico;
+internamente elige **OpenRouter si hay `OPENROUTER_API_KEY`, si no Bedrock si
+hay credenciales AWS, si no Gemini, si no reglas**. Cambiar de proveedor o
+añadir uno nuevo no toca `run_morning.py` ni `run_radar.py`, solo `provider.py`.
+Corridas reales confirmadas: `✅ LLM categorizó 177/177 titulares de
+competencia`, `✅ LLM categorizó 10/10 temas` (radar, 2026-07-10). El log de
+diagnóstico `🔑 Proveedores LLM detectados: openrouter=True bedrock=True
+gemini=False` confirma qué credenciales llegaron al workflow (útil si algún
+día vuelve a fallar en silencio).
 
 **Por qué OpenRouter reemplaza a Bedrock como preferido:** Bedrock nunca llegó
 a responder en producción — los 3 IDs de modelo Claude probados (Sonnet v1,
@@ -473,27 +514,38 @@ mantenerlos, rules-first) mientras eso no se resuelva.
   para todas las notas con issues editoriales. Enchufada en `run_morning.py`
   vía el facade; se guarda en `onpage_audits.suggestions` (jsonb) y el
   dashboard la muestra como "✨ Sugerencia IA" (título/meta/H2 con contador de chars).
+- **C) Cobertura (competencia vs RPP):** `match_coverage(comp_titles, own_titles)`
+  — ver sección "Cobertura RPP" más abajo. Solo implementado en
+  `openrouter.py`; Bedrock/Gemini no lo tienen (el facade cae a rules-first si
+  el proveedor activo no expone el método, vía `getattr`).
 - Workflows ya pasan `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`,
   `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`,
-  `BEDROCK_MODEL_ID` y `GEMINI_API_KEY`. `OPENROUTER_API_KEY` es el único
-  secret pendiente de pegar en GitHub Secrets por el usuario; sin él el
-  facade cae a Bedrock (bloqueado) → Gemini (bloqueado) → reglas, sin romper nada.
+  `BEDROCK_MODEL_ID` y `GEMINI_API_KEY`. Todos configurados en GitHub Secrets
+  (el usuario pegó `OPENROUTER_API_KEY` el 2026-07-10).
 - `requirements.txt` incluye `boto3==1.34.144` (Bedrock); OpenRouter reutiliza
   `requests`, ya presente por Gemini — sin dependencias nuevas.
 
-**Gotcha de red (2026-07-10, importante para probar localmente):** la red
-corporativa de Grupo RPP bloquea `openrouter.ai` puntualmente (confirmado:
-otros dominios en Cloudflare como discord.com/anthropic.com sí responden,
-solo openrouter.ai da timeout de conexión). No probar `openrouter.py` desde
-un sandbox/máquina en la red de RPP — el workflow de GitHub Actions corre en
-infraestructura de GitHub, sin esa restricción, así que ahí sí debe funcionar.
+**Gotcha real de producción — Tencent Hy3 es un modelo razonador (fix
+2026-07-10):** el primer run real dio `finish_reason=length` y `content` vacío
+en TODAS las llamadas de categorización: el modelo gasta el mismo presupuesto
+de `max_tokens` "pensando" antes de escribir la respuesta, y con lotes de
+~80-100 ítems se quedaba sin tokens a mitad de razonamiento (nunca llegaba al
+JSON). El fix NO fue subir `max_tokens` a lo bruto sino enviar
+`"reasoning": {"effort": "low", "exclude": true}` en el body (parámetro
+unificado de OpenRouter, ver openrouter.ai/docs/guides/best-practices/
+reasoning-tokens) — limita el razonamiento y lo excluye de la respuesta. Se
+combinó con bajar `_ARTICLE_CHUNK` de 100 a 40 (provider.py) y subir
+`max_tokens` de categorización a 6000. **Importante:** el campo `reasoning`
+que devuelve la API NUNCA es la respuesta pedida (es el monólogo interno
+truncado) — no usarlo como fallback si `content` viene vacío, es el error que
+se cometió y corrigió en el primer intento de fix.
 
-**Pendiente de verificación real:** el usuario debe pegar `OPENROUTER_API_KEY`
-en GitHub Secrets y correr `run_morning.py` o `run_radar.py` manualmente
-(workflow_dispatch) para confirmar en los logs `sources_ok` /
-`✅ LLM categorizó` / `✅ LLM reescribió` que OpenRouter/Tencent Hy3 respondió
-(no solo que compiló). Aún no se corrió con credenciales reales — el intento
-de prueba local falló por el bloqueo de red de RPP, no por el código.
+**Gotcha de red (importante para probar localmente):** la red corporativa de
+Grupo RPP bloquea `openrouter.ai` puntualmente (confirmado: otros dominios en
+Cloudflare como discord.com/anthropic.com sí responden, solo openrouter.ai da
+timeout de conexión). No probar `openrouter.py` desde un sandbox/máquina en la
+red de RPP — el workflow de GitHub Actions corre en infraestructura de
+GitHub, sin esa restricción, y ahí sí funciona (verificado).
 
 ### Análisis de consumo de la API (2026-07-08)
 Volumen real medido (no teórico): el cron del radar NO cumple los `*/10 min`
