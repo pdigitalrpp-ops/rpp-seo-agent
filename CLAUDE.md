@@ -11,7 +11,7 @@ dashboard web.
 
 ## Estado actual
 
-**Fecha último avance:** 2026-07-10
+**Fecha último avance:** 2026-07-13
 **Estado:** v2 en producción y **funcionando end-to-end**. El radar corre en
 GitHub Actions, recolecta de Marfeel + Google Trends + competencia, puntúa y
 guarda recomendaciones en Supabase; el dashboard las muestra en vivo. El
@@ -20,6 +20,38 @@ Rediseño visual "RPP Digital" en producción (ver sección Dashboard Next.js).
 Benchmark matutino del 2026-07-08 corrido y verificado (run #24, Success):
 179 artículos, 500 filas GSC, 41 en content decay, 3 insights, 7 auditorías
 on-page (sin sugerencias IA — Gemini sigue bloqueado, ver Fase 2 LLM).
+
+**2026-07-13 — Fix timezone de agent_runs + botón "Actualizar ahora" — VERIFICADO
+end-to-end en producción:**
+(1) **Bug de doble conversión de zona horaria corregido:** `started_at`/
+`finished_at` se generaban con `datetime.now()` naive bajo `TZ=America/Lima`
+(del workflow); al guardarse en `timestamptz` Supabase los interpretaba como
+UTC y el dashboard volvía a restar 5h al mostrar en Lima → "última
+actualización" salía 5h atrás (01:46 en vez de 06:46). Fix: `datetime.now(
+timezone.utc)` en `run_morning.py`, `run_radar.py` y el fallback de
+`save_run_log` (`supabase_writer.py`). Verificado: run #95 guardó 13:49 UTC →
+dashboard muestra 08:49 Lima correcto. Las filas históricas pre-fix siguen 5h
+atrás (no se backfillearon; las reemplazan las corridas nuevas).
+(2) **Botón "⚡ Actualizar ahora" en la home:** `dashboard/app/api/run-agent/
+route.ts` (POST) dispara `radar.yml` vía `workflow_dispatch` con
+`GITHUB_DISPATCH_TOKEN` (fine-grained PAT solo de este repo, Actions: write,
+en env vars de Vercel — configurado). Protecciones: cooldown 30 min contra
+`agent_runs` (cuida cuotas free OpenRouter/SerpApi), 409 si ya hay run
+queued/in_progress en GitHub, token nunca sale del servidor. **SIN auth por
+decisión del usuario (MVP)** — ojo: el dashboard tiene login pero NINGUNA
+página fuerza sesión (no hay middleware); cuando se agregue, reponer el check
+de sesión en el endpoint. Componente `components/RunAgentButton.tsx` (client,
+estados iniciando/actualizando/error). Verificado end-to-end: el POST disparó
+el run #95 real y el segundo POST recibió el 409 esperado.
+(3) `morning.yml` ahora tiene `concurrency: group: seo-morning` (sin
+cancelación), igual que el radar — dos mornings ya no pueden solaparse.
+(4) **Cadencia real medida (free tier):** morning programado 06:00 Lima
+termina en la práctica ~09:00-10:00; radar corre 5-7 veces/día en franjas
+(madrugada, 5-7am, 9-11am, 12-13h, 15-16h, 18-19h) con gaps de 2-5h. Los
+disparos manuales sí arrancan en segundos.
+(5) Pendiente menor: `next@14.1.0` tiene vulnerabilidad conocida (aviso npm
+en el build de Vercel) — subir a la versión parcheada de Next 14 cuando
+toque mantenimiento.
 
 **2026-07-09 — GSC Discover + SerpApi integrados, pestaña renombrada:** el
 usuario se suscribió a SerpApi y pidió combinarla con GSC (que ya traía
