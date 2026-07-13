@@ -50,6 +50,7 @@ const SEO_PATTERNS: RegExp[] = [
   /alimentos gratis|cupones de alimentos|food stamps|despensas/,
   /migrantes? en (estados unidos|eeuu|usa)|green card|corte de inmigracion/,
   /link para consultar|consulta (aqui|en este link)/,
+  /^noticias de .+\|/, // páginas de etiqueta/tema ("Noticias de JNE | JNE - Perú 21"), no una nota
 ]
 // Case-sensitive: "ICE" (la agencia migratoria de USA) en mayúsculas, para no
 // matchear palabras que contengan "ice".
