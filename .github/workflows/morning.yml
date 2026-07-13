@@ -5,6 +5,10 @@ on:
     - cron: '0 11 * * *'   # 11:00 UTC = 06:00 AM Lima (UTC-5)
   workflow_dispatch:
 
+concurrency:
+  group: seo-morning
+  cancel-in-progress: false
+
 jobs:
   morning:
     runs-on: ubuntu-latest

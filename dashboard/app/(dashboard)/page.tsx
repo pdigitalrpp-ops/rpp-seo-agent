@@ -3,6 +3,7 @@ import { StatCard } from "@/components/ui/StatCard"
 import { TagBadge } from "@/components/ui/Pill"
 import { InfoTooltip } from "@/components/ui/InfoTooltip"
 import { LastUpdated } from "@/components/ui/LastUpdated"
+import { RunAgentButton } from "@/components/RunAgentButton"
 
 export const revalidate = 60
 
@@ -39,7 +40,10 @@ export default async function DashboardHome() {
             qué priorizar. Se actualiza automáticamente con cada corrida del agente.
           </InfoTooltip>
         </h1>
-        <LastUpdated kind="mixed" finishedAt={lastRun?.finished_at} />
+        <div className="flex items-center gap-3">
+          <LastUpdated kind="mixed" finishedAt={lastRun?.finished_at} />
+          <RunAgentButton />
+        </div>
       </div>
 
       {/* Fila de KPIs */}
