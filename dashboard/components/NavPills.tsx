@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { href: "/busqueda",        label: "Búsqueda & Discover" },
   { href: "/auditoria",       label: "Auditoría" },
   { href: "/alertas",         label: "Alertas" },
+  { href: "/status",          label: "Estado" },
 ]
 
 export function NavPills() {
