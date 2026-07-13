@@ -52,6 +52,18 @@ disparos manuales sí arrancan en segundos.
 (5) Pendiente menor: `next@14.1.0` tiene vulnerabilidad conocida (aviso npm
 en el build de Vercel) — subir a la versión parcheada de Next 14 cuando
 toque mantenimiento.
+(6) **Pestaña Competencia: split "Contenido de valor" vs "Contenido SEO"**
+(pedido editorial): los titulares programáticos de la competencia (loterías/
+Tinka, precio dólar/euro/gasolina, horóscopo, "temblor hoy" por país, clima
+por ciudad, "partidos de hoy/dónde ver", mastergrama, carlincatura,
+efemérides, alimentos gratis/ICE para audiencia inmigrante USA) se aíslan en
+un selector "Tipo de contenido" bajo el navegador de Medios. Default:
+contenido de valor. Detección client-side por regex sobre el título
+(`SEO_PATTERNS` en `CompetenciaClient.tsx`, minúsculas sin tildes; `ICE`
+case-sensitive aparte), validada contra ~200 titulares reales — para ajustar
+qué se considera SEO, editar esa lista (costo $0, sin tocar el agente ni la
+DB; aplica también al histórico). Todo el tablero (categorías, medios,
+cobertura RPP, notas) opera sobre el grupo seleccionado.
 
 **2026-07-09 — GSC Discover + SerpApi integrados, pestaña renombrada:** el
 usuario se suscribió a SerpApi y pidió combinarla con GSC (que ya traía
