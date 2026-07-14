@@ -7,6 +7,7 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter" })
 export const metadata: Metadata = {
   title: "RPP SEO Dashboard",
   description: "Agente SEO de contenidos para RPP Noticias",
+  icons: { icon: "/rpp-logo.png" },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

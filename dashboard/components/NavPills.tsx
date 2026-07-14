@@ -20,11 +20,11 @@ export function NavPills() {
   const pathname = usePathname()
 
   return (
-    <div className="flex items-center gap-1 flex-wrap">
+    <div className="flex items-center gap-1 w-max">
       {NAV_ITEMS.map((item) => {
         const active = item.href === "/" ? pathname === "/" : !!pathname?.startsWith(item.href)
         return (
-          <Link key={item.href} href={item.href} className={pillClasses("nav", active)}>
+          <Link key={item.href} href={item.href} className={pillClasses("nav", active, "whitespace-nowrap")}>
             {item.label}
           </Link>
         )

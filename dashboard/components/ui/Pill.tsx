@@ -8,7 +8,7 @@ export function pillClasses(variant: PillVariant, active = false, className = ""
     return `rounded-full px-4 py-1.5 text-sm font-semibold transition ${
       active
         ? "bg-white text-rpp-ink border border-rpp-ink/80"
-        : "text-rpp-ink/70 hover:text-rpp-ink border border-transparent"
+        : "text-rpp-ink/70 hover:text-rpp-ink hover:bg-white/50 border border-transparent"
     } ${className}`
   }
   if (variant === "solid") {
