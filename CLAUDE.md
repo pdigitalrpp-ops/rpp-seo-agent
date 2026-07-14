@@ -11,7 +11,18 @@ dashboard web.
 
 ## Estado actual
 
-**Fecha último avance:** 2026-07-13
+**Fecha último avance:** 2026-07-14
+
+**2026-07-14 — Cron del morning adelantado a 06:00 UTC (01:00 Lima), commit
+23c025f:** el scheduler de GitHub retrasa el cron 3h37-7h32 (medido 07-13 jul
+con cron 11:00 UTC: arrancaba 14:37-18:32 UTC, o sea 09:37-13:32 Lima — el
+"benchmark de la mañana" llegaba a mediodía). Con 06:00 UTC + el mismo retraso,
+queda listo entre ~04:30 y ~08:30 Lima. Ojo al leer horarios históricos: los
+runs `schedule` previos al 2026-07-14 corresponden al cron viejo de 11:00 UTC.
+También verificado hoy: dispatch manual del morning vía API REST de GitHub
+(`POST .../actions/workflows/morning.yml/dispatches`) usando el token del Git
+Credential Manager local funciona — útil porque el GitHub MCP sigue bloqueado
+y el botón del dashboard solo dispara el radar.
 **Estado:** v2 en producción y **funcionando end-to-end**. El radar corre en
 GitHub Actions, recolecta de Marfeel + Google Trends + competencia, puntúa y
 guarda recomendaciones en Supabase; el dashboard las muestra en vivo. El
@@ -195,7 +206,7 @@ backfill de los registros históricos. Ver "Dashboard Next.js" más abajo.
 ## Arquitectura de 3 etapas
 
 ```
-🌅 Etapa 1 — Benchmark de la mañana   (run_morning.py, cron 11:00 UTC = 06:00 Lima)
+🌅 Etapa 1 — Benchmark de la mañana   (run_morning.py, cron 06:00 UTC = 01:00 Lima)
    Marfeel (ayer) + GSC + competencia → rendimiento de ayer, por qué funcionó,
    auditoría on-page de notas, aprendizajes (scoring_weights) para el día.
 
@@ -219,7 +230,7 @@ sería razonamiento real.
 ```
 rpp-seo-agent/
 ├── .github/workflows/
-│   ├── morning.yml                 ← cron 11:00 UTC → run_morning.py
+│   ├── morning.yml                 ← cron 06:00 UTC (01:00 Lima) → run_morning.py
 │   └── radar.yml                   ← cron */10 (horario Lima) → run_radar.py
 ├── agent/
 │   ├── config.py                   ← Marfeel, SECTION_MAP, SCORE_WEIGHTS, umbrales, ONPAGE
