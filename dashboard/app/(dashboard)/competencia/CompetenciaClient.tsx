@@ -1,9 +1,9 @@
 "use client"
 
-import { useMemo, useState } from "react"
-import { Pill } from "@/components/ui/Pill"
+import { useMemo, useState, type ReactNode } from "react"
 import { InfoTooltip } from "@/components/ui/InfoTooltip"
 import { LastUpdated } from "@/components/ui/LastUpdated"
+import { FilterCard, FilterChip, FilterItem } from "@/components/ui/FilterList"
 
 export type Article = {
   id: string
@@ -229,6 +229,12 @@ export default function CompetenciaClient({
   }, [pool, site, category, coverage])
 
   const totalCross = pool.filter(matchesCategory).length
+  const totalValor = articles.length - seoTotal
+
+  const coverageLabel =
+    coverage === COV_PENDIENTE ? "⚠ Pendientes" : coverage === COV_PUBLICADO ? "✓ Publicadas" : null
+
+  const hasActiveFilters = site !== TODOS || category !== TODAS || coverage !== COV_TODAS
 
   return (
     <div className="space-y-6">
@@ -237,134 +243,153 @@ export default function CompetenciaClient({
           Competencia
           <InfoTooltip align="left">
             Qué están publicando hoy los principales medios peruanos (El Comercio, La
-            República, Gestión, Perú21, Infobae). Puedes filtrar por medio y por
-            categoría para ver dónde están poniendo foco y detectar temas que RPP no
-            está cubriendo. Los datos vienen de los feeds RSS de cada medio.
+            República, Gestión, Perú21, Infobae). Usa los filtros para ver dónde están
+            poniendo foco y detectar temas que RPP no está cubriendo. Los datos vienen
+            de los feeds RSS de cada medio.
           </InfoTooltip>
         </h1>
         <LastUpdated kind="radar" finishedAt={lastRun} />
       </div>
 
-      {/* Categorías clicables */}
-      <div className="bg-white rounded-2xl border border-gray-200 p-4">
-        <h2 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1.5">
-          Cobertura por categoría hoy
-          <InfoTooltip align="left">
-            Cuántas notas publicó la competencia hoy en cada categoría. Haz clic en una
-            categoría para filtrar todo el tablero (medios y notas). Ayuda a ver qué
-            temas están saturados y en cuáles hay espacio. Las columnas de opinión no
-            aparecen en &quot;Todas&quot;: selecciona la categoría &quot;opinión&quot;
-            para verlas.
-          </InfoTooltip>
-        </h2>
-        <div className="flex flex-wrap gap-2">
-          <Pill variant="solid" active={category === TODAS} onClick={() => setCategory(TODAS)}>
-            Todas: {categoryCounts.reduce((s, [cat, c]) => (cat === OPINION_CATEGORY ? s : s + c), 0)}
-          </Pill>
-          {categoryCounts.map(([cat, count]) => (
-            <Pill
-              key={cat}
-              variant="solid"
-              active={category === cat}
-              onClick={() => setCategory(category === cat ? TODAS : cat)}
-            >
-              {cat}: {count}
-            </Pill>
-          ))}
-        </div>
+      {/* Tipo de contenido: separa el periodismo del día del contenido SEO
+          programático. Es el filtro que más cambia el tablero (redefine todo
+          el conjunto de datos), por eso va arriba como control segmentado en
+          vez de una entrada más del panel de filtros. */}
+      <div className="inline-flex items-center gap-1 rounded-xl border border-gray-200 bg-gray-100 p-1">
+        <SegmentButton active={contentType === "valor"} onClick={() => setContentType("valor")}>
+          📰 Contenido de valor
+          <CountPill active={contentType === "valor"}>{totalValor}</CountPill>
+        </SegmentButton>
+        <SegmentButton active={contentType === "seo"} onClick={() => setContentType("seo")}>
+          🔍 Contenido SEO
+          <CountPill active={contentType === "seo"}>{seoTotal}</CountPill>
+        </SegmentButton>
+        <InfoTooltip align="left" className="ml-1 mr-2">
+          Separa el periodismo del día (&quot;Contenido de valor&quot;) de las notas
+          hechas para posicionar en búsquedas recurrentes (&quot;Contenido SEO&quot;:
+          loterías, precio del dólar, horóscopo, temblores, clima, dónde ver partidos,
+          etc.). Los filtros de medio, categoría y cobertura aplican en ambos.
+        </InfoTooltip>
       </div>
 
-      {/* Filtro de cobertura RPP */}
-      {hasCoverageData && (
-        <div className="bg-white rounded-2xl border border-gray-200 p-4">
-          <h2 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1.5">
-            ¿RPP ya lo publicó?
-            <InfoTooltip align="left">
-              Compara cada titular de la competencia contra las notas que RPP publicó en
-              las últimas horas (feed de rpp.pe) usando IA. &quot;⚠ Pendiente&quot; marca
-              temas que la competencia cubre y RPP todavía no — son las brechas a cerrar.
-            </InfoTooltip>
-          </h2>
-          <div className="flex flex-wrap gap-2">
-            <Pill variant="solid" active={coverage === COV_TODAS} onClick={() => setCoverage(COV_TODAS)}>
-              Todas: {publishedCount + pendingCount}
-            </Pill>
-            <Pill variant="solid" active={coverage === COV_PENDIENTE} onClick={() => setCoverage(coverage === COV_PENDIENTE ? COV_TODAS : COV_PENDIENTE)}>
-              ⚠ Pendientes: {pendingCount}
-            </Pill>
-            <Pill variant="solid" active={coverage === COV_PUBLICADO} onClick={() => setCoverage(coverage === COV_PUBLICADO ? COV_TODAS : COV_PUBLICADO)}>
-              ✓ Publicadas: {publishedCount}
-            </Pill>
-          </div>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-6">
-        {/* Navegador de medios */}
-        <div className="bg-white rounded-2xl border border-gray-200 p-4 self-start">
-          <h2 className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-3 flex items-center gap-1.5">
-            Medios
-            <InfoTooltip align="left">
-              Filtra las notas por medio. El número es cuántas notas publicó ese medio
-              (según el filtro de categoría activo). Selecciona uno para ver solo sus
-              notas; vuelve a hacer clic para quitar el filtro.
-            </InfoTooltip>
-          </h2>
-          <ul className="space-y-1">
-            <MediumItem
-              label="TODOS"
+      <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-6">
+        {/* Panel de filtros: un único lugar, mismo estilo para las 3 facetas */}
+        <div className="space-y-4 self-start">
+          <FilterCard
+            title="Medios"
+            info="Filtra las notas por medio. El número es cuántas notas publicó ese medio (según los demás filtros activos). Selecciona uno para ver solo sus notas; vuelve a hacer clic para quitarlo."
+          >
+            <FilterItem
+              label="Todos los medios"
               count={totalCross}
               active={site === TODOS}
               onClick={() => setSite(TODOS)}
             />
             {SITES.map((s) => (
-              <MediumItem
+              <FilterItem
                 key={s}
+                icon={<MediumLogo site={s} url={null} size={16} />}
                 label={s}
-                site={s}
                 count={siteCounts[s] ?? 0}
                 active={site === s}
                 onClick={() => setSite(site === s ? TODOS : s)}
               />
             ))}
-          </ul>
+          </FilterCard>
 
-          {/* Tipo de contenido */}
-          <h2 className="text-xs font-bold uppercase tracking-wide text-gray-500 mt-5 mb-3 flex items-center gap-1.5">
-            Tipo de contenido
-            <InfoTooltip align="left">
-              Separa el periodismo del día (&quot;Contenido de valor&quot;, lo que se
-              muestra por defecto) de las notas hechas para posicionar en búsquedas
-              recurrentes (&quot;Contenido SEO&quot;: loterías, precio del dólar,
-              horóscopo, temblores, clima, dónde ver partidos, etc.). Los filtros de
-              medio y categoría aplican en ambos.
-            </InfoTooltip>
-          </h2>
-          <ul className="space-y-1">
-            <ContentTypeItem
-              label="Contenido de valor"
-              count={articles.length - seoTotal}
-              active={contentType === "valor"}
-              onClick={() => setContentType("valor")}
+          <FilterCard
+            title="Categoría"
+            info={
+              <>
+                Cuántas notas publicó la competencia hoy en cada categoría. Ayuda a ver
+                qué temas están saturados y en cuáles hay espacio. Las columnas de
+                opinión no aparecen en &quot;Todas&quot;: selecciona la categoría
+                &quot;opinión&quot; para verlas.
+              </>
+            }
+          >
+            <FilterItem
+              label="Todas las categorías"
+              count={categoryCounts.reduce((s, [cat, c]) => (cat === OPINION_CATEGORY ? s : s + c), 0)}
+              active={category === TODAS}
+              onClick={() => setCategory(TODAS)}
             />
-            <ContentTypeItem
-              label="Contenido SEO"
-              count={seoTotal}
-              active={contentType === "seo"}
-              onClick={() => setContentType("seo")}
-            />
-          </ul>
+            <div className="max-h-52 overflow-y-auto -mr-1 pr-1">
+              {categoryCounts.map(([cat, count]) => (
+                <FilterItem
+                  key={cat}
+                  label={cat}
+                  count={count}
+                  active={category === cat}
+                  onClick={() => setCategory(category === cat ? TODAS : cat)}
+                />
+              ))}
+            </div>
+          </FilterCard>
+
+          {hasCoverageData && (
+            <FilterCard
+              title="¿RPP ya lo publicó?"
+              info="Compara cada titular de la competencia contra las notas que RPP publicó en las últimas horas (feed de rpp.pe) usando IA. “Pendientes” marca temas que la competencia cubre y RPP todavía no — son las brechas a cerrar."
+            >
+              <FilterItem
+                label="Todas"
+                count={publishedCount + pendingCount}
+                active={coverage === COV_TODAS}
+                onClick={() => setCoverage(COV_TODAS)}
+              />
+              <FilterItem
+                icon={<span aria-hidden>⚠</span>}
+                label="Pendientes"
+                count={pendingCount}
+                active={coverage === COV_PENDIENTE}
+                accent="#D97706"
+                onClick={() => setCoverage(coverage === COV_PENDIENTE ? COV_TODAS : COV_PENDIENTE)}
+              />
+              <FilterItem
+                icon={<span aria-hidden>✓</span>}
+                label="Publicadas"
+                count={publishedCount}
+                active={coverage === COV_PUBLICADO}
+                accent="#0D9488"
+                onClick={() => setCoverage(coverage === COV_PUBLICADO ? COV_TODAS : COV_PUBLICADO)}
+              />
+            </FilterCard>
+          )}
         </div>
 
         {/* Ventana con las notas */}
         <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden self-start">
-          <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-700">
-              {contentType === "seo" ? "Notas · Contenido SEO" : "Notas"}
-              {site !== TODOS ? ` · ${site}` : ""}
-              {category !== TODAS ? ` · ${category}` : ""}
-            </h2>
-            <span className="text-xs text-gray-400">{list.length} notas</span>
+          <div className="px-4 py-3 border-b bg-gray-50">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-gray-700">
+                {contentType === "seo" ? "Notas · Contenido SEO" : "Notas"}
+              </h2>
+              <span className="text-xs text-gray-400 shrink-0">{list.length} notas</span>
+            </div>
+            {hasActiveFilters && (
+              <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                {site !== TODOS && (
+                  <FilterChip onClear={() => setSite(TODOS)}>{site}</FilterChip>
+                )}
+                {category !== TODAS && (
+                  <FilterChip onClear={() => setCategory(TODAS)}>{category}</FilterChip>
+                )}
+                {coverageLabel && (
+                  <FilterChip onClear={() => setCoverage(COV_TODAS)}>{coverageLabel}</FilterChip>
+                )}
+                <button
+                  onClick={() => {
+                    setSite(TODOS)
+                    setCategory(TODAS)
+                    setCoverage(COV_TODAS)
+                  }}
+                  className="text-xs text-gray-400 hover:text-gray-600 underline underline-offset-2 ml-1"
+                >
+                  Limpiar filtros
+                </button>
+              </div>
+            )}
           </div>
           <div className="divide-y max-h-[70vh] overflow-y-auto">
             {list.map((a) => (
@@ -433,58 +458,29 @@ function CoverageBadge({ article }: { article: Article }) {
   )
 }
 
-/** Ítem del selector de tipo de contenido (valor vs SEO), estilo MediumItem. */
-function ContentTypeItem({
-  label,
-  count,
-  active,
-  onClick,
-}: {
-  label: string
-  count: number
-  active: boolean
-  onClick: () => void
-}) {
+/** Botón del control segmentado "Tipo de contenido". */
+function SegmentButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
   return (
-    <li>
-      <button
-        onClick={onClick}
-        className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition ${
-          active ? "bg-teal-50 text-rpp-teal font-semibold" : "text-gray-700 hover:bg-gray-50"
-        }`}
-      >
-        <span className="truncate flex-1 text-left">{label}</span>
-        <span className={`text-xs shrink-0 ${active ? "text-rpp-teal" : "text-gray-400"}`}>{count}</span>
-      </button>
-    </li>
+    <button
+      onClick={onClick}
+      className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-sm font-semibold transition ${
+        active ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+      }`}
+    >
+      {children}
+    </button>
   )
 }
 
-function MediumItem({
-  label,
-  site,
-  count,
-  active,
-  onClick,
-}: {
-  label: string
-  site?: string
-  count: number
-  active: boolean
-  onClick: () => void
-}) {
+function CountPill({ active, children }: { active: boolean; children: ReactNode }) {
   return (
-    <li>
-      <button
-        onClick={onClick}
-        className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition ${
-          active ? "bg-teal-50 text-rpp-teal font-semibold" : "text-gray-700 hover:bg-gray-50"
-        }`}
-      >
-        {site ? <MediumLogo site={site} url={null} size={16} /> : <span className="w-4 shrink-0" />}
-        <span className="truncate flex-1 text-left">{label}</span>
-        <span className={`text-xs shrink-0 ${active ? "text-rpp-teal" : "text-gray-400"}`}>{count}</span>
-      </button>
-    </li>
+    <span
+      className={`text-xs rounded-full px-1.5 py-0.5 ${
+        active ? "bg-rpp-teal/10 text-rpp-teal" : "bg-gray-200 text-gray-500"
+      }`}
+    >
+      {children}
+    </span>
   )
 }
+
