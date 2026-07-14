@@ -3,6 +3,7 @@
 import { useMemo, useState, type ReactNode } from "react"
 import { InfoTooltip } from "@/components/ui/InfoTooltip"
 import { LastUpdated } from "@/components/ui/LastUpdated"
+import { FilterCard, FilterChip, FilterItem } from "@/components/ui/FilterList"
 
 export type Article = {
   id: string
@@ -457,57 +458,6 @@ function CoverageBadge({ article }: { article: Article }) {
   )
 }
 
-/** Tarjeta contenedora de una faceta de filtro, con título + tooltip consistentes. */
-function FilterCard({ title, info, children }: { title: string; info: ReactNode; children: ReactNode }) {
-  return (
-    <div className="bg-white rounded-2xl border border-gray-200 p-4">
-      <h2 className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-2 flex items-center gap-1.5">
-        {title}
-        <InfoTooltip align="left">{info}</InfoTooltip>
-      </h2>
-      <ul className="space-y-0.5">{children}</ul>
-    </div>
-  )
-}
-
-/** Fila de filtro reutilizada por Medios, Categoría y Cobertura — mismo look en las 3. */
-function FilterItem({
-  icon,
-  label,
-  count,
-  active,
-  onClick,
-  accent = "#0D9488",
-}: {
-  icon?: ReactNode
-  label: string
-  count: number
-  active: boolean
-  onClick: () => void
-  accent?: string
-}) {
-  return (
-    <li>
-      <button
-        onClick={onClick}
-        className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition ${
-          active ? "font-semibold" : "text-gray-700 hover:bg-gray-50"
-        }`}
-        style={active ? { backgroundColor: `${accent}14`, color: accent } : undefined}
-      >
-        {icon ?? <span className="w-4 shrink-0" />}
-        <span className="truncate flex-1 text-left">{label}</span>
-        <span
-          className="text-xs shrink-0"
-          style={{ color: active ? accent : "#9ca3af" }}
-        >
-          {count}
-        </span>
-      </button>
-    </li>
-  )
-}
-
 /** Botón del control segmentado "Tipo de contenido". */
 function SegmentButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
   return (
@@ -534,18 +484,3 @@ function CountPill({ active, children }: { active: boolean; children: ReactNode 
   )
 }
 
-/** Chip de filtro activo con botón para quitarlo, sobre la lista de notas. */
-function FilterChip({ children, onClear }: { children: ReactNode; onClear: () => void }) {
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-teal-50 text-rpp-teal border border-teal-200 pl-2.5 pr-1 py-0.5 text-xs font-medium">
-      {children}
-      <button
-        onClick={onClear}
-        aria-label="Quitar filtro"
-        className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full hover:bg-teal-100 leading-none"
-      >
-        ×
-      </button>
-    </span>
-  )
-}

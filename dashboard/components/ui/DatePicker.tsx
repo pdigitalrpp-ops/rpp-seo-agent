@@ -139,7 +139,7 @@ export function DatePicker({ availableDates, selected }: { availableDates: strin
           onClick={() => go(availableDates[availableDates.length - 1])}
           className="text-xs font-semibold text-rpp-teal hover:text-teal-700 ml-1"
         >
-          Hoy
+          Último día
         </button>
       )}
 

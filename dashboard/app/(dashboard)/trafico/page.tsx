@@ -6,7 +6,7 @@ import type { TrendChannelMeta, TrendPoint } from "./ChannelTrendChart"
 
 export const revalidate = 60
 
-const TREND_WINDOW_DAYS = 14
+const TREND_WINDOW_DAYS = 7
 const MAX_INDIVIDUAL_CHANNELS = 5
 // Paleta categórica validada (references/palette.md de la skill dataviz), en
 // orden fijo por ranking de volumen — el color de un canal no cambia si otro
@@ -20,12 +20,26 @@ function addDaysIso(iso: string, delta: number): string {
   return d.toISOString().slice(0, 10)
 }
 
-/** Snapshot de un día: prioriza tráfico por canal, cae a own_traffic (totales) si no hay. */
-async function fetchDaySnapshot(date: string): Promise<{ rows: ChannelRow[]; hasChannelData: boolean }> {
+/**
+ * SEMÁNTICA DE FECHAS (clave): el benchmark que corre el día X guarda en
+ * own_traffic/own_traffic_channels filas con date=X, pero el tráfico medido
+ * es el del día COMPLETO anterior (X-1, "yesterday" de Marfeel). Toda la UI
+ * de esta pestaña habla en "día del dato" (X-1); estas dos funciones traducen.
+ */
+function dataDayOf(runDate: string): string {
+  return addDaysIso(runDate, -1)
+}
+function runDateOf(dataDay: string): string {
+  return addDaysIso(dataDay, 1)
+}
+
+/** Snapshot de un día de dato: prioriza tráfico por canal, cae a own_traffic si no hay. */
+async function fetchDaySnapshot(dataDay: string): Promise<{ rows: ChannelRow[]; hasChannelData: boolean }> {
+  const runDate = runDateOf(dataDay)
   const { data: chData } = await supabase
     .from("own_traffic_channels")
     .select("page_path, title, channel, pageviews, unique_users")
-    .eq("date", date)
+    .eq("date", runDate)
     .limit(2000)
 
   if (chData && chData.length > 0) {
@@ -35,7 +49,7 @@ async function fetchDaySnapshot(date: string): Promise<{ rows: ChannelRow[]; has
   const { data: otData } = await supabase
     .from("own_traffic")
     .select("page_path, title, sessions, unique_users")
-    .eq("date", date)
+    .eq("date", runDate)
     .limit(2000)
 
   const rows: ChannelRow[] = (otData ?? []).map((r: any) => ({
@@ -48,12 +62,38 @@ async function fetchDaySnapshot(date: string): Promise<{ rows: ChannelRow[]; has
   return { rows, hasChannelData: false }
 }
 
+/**
+ * Trae TODAS las filas por canal de un rango de fechas de corrida, paginando.
+ * PostgREST capea cada respuesta a ~1000 filas aunque se pida .limit(15000) —
+ * por eso el gráfico salía "incompleto" (solo llegaban los primeros días del
+ * rango). El orden por (date, page_path, channel) hace la paginación estable.
+ */
+async function fetchChannelRowsPaged(startRunDate: string, endRunDate: string) {
+  const PAGE = 1000
+  const all: { date: string; page_path: string; channel: string | null; pageviews: number | null }[] = []
+  for (let from = 0; from < 20000; from += PAGE) {
+    const { data } = await supabase
+      .from("own_traffic_channels")
+      .select("date, page_path, channel, pageviews")
+      .gte("date", startRunDate)
+      .lte("date", endRunDate)
+      .order("date", { ascending: true })
+      .order("page_path", { ascending: true })
+      .order("channel", { ascending: true })
+      .range(from, from + PAGE - 1)
+    if (!data || data.length === 0) break
+    all.push(...(data as any[]))
+    if (data.length < PAGE) break
+  }
+  return all
+}
+
 export default async function TraficoPage({
   searchParams,
 }: {
   searchParams: { date?: string }
 }) {
-  // Días con corrida matutina exitosa = días con datos de tráfico disponibles.
+  // Días con corrida matutina exitosa → días de dato disponibles (run - 1).
   const { data: runsData } = await supabase
     .from("agent_runs")
     .select("run_date")
@@ -62,32 +102,31 @@ export default async function TraficoPage({
     .order("run_date", { ascending: false })
     .limit(90)
 
-  const availableDates = Array.from(new Set((runsData ?? []).map((r: any) => r.run_date as string))).sort()
+  const availableDataDays = Array.from(
+    new Set((runsData ?? []).map((r: any) => dataDayOf(r.run_date as string))),
+  ).sort()
 
-  const todayIso = new Date().toISOString().slice(0, 10)
-  const latestDate = availableDates[availableDates.length - 1] ?? todayIso
+  const yesterdayIso = addDaysIso(new Date().toISOString().slice(0, 10), -1)
+  const latestDataDay = availableDataDays[availableDataDays.length - 1] ?? yesterdayIso
   const requested = searchParams.date
-  const selectedDate = requested && availableDates.includes(requested) ? requested : latestDate
+  const selectedDay = requested && availableDataDays.includes(requested) ? requested : latestDataDay
 
-  const selIdx = availableDates.indexOf(selectedDate)
-  const previousDate = selIdx > 0 ? availableDates[selIdx - 1] : null
+  const selIdx = availableDataDays.indexOf(selectedDay)
+  const previousDay = selIdx > 0 ? availableDataDays[selIdx - 1] : null
 
   const [{ rows, hasChannelData }, prevSnapshot, lastRun] = await Promise.all([
-    fetchDaySnapshot(selectedDate),
-    previousDate ? fetchDaySnapshot(previousDate) : Promise.resolve(null),
+    fetchDaySnapshot(selectedDay),
+    previousDay ? fetchDaySnapshot(previousDay) : Promise.resolve(null),
     getLastRunFinishedAt("morning"),
   ])
 
-  // ── Evolución por canal: ventana de TREND_WINDOW_DAYS terminando en la fecha vista ──
-  const trendStart = addDaysIso(selectedDate, -(TREND_WINDOW_DAYS - 1))
-  const { data: trendRaw } = await supabase
-    .from("own_traffic_channels")
-    .select("date, page_path, channel, pageviews")
-    .gte("date", trendStart)
-    .lte("date", selectedDate)
-    .limit(15000)
-
-  const trendRows = (trendRaw ?? []).filter((r: any) => isRealArticle(r.page_path))
+  // ── Evolución por canal: ventana fija de los últimos TREND_WINDOW_DAYS días
+  // de dato, terminando en el último disponible (ayer si el benchmark ya corrió).
+  const windowDays: string[] = Array.from({ length: TREND_WINDOW_DAYS }, (_, i) =>
+    addDaysIso(latestDataDay, -(TREND_WINDOW_DAYS - 1 - i)),
+  )
+  const trendRaw = await fetchChannelRowsPaged(runDateOf(windowDays[0]), runDateOf(latestDataDay))
+  const trendRows = trendRaw.filter((r) => isRealArticle(r.page_path))
 
   const totalsByChannel: Record<string, number> = {}
   for (const r of trendRows) {
@@ -105,25 +144,32 @@ export default async function TraficoPage({
   }))
   if (hasOtros) trendChannels.push({ key: "Otros", label: "Otros canales", color: OTHER_COLOR })
 
-  const byDate: Record<string, Record<string, number>> = {}
+  const byDataDay: Record<string, Record<string, number>> = {}
   for (const r of trendRows) {
+    const day = dataDayOf(r.date)
     const rawC = r.channel || "Otros"
     const c = topChannels.includes(rawC) ? rawC : "Otros"
-    byDate[r.date] ??= {}
-    byDate[r.date][c] = (byDate[r.date][c] ?? 0) + (r.pageviews ?? 0)
+    byDataDay[day] ??= {}
+    byDataDay[day][c] = (byDataDay[day][c] ?? 0) + (r.pageviews ?? 0)
   }
-  const trendData: TrendPoint[] = Object.keys(byDate)
-    .sort()
-    .map((date) => ({ date, ...byDate[date] }))
+  // Un punto por día calendario de la ventana. Día con corrida: canal ausente = 0
+  // (la línea no se corta); día SIN corrida: sin claves → hueco que connectNulls puentea.
+  const trendData: TrendPoint[] = windowDays.map((day) => {
+    const perChannel = byDataDay[day]
+    if (!perChannel) return { date: day }
+    const point: TrendPoint = { date: day }
+    for (const ch of trendChannels) point[ch.key] = perChannel[ch.key] ?? 0
+    return point
+  })
 
   return (
     <TraficoClient
       rows={rows}
       hasChannelData={hasChannelData}
-      date={selectedDate}
-      availableDates={availableDates}
+      date={selectedDay}
+      availableDates={availableDataDays}
       prevRows={prevSnapshot?.rows ?? null}
-      previousDate={previousDate}
+      previousDate={previousDay}
       trendData={trendData}
       trendChannels={trendChannels}
       lastRun={lastRun}
