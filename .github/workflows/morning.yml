@@ -2,7 +2,7 @@ name: SEO Agent — Benchmark de la mañana
 
 on:
   schedule:
-    - cron: '0 11 * * *'   # 11:00 UTC = 06:00 AM Lima (UTC-5)
+    - cron: '0 6 * * *'   # 06:00 UTC = 01:00 AM Lima (UTC-5); el scheduler de GitHub suele retrasar 3-7h, así el benchmark queda listo temprano
   workflow_dispatch:
 
 concurrency:
