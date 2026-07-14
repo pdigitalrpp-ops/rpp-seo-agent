@@ -26,11 +26,10 @@ function fmtFull(n: number): string {
 }
 
 function fmtDayTick(iso: string): string {
-  return new Date(`${iso}T00:00:00Z`).toLocaleDateString("es-PE", {
-    day: "2-digit",
-    month: "2-digit",
-    timeZone: "UTC",
-  })
+  // Nota: Intl con solo {day,month} en es-PE ignora el "2-digit" (usa "d/M"
+  // sin padding en vez de "dd/mm") — se arma el string a mano para evitarlo.
+  const [, m, d] = iso.split("-")
+  return `${d}/${m}`
 }
 
 function fmtDayLong(iso: string): string {
