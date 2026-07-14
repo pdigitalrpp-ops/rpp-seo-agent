@@ -2,9 +2,12 @@
 
 import { useMemo, useState } from "react"
 import { Pill } from "@/components/ui/Pill"
-import { StatCard } from "@/components/ui/StatCard"
+import { StatCard, type StatDelta } from "@/components/ui/StatCard"
 import { InfoTooltip } from "@/components/ui/InfoTooltip"
 import { LastUpdated } from "@/components/ui/LastUpdated"
+import { DatePicker } from "@/components/ui/DatePicker"
+import { isRealArticle, sectionOf } from "@/lib/articleFilter"
+import { ChannelTrendChart, type TrendChannelMeta, type TrendPoint } from "./ChannelTrendChart"
 
 export type ChannelRow = {
   page_path: string
@@ -16,51 +19,65 @@ export type ChannelRow = {
 
 const TODOS = "Todos"
 
-/**
- * Solo contenido editorial de rpp.pe: notas (…-noticia-<id>) y coberturas en vivo
- * (…-live-<id>). Descarta home, homes de sección (/deportes), landings/herramientas,
- * buscador, /ultimas-noticias, /tv-vivo, /audio/en-vivo, listados y el widget mrf.io.
- */
-const ARTICLE_RE = /-(noticia|live)-\d+/i
-
-function isRealArticle(pagePath: string): boolean {
-  try {
-    const u = new URL(pagePath)
-    const host = u.hostname.replace(/^www\./, "")
-    if (host !== "rpp.pe" && !host.endsWith(".rpp.pe")) return false
-    return ARTICLE_RE.test(u.pathname)
-  } catch {
-    return false
-  }
-}
-
-/** Deriva la "sección" (primer segmento del path) desde la URL del artículo. */
-function sectionOf(pagePath: string): string {
-  try {
-    const u = new URL(pagePath)
-    const host = u.hostname.replace(/^www\./, "")
-    if (host !== "rpp.pe" && !host.endsWith(".rpp.pe")) return host // dominios ajenos (mrf.io…)
-    const seg = u.pathname.split("/").filter(Boolean)
-    if (seg.length === 0) return "(home)"
-    return seg[0]
-  } catch {
-    return "(otros)"
-  }
-}
-
 function fmt(n: number | null | undefined): string {
   return (n ?? 0).toLocaleString("es-PE")
+}
+
+function fmtShortDate(iso: string): string {
+  return new Date(`${iso}T00:00:00Z`).toLocaleDateString("es-PE", {
+    day: "2-digit",
+    month: "short",
+    timeZone: "UTC",
+  })
+}
+
+/** Totales (page views, usuarios, artículos) para un conjunto de filas bajo un filtro sección+canal dado. */
+function aggregateTotals(rowsIn: ChannelRow[], section: string, channel: string) {
+  const clean = rowsIn.filter((r) => isRealArticle(r.page_path))
+  const filtered = clean.filter((r) => {
+    if (channel !== TODOS && (r.channel || "Otros") !== channel) return false
+    if (section !== TODOS && sectionOf(r.page_path) !== section) return false
+    return true
+  })
+  const byArticle: Record<string, { pageviews: number; unique_users: number }> = {}
+  for (const r of filtered) {
+    const a = byArticle[r.page_path] ?? (byArticle[r.page_path] = { pageviews: 0, unique_users: 0 })
+    a.pageviews += r.pageviews ?? 0
+    a.unique_users += r.unique_users ?? 0
+  }
+  const values = Object.values(byArticle)
+  return {
+    totalPv: values.reduce((s, a) => s + a.pageviews, 0),
+    totalUsers: values.reduce((s, a) => s + a.unique_users, 0),
+    articleCount: values.length,
+  }
+}
+
+function computeDelta(curr: number, prev: number | null, vsLabel: string): StatDelta | undefined {
+  if (prev === null) return undefined
+  if (prev === 0) return curr > 0 ? { pct: null, isNew: true, vsLabel } : undefined
+  return { pct: ((curr - prev) / prev) * 100, vsLabel }
 }
 
 export default function TraficoClient({
   rows,
   hasChannelData,
   date,
+  availableDates,
+  prevRows,
+  previousDate,
+  trendData,
+  trendChannels,
   lastRun,
 }: {
   rows: ChannelRow[]
   hasChannelData: boolean
   date: string
+  availableDates: string[]
+  prevRows: ChannelRow[] | null
+  previousDate: string | null
+  trendData: TrendPoint[]
+  trendChannels: TrendChannelMeta[]
   lastRun: string | null
 }) {
   // Solo notas editoriales (fuera widget mrf.io y audio en vivo)
@@ -127,25 +144,39 @@ export default function TraficoClient({
   const totalPv = articles.reduce((s, a) => s + a.pageviews, 0)
   const totalUsers = articles.reduce((s, a) => s + a.unique_users, 0)
 
+  // Comparativa vs día anterior con datos, bajo el MISMO filtro sección+canal activo.
+  const prevTotals = useMemo(() => {
+    if (!prevRows) return null
+    return aggregateTotals(prevRows, section, channel)
+  }, [prevRows, section, channel])
+
+  const vsLabel = previousDate ? `vs ${fmtShortDate(previousDate)}` : ""
+  const pvDelta = prevTotals ? computeDelta(totalPv, prevTotals.totalPv, vsLabel) : undefined
+  const usersDelta = prevTotals ? computeDelta(totalUsers, prevTotals.totalUsers, vsLabel) : undefined
+  const articlesDelta = prevTotals ? computeDelta(articles.length, prevTotals.articleCount, vsLabel) : undefined
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
           Tráfico (Marfeel)
           <InfoTooltip align="left">
             Rendimiento de las notas de RPP según Marfeel (la fuente de audiencia).
             Muestra page views y usuarios por artículo, y permite desglosar por sección
-            y por canal de adquisición (Google, directo, redes…). Sirve para ver qué
-            contenido rinde y de dónde llega el tráfico.
+            y por canal de adquisición (Google, directo, redes…). Usa el calendario
+            para ver días anteriores.
           </InfoTooltip>
         </h1>
-        <LastUpdated kind="morning" finishedAt={lastRun} />
+        <div className="flex items-center gap-3">
+          <DatePicker availableDates={availableDates} selected={date} />
+          <LastUpdated kind="morning" finishedAt={lastRun} />
+        </div>
       </div>
 
       {!hasChannelData && (
         <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
-          Aún no hay datos por canal (se poblan en la próxima corrida del benchmark matutino).
-          Mientras tanto puedes filtrar por <b>Sección</b>; el filtro por canal se activará solo.
+          Este día no tiene datos por canal (o aún no se poblaron). Mientras tanto puedes
+          filtrar por <b>Sección</b>; el filtro por canal se activará solo.
         </div>
       )}
 
@@ -171,26 +202,44 @@ export default function TraficoClient({
         </div>
       </div>
 
-      {/* Tarjetas resumen (según filtro activo) */}
+      {/* Tarjetas resumen (según filtro activo), con comparativa vs día anterior */}
       <div className="grid grid-cols-3 gap-4">
         <StatCard
           label="Page views"
           value={fmt(totalPv)}
+          delta={pvDelta}
           accent="#F97316"
-          info="Total de vistas de página de los artículos según el filtro activo (sección y canal). Es el volumen bruto de consumo del contenido."
+          info="Total de vistas de página de los artículos según el filtro activo (sección y canal). La comparativa es contra el último día con datos disponibles, bajo el mismo filtro."
         />
         <StatCard
           label="Usuarios únicos"
           value={fmt(totalUsers)}
+          delta={usersDelta}
           accent="#0D9488"
           info="Personas distintas que leyeron esos artículos (según el filtro activo). A diferencia de page views, no cuenta las visitas repetidas del mismo usuario."
         />
         <StatCard
           label="Artículos"
           value={fmt(articles.length)}
+          delta={articlesDelta}
           accent="#8B5CF6"
           info="Cuántas notas distintas entran en el filtro actual de sección y canal."
         />
+      </div>
+
+      {/* Evolución de tráfico por canal */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-4">
+        <h2 className="text-sm font-semibold text-gray-700 mb-1 flex items-center gap-1.5">
+          Evolución de tráfico por canal
+          <InfoTooltip align="left">
+            Page views diarios de los últimos 14 días (terminando en el día que estás
+            viendo), separados por canal de adquisición. Los canales con menos volumen
+            se agrupan en &quot;Otros canales&quot;. Haz clic en un canal de la leyenda
+            para ocultarlo — útil porque Google suele dominar la escala.
+          </InfoTooltip>
+        </h2>
+        <p className="text-xs text-gray-400 mb-2">Últimos 14 días, en page views</p>
+        <ChannelTrendChart data={trendData} channels={trendChannels} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-6">
