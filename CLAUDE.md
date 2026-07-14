@@ -13,6 +13,50 @@ dashboard web.
 
 **Fecha último avance:** 2026-07-14
 
+**2026-07-14 — Rediseño visual del dashboard (rama redesign-landing → master,
+merge 0f55fd2) — VERIFICADO en preview de Vercel antes de mergear:**
+(1) **Landing/Resumen:** logo circular RPP (dashboard/public/rpp-logo.png,
+también favicon) en cabecera amarilla de dos niveles (marca arriba, nav abajo
+con scroll horizontal, sin wrap); KPIs clicables (llevan a su pestaña; el "?"
+de InfoTooltip no navega porque ya hace stopPropagation); layout 2 columnas
+(recomendaciones+aprendizajes | tendencias+estado del agente); fecha del día
+es-PE sobre el título. **La pestaña Estado salió del menú** — se llega desde
+el módulo "Estado del agente" del Resumen y desde la KPI "Fuentes OK".
+(2) **Recomendaciones:** score en panel izquierdo (rank + número + barra por
+urgencia) y borde de acento por urgencia — ya no al extremo derecho.
+(3) **Competencia:** filtros consolidados en panel lateral único (Medios /
+Categoría / ¿RPP ya lo publicó?) + "Tipo de contenido" como control
+segmentado arriba (es el filtro que redefine el dataset) + chips de filtros
+activos con "Limpiar filtros" sobre las notas.
+(4) **Tráfico (cambio grande):** (a) **semántica de fechas corregida** — el
+benchmark del día X guarda tráfico del día COMPLETO X-1 ("yesterday" de
+Marfeel); toda la pestaña habla en día del dato: DatePicker (componente
+nuevo, components/ui/DatePicker.tsx) muestra X-1, bloquea hoy, y hay nota
+informativa; (b) StatCards con **delta % vs día anterior** (prop `delta`
+nueva en StatCard, bajo el MISMO filtro sección/canal activo); (c) gráfico
+**evolución por canal** (recharts, ChannelTrendChart.tsx): 7 días fijos
+terminando en el último día de dato, top 5 canales + "Otros", colores de
+paleta categórica validada, leyenda con toggle; va AL FONDO (lo principal
+son los artículos); (d) artículos en frame con scroll interno (max-h 65vh);
+(e) filtros Sección/Canal como listas laterales estilo Competencia.
+**GOTCHA PostgREST descubierto:** Supabase capea cada respuesta a ~1000
+filas aunque se pida .limit(15000) — por eso el gráfico salía incompleto.
+Fix: paginar con .range() y orden estable (fetchChannelRowsPaged en
+trafico/page.tsx). Aplica a CUALQUIER query grande futura.
+(5) **Componentes compartidos nuevos:** ui/FilterList.tsx (FilterCard/
+FilterItem/FilterChip — usados por Competencia y Tráfico; para nuevas
+pestañas con filtros usar ESTOS, no inventar otros), ui/DatePicker.tsx,
+lib/articleFilter.ts (isRealArticle/sectionOf compartidos server/client
+dentro del dashboard; sigue existiendo la copia Python en
+agent/article_filter.py — si cambia el regex, actualizar ambos).
+(6) **Flujo de trabajo usado (recomendado para próximos rediseños):** rama →
+push → preview deployment de Vercel (URL estable
+rpp-seo-agent-git-<rama>-pdigital-rpp.vercel.app; requiere bypass de
+Deployment Protection — herramienta get_access_to_vercel_url del Vercel MCP)
+→ verificar en navegador → merge a master. **Detección de builds:** consultar
+el Vercel MCP (list_deployments), no el API de deployments de GitHub con
+grep (dio falsos negativos dos veces en la sesión).
+
 **2026-07-14 — Cron del morning adelantado a 06:00 UTC (01:00 Lima), commit
 23c025f:** el scheduler de GitHub retrasa el cron 3h37-7h32 (medido 07-13 jul
 con cron 11:00 UTC: arrancaba 14:37-18:32 UTC, o sea 09:37-13:32 Lima — el
