@@ -13,7 +13,7 @@ const NAV_ITEMS = [
   { href: "/busqueda",        label: "Búsqueda & Discover" },
   { href: "/auditoria",       label: "Auditoría" },
   { href: "/alertas",         label: "Alertas" },
-  { href: "/status",          label: "Estado" },
+  // "/status" no va en el menú: se llega desde el módulo "Estado del agente" del Resumen.
 ]
 
 export function NavPills() {
