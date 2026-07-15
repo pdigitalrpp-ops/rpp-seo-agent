@@ -251,6 +251,62 @@ def rewrite_onpage_batch(items, title_max=60, meta_min=120, meta_max=160):
 
 
 # ---------------------------------------------------------------------------
+# D) Explicación de tendencias: por qué cada tema es tendencia hoy
+# ---------------------------------------------------------------------------
+
+def explain_trends(items):
+    """
+    Explica en 1-2 frases por qué cada tema es tendencia hoy en Perú, usando
+    como evidencia los titulares recientes de Google News de cada uno.
+    `items` = lista de dicts {keyword, headlines: [str, ...]}.
+    Devuelve dict {keyword: explicacion} o None (rules-first).
+    """
+    if not is_enabled() or not items:
+        return None
+
+    payload = [{
+        "i":         i,
+        "tema":      it.get("keyword") or "",
+        "titulares": [h for h in (it.get("headlines") or []) if h][:5],
+    } for i, it in enumerate(items)]
+
+    system = (
+        "Eres un editor de actualidad de RPP Noticias (Perú). Explicas por qué "
+        "un tema está entre lo más buscado en Google Perú HOY, basándote SOLO "
+        "en los titulares de noticias que se te dan como evidencia — sin "
+        "inventar hechos que no estén en ellos. Respondes exclusivamente en "
+        "JSON, sin texto adicional ni markdown."
+    )
+    prompt = (
+        "Para CADA tema escribe una explicación de 1 a 2 frases (máx ~220 "
+        "caracteres) de POR QUÉ es tendencia de búsqueda hoy: qué pasó, quién "
+        "es o qué evento lo disparó. Si el tema es ambiguo (siglas, nombres "
+        "cortos), acláralo primero (\"SGD es...\"). Si los titulares no "
+        "alcanzan para saberlo, responde exactamente null en ese ítem.\n\n"
+        f"Temas con sus titulares recientes (JSON):\n{json.dumps(payload, ensure_ascii=False)}\n\n"
+        'Responde SOLO un JSON: {"items": [{"i": <indice>, "why": "<explicacion o null>"}]}'
+    )
+    data = _generate_json(prompt, system=system, max_tokens=4000)
+    if not isinstance(data, dict) or not isinstance(data.get("items"), list):
+        if data is not None:
+            logger.warning(f"OpenRouter: JSON de explicación de tendencias con forma inesperada: {str(data)[:200]!r}")
+        return None
+
+    out = {}
+    for entry in data["items"]:
+        try:
+            idx = int(entry["i"])
+        except (KeyError, ValueError, TypeError):
+            continue
+        if not (0 <= idx < len(items)):
+            continue
+        why = entry.get("why")
+        if isinstance(why, str) and why.strip() and why.strip().lower() != "null":
+            out[items[idx]["keyword"]] = why.strip()
+    return out or None
+
+
+# ---------------------------------------------------------------------------
 # C) Cobertura: ¿RPP ya publicó lo que publicó la competencia?
 # ---------------------------------------------------------------------------
 

@@ -8,6 +8,8 @@ CREATE TABLE IF NOT EXISTS daily_trends (
   category     text,
   geo          text DEFAULT 'PE',
   rank         integer,
+  why_trending text,     -- resumen LLM: por qué es tendencia hoy (v. bloque 2026-07-15)
+  news         jsonb,    -- noticias de Google News que lo evidencian
   created_at   timestamptz DEFAULT now()
 );
 
@@ -237,3 +239,11 @@ CREATE INDEX IF NOT EXISTS idx_own_traffic_channels_channel ON own_traffic_chann
 
 ALTER TABLE own_traffic_channels ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "public_read" ON own_traffic_channels FOR SELECT USING (true);
+
+-- ===========================================================================
+-- "Por qué es tendencia" (2026-07-15): resumen LLM + noticias de Google News
+-- por keyword en daily_trends. news = [{title, source, source_url, url,
+-- published_at}]. YA APLICADO en producción vía Supabase MCP.
+-- ===========================================================================
+ALTER TABLE daily_trends ADD COLUMN IF NOT EXISTS why_trending text;
+ALTER TABLE daily_trends ADD COLUMN IF NOT EXISTS news jsonb;

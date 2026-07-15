@@ -10,7 +10,7 @@ export default async function TrendsPage() {
   const [{ data: trends }, { data: history }, lastRun] = await Promise.all([
     supabase
       .from("daily_trends")
-      .select("id, rank, keyword, category, growth_score")
+      .select("id, rank, keyword, category, growth_score, why_trending, news")
       .eq("date", today)
       .order("rank")
       .limit(20),

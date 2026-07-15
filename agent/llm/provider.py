@@ -83,6 +83,20 @@ def categorize_articles(articles, categories):
     return updated
 
 
+def explain_trends(items):
+    """
+    Explica por qué cada tendencia lo es (1-2 frases por tema), usando los
+    titulares de Google News como evidencia. Devuelve {keyword: explicacion}
+    o None si no hay proveedor o no implementa explain_trends (solo
+    OpenRouter lo tiene hoy — sin él, el dashboard muestra solo las noticias).
+    """
+    provider = _active_provider()
+    fn = getattr(provider, "explain_trends", None) if provider else None
+    if not fn or not items:
+        return None
+    return fn(items)
+
+
 def rewrite_onpage_batch(items, **kwargs):
     provider = _active_provider()
     if not provider:
