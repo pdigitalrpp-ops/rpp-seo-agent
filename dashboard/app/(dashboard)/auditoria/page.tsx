@@ -112,69 +112,90 @@ export default async function AuditoriaPage() {
       <div className="space-y-3">
         {rows.map((a: any) => {
           const editorial = (a.issues ?? []).filter((it: any) => issueClass(it) === "editorial")
+          const scoreColor =
+            a.score == null ? "#9CA3AF" : a.score >= 80 ? "#16A34A" : a.score >= 60 ? "#F97316" : "#DC2626"
           return (
-            <div key={a.id} className="bg-white rounded-2xl border border-gray-200 p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
+            <div
+              key={a.id}
+              className="bg-white rounded-2xl border border-gray-200 p-4 transition hover:border-gray-300 hover:shadow-sm"
+              style={{ borderLeftWidth: 4, borderLeftColor: scoreColor }}
+            >
+              <div className="flex gap-4 md:gap-5">
+                {/* Panel de score (izquierda), como en Recomendaciones */}
+                <div className="shrink-0 w-16 md:w-20 flex flex-col items-center text-center border-r border-gray-100 pr-4 self-start">
+                  <span className="text-3xl font-extrabold leading-none" style={{ color: scoreColor }}>
+                    {a.score ?? "—"}
+                  </span>
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mt-0.5">
+                    score /100
+                  </span>
+                  <div className="h-1.5 w-full rounded-full bg-gray-100 mt-2">
+                    <div
+                      className="h-1.5 rounded-full"
+                      style={{ width: `${Math.min(100, a.score ?? 0)}%`, backgroundColor: scoreColor }}
+                    />
+                  </div>
+                  <span className="text-[10px] text-gray-400 mt-1.5">
+                    {editorial.length} issue{editorial.length !== 1 ? "s" : ""}
+                  </span>
+                </div>
+
+                {/* Contenido (derecha) */}
+                <div className="min-w-0 flex-1">
                   <p className="font-medium text-gray-900 truncate">{a.title ?? a.url}</p>
                   <a href={a.url} target="_blank" rel="noreferrer"
                      className="text-xs text-gray-400 font-mono truncate hover:text-rpp-teal block">{a.url}</a>
                   {a.target_keyword && (
                     <p className="text-xs text-gray-500 mt-0.5">keyword: <strong>{a.target_keyword}</strong></p>
                   )}
-                </div>
-                <div className="text-right shrink-0">
-                  <span className={`text-xl font-bold ${
-                    a.score >= 80 ? "text-green-600" : a.score >= 60 ? "text-orange-500" : "text-red-600"
-                  }`}>{a.score ?? "—"}</span>
-                  <span className="text-xs text-gray-400">/100</span>
+
+                  {editorial.length > 0 ? (
+                    <ul className="mt-3 space-y-1.5">
+                      {editorial.map((it: any, i: number) => (
+                        <li key={i} className="flex items-start gap-2">
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${SEVERITY_BADGE[it.severity] ?? "bg-gray-100 text-gray-600"}`}>
+                            {it.severity?.toUpperCase()}
+                          </span>
+                          <span className="text-xs text-gray-700">{it.message}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-3 text-xs text-green-600">Sin problemas editoriales — nota bien optimizada.</p>
+                  )}
+
+                  {/* Sugerencias reescritas por IA */}
+                  {a.suggestions && (a.suggestions.title || a.suggestions.meta_description) && (
+                    <div className="mt-3 rounded-lg bg-violet-50 border border-violet-100 p-3 space-y-2">
+                      <p className="text-[11px] font-semibold text-violet-700 flex items-center gap-1">
+                        ✨ Sugerencia IA
+                      </p>
+                      {a.suggestions.title && (
+                        <div>
+                          <p className="text-[10px] uppercase text-gray-400 font-medium">Título</p>
+                          <p className="text-xs text-gray-800">{a.suggestions.title}
+                            <span className="text-gray-400"> ({a.suggestions.title.length}c)</span></p>
+                        </div>
+                      )}
+                      {a.suggestions.meta_description && (
+                        <div>
+                          <p className="text-[10px] uppercase text-gray-400 font-medium">Meta description</p>
+                          <p className="text-xs text-gray-800">{a.suggestions.meta_description}
+                            <span className="text-gray-400"> ({a.suggestions.meta_description.length}c)</span></p>
+                        </div>
+                      )}
+                      {Array.isArray(a.suggestions.h2) && a.suggestions.h2.length > 0 && (
+                        <div>
+                          <p className="text-[10px] uppercase text-gray-400 font-medium">Subtítulos H2</p>
+                          <ul className="text-xs text-gray-800 list-disc list-inside">
+                            {a.suggestions.h2.map((h: string, i: number) => <li key={i}>{h}</li>)}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
-              {editorial.length > 0 ? (
-                <ul className="mt-3 space-y-1.5">
-                  {editorial.map((it: any, i: number) => (
-                    <li key={i} className="flex items-start gap-2">
-                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${SEVERITY_BADGE[it.severity] ?? "bg-gray-100 text-gray-600"}`}>
-                        {it.severity?.toUpperCase()}
-                      </span>
-                      <span className="text-xs text-gray-700">{it.message}</span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="mt-3 text-xs text-green-600">Sin problemas editoriales — nota bien optimizada.</p>
-              )}
-
-              {/* Sugerencias reescritas por IA (Gemini) */}
-              {a.suggestions && (a.suggestions.title || a.suggestions.meta_description) && (
-                <div className="mt-3 rounded-lg bg-violet-50 border border-violet-100 p-3 space-y-2">
-                  <p className="text-[11px] font-semibold text-violet-700 flex items-center gap-1">
-                    ✨ Sugerencia IA
-                  </p>
-                  {a.suggestions.title && (
-                    <div>
-                      <p className="text-[10px] uppercase text-gray-400 font-medium">Título</p>
-                      <p className="text-xs text-gray-800">{a.suggestions.title}
-                        <span className="text-gray-400"> ({a.suggestions.title.length}c)</span></p>
-                    </div>
-                  )}
-                  {a.suggestions.meta_description && (
-                    <div>
-                      <p className="text-[10px] uppercase text-gray-400 font-medium">Meta description</p>
-                      <p className="text-xs text-gray-800">{a.suggestions.meta_description}
-                        <span className="text-gray-400"> ({a.suggestions.meta_description.length}c)</span></p>
-                    </div>
-                  )}
-                  {Array.isArray(a.suggestions.h2) && a.suggestions.h2.length > 0 && (
-                    <div>
-                      <p className="text-[10px] uppercase text-gray-400 font-medium">Subtítulos H2</p>
-                      <ul className="text-xs text-gray-800 list-disc list-inside">
-                        {a.suggestions.h2.map((h: string, i: number) => <li key={i}>{h}</li>)}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           )
         })}

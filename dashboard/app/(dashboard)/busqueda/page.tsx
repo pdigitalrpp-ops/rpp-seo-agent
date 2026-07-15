@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase"
 import { InfoTooltip } from "@/components/ui/InfoTooltip"
 import { LastUpdated } from "@/components/ui/LastUpdated"
+import { StatCard } from "@/components/ui/StatCard"
 import { getLastRunFinishedAt } from "@/lib/lastRun"
 
 export const revalidate = 60
@@ -80,6 +81,7 @@ export default async function BusquedaPage() {
     ])
 
   const discoverTotalClicks = (discover ?? []).reduce((sum: number, r: any) => sum + (r.clicks ?? 0), 0)
+  const serpFree = (serpOpps ?? []).filter((r: any) => !r.rpp_has_snippet).length
 
   return (
     <div className="space-y-6">
@@ -102,11 +104,43 @@ export default async function BusquedaPage() {
         <LastUpdated kind="morning" finishedAt={lastRun} />
       </div>
 
+      {/* KPIs del día */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          label="Quick wins"
+          value={quickWins?.length ?? 0}
+          subtitle="consultas en posición 4–10"
+          accent="#D97706"
+          info="Consultas donde RPP ya está en posición 4–10 con muchas impresiones: a un empujón del top 3."
+        />
+        <StatCard
+          label="CTR bajo"
+          value={lowCtr?.length ?? 0}
+          subtitle="consultas con CTR ≤ 2%"
+          accent="#2563EB"
+          info="Consultas con muchas impresiones pero pocos clics: candidatas a reescribir título y meta description."
+        />
+        <StatCard
+          label="Clics en Discover"
+          value={discoverTotalClicks.toLocaleString()}
+          subtitle="últimos 7 días"
+          accent="#7C3AED"
+          info="Clics totales que trajo Google Discover (el feed de recomendados del móvil) en los últimos 7 días."
+        />
+        <StatCard
+          label="SERP por ganar"
+          value={serpFree}
+          subtitle="snippets que RPP no tiene"
+          accent="#0D9488"
+          info="Quick wins cuyo featured snippet está libre o en manos de otro medio: espacios del SERP que RPP podría ganar."
+        />
+      </div>
+
       {/* Búsqueda web */}
       <div className="grid md:grid-cols-2 gap-6">
-        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-          <div className="px-4 py-3 border-b bg-amber-50">
-            <h2 className="text-sm font-semibold text-amber-800 flex items-center gap-1.5">
+        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden" style={{ borderLeftWidth: 4, borderLeftColor: "#D97706" }}>
+          <div className="px-4 py-3 border-b bg-gray-50">
+            <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
               Quick Wins (posición 4–10)
               <InfoTooltip align="left">
                 Consultas donde RPP ya aparece en posición 4 a 10 de Google con muchas
@@ -115,7 +149,7 @@ export default async function BusquedaPage() {
                 clics sin crear contenido nuevo.
               </InfoTooltip>
             </h2>
-            <p className="text-xs text-amber-600 mt-0.5">Optimizar estos artículos puede subir posición rápidamente</p>
+            <p className="text-xs text-gray-500 mt-0.5">Optimizar estos artículos puede subir posición rápidamente</p>
           </div>
           <div className="divide-y max-h-96 overflow-y-auto">
             {quickWins?.map((row: any, i: number) => (
@@ -135,9 +169,9 @@ export default async function BusquedaPage() {
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-          <div className="px-4 py-3 border-b bg-blue-50">
-            <h2 className="text-sm font-semibold text-blue-800 flex items-center gap-1.5">
+        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden" style={{ borderLeftWidth: 4, borderLeftColor: "#2563EB" }}>
+          <div className="px-4 py-3 border-b bg-gray-50">
+            <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
               CTR bajo (≤2%)
               <InfoTooltip align="left">
                 Consultas con muchas impresiones pero poquísimos clics (CTR ≤ 2%): la
@@ -146,7 +180,7 @@ export default async function BusquedaPage() {
                 la posición.
               </InfoTooltip>
             </h2>
-            <p className="text-xs text-blue-600 mt-0.5">Reescribir title/meta puede multiplicar los clics</p>
+            <p className="text-xs text-gray-500 mt-0.5">Reescribir title/meta puede multiplicar los clics</p>
           </div>
           <div className="divide-y max-h-96 overflow-y-auto">
             {lowCtr?.map((row: any, i: number) => (
@@ -206,10 +240,10 @@ export default async function BusquedaPage() {
       </div>
 
       {/* Discover */}
-      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-        <div className="px-4 py-3 border-b bg-purple-50 flex items-center justify-between">
+      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden" style={{ borderLeftWidth: 4, borderLeftColor: "#7C3AED" }}>
+        <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
           <div>
-            <h2 className="text-sm font-semibold text-purple-800 flex items-center gap-1.5">
+            <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
               Google Discover (últimos 7 días)
               <InfoTooltip align="left">
                 Rendimiento en el feed de Google Discover (los recomendados del móvil), no
@@ -218,7 +252,7 @@ export default async function BusquedaPage() {
                 posición.
               </InfoTooltip>
             </h2>
-            <p className="text-xs text-purple-600 mt-0.5">Sin dimensión de query ni posición — Discover no las reporta</p>
+            <p className="text-xs text-gray-500 mt-0.5">Sin dimensión de query ni posición — Discover no las reporta</p>
           </div>
           {discoverTotalClicks > 0 && (
             <span className="text-xs font-semibold text-purple-700 bg-purple-100 rounded-full px-2.5 py-1">
@@ -244,9 +278,9 @@ export default async function BusquedaPage() {
       </div>
 
       {/* Oportunidades SERP en vivo (SerpApi) */}
-      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-        <div className="px-4 py-3 border-b bg-teal-50">
-          <h2 className="text-sm font-semibold text-teal-800 flex items-center gap-1.5">
+      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden" style={{ borderLeftWidth: 4, borderLeftColor: "#0D9488" }}>
+        <div className="px-4 py-3 border-b bg-gray-50">
+          <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
             Oportunidades en el SERP (en vivo)
             <InfoTooltip align="left">
               Cómo se ve la página de resultados de Google en vivo (vía SerpApi) para las
@@ -255,7 +289,7 @@ export default async function BusquedaPage() {
               Señala espacios que RPP podría ganar. Requiere la clave SERPAPI_KEY.
             </InfoTooltip>
           </h2>
-          <p className="text-xs text-teal-600 mt-0.5">
+          <p className="text-xs text-gray-500 mt-0.5">
             Featured snippet, preguntas relacionadas y carrusel de noticias para las quick wins del día
           </p>
         </div>
