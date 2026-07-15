@@ -144,11 +144,17 @@ def run():
     except Exception as e:
         logger.warning(f"No se pudo leer el contexto previo de tendencias: {e}")
         existing = {}
+    # Versión del pipeline de contexto: se guarda en cada noticia (news[].v) y
+    # solo se reusa contexto de la MISMA versión. Subirla fuerza a regenerar
+    # noticias y explicaciones en la siguiente corrida (p.ej. al cambiar el
+    # prompt o las fuentes) sin parchar datos a mano.
+    TREND_CONTEXT_VERSION = 2
     to_explain = []
     for item in trends_data:
         prev = existing.get(item["keyword"]) or {}
-        if prev.get("news"):
-            item["news"] = prev["news"]
+        prev_news = prev.get("news") or []
+        if prev_news and prev_news[0].get("v") == TREND_CONTEXT_VERSION:
+            item["news"] = prev_news
             item["why_trending"] = prev.get("why_trending")
         else:
             # Primero las noticias que Google Trends asocia a la tendencia,
@@ -159,7 +165,7 @@ def run():
                 if not key or key in seen:
                     continue
                 seen.add(key)
-                merged.append(n)
+                merged.append(dict(n, v=TREND_CONTEXT_VERSION))
             item["news"] = merged[:5]
         if not item.get("why_trending") and item["news"]:
             to_explain.append(item)
