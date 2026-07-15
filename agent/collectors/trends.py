@@ -1,6 +1,11 @@
+import html
+import re
 import time
 import logging
+import xml.etree.ElementTree as ET
+
 import feedparser
+import requests
 from pytrends.request import TrendReq
 from tenacity import retry, stop_after_attempt, wait_exponential
 from config import GOOGLE_TRENDS_CATEGORIES
@@ -33,12 +38,83 @@ def _traffic_to_score(traffic):
     return 1.5
 
 
+def _local(tag):
+    """Nombre local de un tag XML (ignora el namespace ht: del feed)."""
+    return tag.rsplit("}", 1)[-1] if "}" in tag else tag
+
+
+def _clean_news_text(raw):
+    """Los news_item del feed traen HTML embebido (<b>, &nbsp;…) — se limpia."""
+    return html.unescape(re.sub(r"<[^>]+>", "", raw or "")).strip()
+
+
+def _parse_trends_xml(xml_text, geo, limit):
+    """
+    Parsea el RSS de Trends con ElementTree en vez de feedparser porque cada
+    <item> trae VARIOS <ht:news_item> (las noticias que Google asocia a la
+    tendencia — la evidencia directa de POR QUÉ es tendencia) y feedparser
+    aplana los elementos repetidos quedándose con uno solo.
+    """
+    root = ET.fromstring(xml_text)
+    channel = root.find("channel")
+    results = []
+    for item in channel.findall("item"):
+        kw, traffic, news = "", 0, []
+        for child in item:
+            name = _local(child.tag)
+            if name == "title":
+                kw = (child.text or "").strip()
+            elif name == "approx_traffic":
+                traffic = _parse_traffic(child.text or "")
+            elif name == "news_item":
+                n = {}
+                for sub in child:
+                    sname = _local(sub.tag)
+                    if sname == "news_item_title":
+                        n["title"] = _clean_news_text(sub.text)
+                    elif sname == "news_item_url":
+                        n["url"] = (sub.text or "").strip()
+                    elif sname == "news_item_source":
+                        n["source"] = _clean_news_text(sub.text)
+                if n.get("title"):
+                    # URL directa del medio (no proxy de Google) → sirve para favicon
+                    n["source_url"] = n.get("url") or ""
+                    n["published_at"] = ""      # el feed de Trends no trae fecha
+                    n["from_trends"] = True     # marca: asociada por Google Trends
+                    news.append(n)
+        if not kw:
+            continue
+        results.append({
+            "keyword":        kw,
+            "rank":           len(results) + 1,
+            "geo":            geo,
+            "approx_traffic": traffic,
+            "growth_score":   _traffic_to_score(traffic),
+            "trends_news":    news[:3],
+        })
+        if len(results) >= limit:
+            break
+    return results
+
+
 def fetch_trends_rss(geo="PE", limit=20):
     """
-    Tendencias de hoy desde el feed RSS oficial de Google Trends.
+    Tendencias de hoy desde el feed RSS oficial de Google Trends, incluyendo
+    los ht:news_item (noticias asociadas a cada tendencia por Google).
     Más robusto que pytrends desde CI (pytrends se bloquea por IP de datacenter).
     """
-    feed = feedparser.parse(TRENDS_RSS_URL.format(geo=geo))
+    url = TRENDS_RSS_URL.format(geo=geo)
+    try:
+        resp = requests.get(url, timeout=20)
+        resp.raise_for_status()
+        results = _parse_trends_xml(resp.text, geo, limit)
+        n_news = sum(len(r["trends_news"]) for r in results)
+        logger.info(f"Google Trends RSS: {len(results)} tendencias, {n_news} noticias asociadas")
+        return results
+    except Exception as e:
+        logger.warning(f"Parseo XML de Trends falló ({e}); fallback a feedparser sin noticias")
+
+    feed = feedparser.parse(url)
     results = []
     for i, entry in enumerate(feed.entries[:limit]):
         traffic = _parse_traffic(entry.get("ht_approx_traffic", ""))
@@ -51,6 +127,7 @@ def fetch_trends_rss(geo="PE", limit=20):
             "geo":            geo,
             "approx_traffic": traffic,
             "growth_score":   _traffic_to_score(traffic),
+            "trends_news":    [],
         })
     logger.info(f"Google Trends RSS: {len(results)} tendencias")
     return results

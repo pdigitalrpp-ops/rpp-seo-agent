@@ -135,9 +135,10 @@ def run():
         item["category"] = ((llm_cats or {}).get(item["keyword"])
                             or scoring._infer_category_from_keyword(item["keyword"]))
 
-    # "Por qué es tendencia": noticias de Google News por keyword + resumen LLM.
-    # Se reusa lo ya generado hoy (las tendencias se repiten entre corridas del
-    # radar) — solo las keywords nuevas consultan Google News y gastan LLM.
+    # "Por qué es tendencia": noticias asociadas por Google Trends (ht:news_item,
+    # la evidencia directa) + Google News por keyword como complemento + resumen
+    # LLM. Se reusa lo ya generado hoy (las tendencias se repiten entre corridas
+    # del radar) — solo las keywords nuevas consultan Google News y gastan LLM.
     try:
         existing = get_trends_context(today)
     except Exception as e:
@@ -150,14 +151,33 @@ def run():
             item["news"] = prev["news"]
             item["why_trending"] = prev.get("why_trending")
         else:
-            item["news"] = trend_news.fetch_news_for_keyword(item["keyword"])
+            # Primero las noticias que Google Trends asocia a la tendencia,
+            # luego Google News; dedupe por titular, máx 5.
+            merged, seen = [], set()
+            for n in list(item.get("trends_news") or []) + trend_news.fetch_news_for_keyword(item["keyword"]):
+                key = (n.get("title") or "").lower().strip()
+                if not key or key in seen:
+                    continue
+                seen.add(key)
+                merged.append(n)
+            item["news"] = merged[:5]
         if not item.get("why_trending") and item["news"]:
             to_explain.append(item)
+
+    def _fmt_headline(n):
+        parts = [n.get("title") or ""]
+        if n.get("source"):
+            parts.append(f'({n["source"]})')
+        if n.get("published_at"):
+            parts.append(f'[{n["published_at"][:16]}]')
+        if n.get("from_trends"):
+            parts.append("[asociada por Google Trends]")
+        return " ".join(p for p in parts if p)
+
     if to_explain:
         explanations = llm.explain_trends([{
             "keyword":   it["keyword"],
-            "headlines": [f'{n["title"]} ({n["source"]})' if n.get("source") else n["title"]
-                          for n in it["news"]],
+            "headlines": [_fmt_headline(n) for n in it["news"]],
         } for it in to_explain])
         for it in to_explain:
             it["why_trending"] = (explanations or {}).get(it["keyword"])

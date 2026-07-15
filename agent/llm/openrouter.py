@@ -272,17 +272,30 @@ def explain_trends(items):
 
     system = (
         "Eres un editor de actualidad de RPP Noticias (Perú). Explicas por qué "
-        "un tema está entre lo más buscado en Google Perú HOY, basándote SOLO "
-        "en los titulares de noticias que se te dan como evidencia — sin "
-        "inventar hechos que no estén en ellos. Respondes exclusivamente en "
-        "JSON, sin texto adicional ni markdown."
+        "un tema está entre lo más buscado en Google Perú HOY. La causa de una "
+        "tendencia es casi siempre un HECHO NOTICIOSO reciente: tu explicación "
+        "debe anclarse en la noticia MÁS RECIENTE y repetida entre los titulares "
+        "dados como evidencia, no en contexto general ni en artículos viejos o "
+        "de otro país que mencionen el término de pasada. Nunca inventes hechos "
+        "que no estén en los titulares. Respondes exclusivamente en JSON, sin "
+        "texto adicional ni markdown."
     )
     prompt = (
         "Para CADA tema escribe una explicación de 1 a 2 frases (máx ~220 "
-        "caracteres) de POR QUÉ es tendencia de búsqueda hoy: qué pasó, quién "
-        "es o qué evento lo disparó. Si el tema es ambiguo (siglas, nombres "
-        "cortos), acláralo primero (\"SGD es...\"). Si los titulares no "
-        "alcanzan para saberlo, responde exactamente null en ese ítem.\n\n"
+        "caracteres) de POR QUÉ es tendencia de búsqueda hoy: el hecho concreto "
+        "que la disparó (qué pasó, quién es, qué evento). Reglas:\n"
+        "- Prioriza los titulares marcados [asociada por Google Trends] (son "
+        "las noticias que Google vincula directamente a la tendencia) y los de "
+        "fecha más reciente.\n"
+        "- Si el tema es ambiguo (siglas, nombres cortos), acláralo primero "
+        "(\"SGD es...\").\n"
+        "- Si el término está en inglés y NO es un nombre propio (p.ej. "
+        "'weather'), en Perú suele buscarse por un hecho local (friaje, "
+        "lluvias, sismo, oleajes…): explica el hecho reciente en Perú que lo "
+        "dispara según los titulares.\n"
+        "- Si ningún titular muestra un hecho noticioso que explique la "
+        "búsqueda, responde exactamente null en ese ítem — nunca rellenes con "
+        "una definición del término ni con noticias sin relación.\n\n"
         f"Temas con sus titulares recientes (JSON):\n{json.dumps(payload, ensure_ascii=False)}\n\n"
         'Responde SOLO un JSON: {"items": [{"i": <indice>, "why": "<explicacion o null>"}]}'
     )
