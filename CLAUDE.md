@@ -43,6 +43,37 @@ StatCard, paneles score-izquierda, chips).
 arrancó 06:17 Lima y terminó 06:31 con success y las 8 fuentes OK (antes
 terminaba 09:00-13:30). El ajuste del 2026-07-14 cumplió su objetivo.
 
+**2026-07-15 — /busqueda reorganizada por DECISIÓN, con vigencia de demanda
+(rama busqueda-redesign → master b49051e):** feedback editorial: la pestaña
+mostraba como quick wins notas de eventos YA jugados ("estadísticas francia
+vs españa", 2M imp. después del partido) y módulos sin señal de para qué
+sirven ni cuándo rinde accionar.
+- **Vigencia de la demanda:** cada query de GSC se clasifica hot | evergreen
+  | past | NULL — `analyzers/freshness.py` (reglas: cruce con tendencias
+  activas de hoy + patrones evergreen/evento) + `openrouter.
+  classify_query_freshness` (LLM refina las 120 con más impresiones, chunk
+  40). Corre en run_morning; se guarda en `gsc_daily.query_freshness`.
+  **MIGRACIÓN PENDIENTE:** `ALTER TABLE gsc_daily ADD COLUMN IF NOT EXISTS
+  query_freshness text;` (el clasificador de permisos la bloqueó en auto
+  mode; el writer hace pre-flight y guarda sin la columna mientras tanto, y
+  el dashboard tiene fallback client-side por reglas — copia TS en
+  BusquedaClient.tsx, si cambian las reglas actualizar AMBAS).
+- **La pestaña quedó en 2 bloques:** (1) "Para accionar hoy" — cola ÚNICA
+  (subir al top 3 / reescribir título y meta / ganar el snippet) ordenada
+  por vigencia × impresiones, con banner de expectativas (rezago ~1 día,
+  efecto 3-14 días tras reindexación), acción concreta por fila y clics/día
+  perdidos; las "past" se ocultan tras un toggle. (2) "Análisis y
+  monitoreo" — top queries, Discover reencuadrado (detector de patrones de
+  contenido, no lista de URLs), detalle SERP (PAA = ideas de H2).
+- **CTR bajo → "CTR bajo lo esperado":** curva de CTR por posición
+  (expectedCtr en BusquedaClient), solo gaps reales (ctr < 40% del
+  esperado, ≥30 clics/día perdidos) — CTR 0.5% en pos. 8 ya no es "problema".
+- **Tarjeta "Llegamos tarde":** queries past con ≥50k imp. como lección de
+  anticipación; run_morning además guarda un insight en daily_insights
+  cuando hay ≥100k imp. apagadas.
+- page.tsx usa select("*") en las filas de acción a propósito: tolera que
+  query_freshness no exista aún.
+
 **2026-07-15 — "Por qué es tendencia" en /trends (rama trends-explain →
 master 606461b + fixes de calidad 7822728/1830768):** la pestaña Tendencias
 quedó dividida en dos: izquierda el listado compacto con el filtro de
