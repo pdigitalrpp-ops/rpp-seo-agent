@@ -11,7 +11,37 @@ dashboard web.
 
 ## Estado actual
 
-**Fecha último avance:** 2026-07-14
+**Fecha último avance:** 2026-07-15
+
+**2026-07-15 — Rediseño de las 4 pestañas restantes (rama redesign-tabs →
+master, merge 97cc023) — VERIFICADO en preview de Vercel antes de mergear:**
+Tendencias, Alertas, Búsqueda & Discover y Auditoría migradas al sistema de
+diseño del rediseño 2026-07-14 (las otras 4 ya estaban):
+(1) **Tendencias:** ahora es client component (`trends/TrendsClient.tsx`,
+page.tsx solo hace fetch) — filtro lateral de categorías con FilterList
+(conteos + minibarras por volumen, color por categoría), filas con panel de
+score /10 a la izquierda estilo Recomendaciones, chips de filtro activo, y
+"Temas recurrentes" con contador ×N de en cuántas corridas apareció cada
+keyword (antes era una nube plana).
+(2) **Alertas:** client component (`alertas/AlertasClient.tsx`) — filtros
+laterales Severidad (Alta/Media/Baja con acento por color) y Tipo de alerta,
+con filtrado cruzado (cada faceta cuenta bajo la otra activa), chips +
+"Limpiar filtros". Content decay igual (frame con scroll).
+(3) **Búsqueda & Discover:** fila de 4 KPIs arriba (StatCard): quick wins,
+CTR bajo, clics Discover 7d, "SERP por ganar" (snippets que RPP no tiene =
+`!rpp_has_snippet`). Encabezados de tarjeta unificados: acento border-left
+por sección + header bg-gray-50 (se eliminaron los fondos de color
+amber/blue/purple/teal pre-rediseño).
+(4) **Auditoría:** panel de score a la izquierda estilo Recomendaciones
+(score grande coloreado verde/naranja/rojo + barra + conteo de issues),
+borde de acento izquierdo por color de score. Pendientes técnicos y
+Sugerencia IA sin cambios.
+Con esto las 8 pestañas comparten el mismo sistema de diseño (FilterList,
+StatCard, paneles score-izquierda, chips).
+
+**2026-07-15 — Cron adelantado CONFIRMADO:** primer morning con cron 06:00 UTC
+arrancó 06:17 Lima y terminó 06:31 con success y las 8 fuentes OK (antes
+terminaba 09:00-13:30). El ajuste del 2026-07-14 cumplió su objetivo.
 
 **2026-07-14 — Rediseño visual del dashboard (rama redesign-landing → master,
 merge 0f55fd2) — VERIFICADO en preview de Vercel antes de mergear:**
