@@ -44,9 +44,28 @@ def save_trends(trends_list, run_date):
         "category":     t.get("category"),
         "geo":          t.get("geo", "PE"),
         "rank":         t.get("rank"),
+        "why_trending": t.get("why_trending"),
+        "news":         t.get("news"),
     } for t in trends_list]
     sb.table("daily_trends").insert(rows).execute()
     logger.info(f"Guardadas {len(rows)} tendencias")
+
+
+def get_trends_context(run_date):
+    """
+    {keyword: {"why_trending":…, "news":…}} de las tendencias YA guardadas hoy.
+    Permite que el radar reuse noticias y explicaciones LLM de corridas
+    anteriores del día (las tendencias se repiten mucho entre corridas) en vez
+    de re-consultar Google News y quemar cuota del LLM cada vez.
+    """
+    sb = _get_client()
+    result = (sb.table("daily_trends")
+              .select("keyword, why_trending, news")
+              .eq("date", str(run_date)).execute())
+    return {
+        r["keyword"]: {"why_trending": r.get("why_trending"), "news": r.get("news")}
+        for r in (result.data or [])
+    }
 
 
 def save_gsc_data(gsc_rows, run_date):

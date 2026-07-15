@@ -18,13 +18,14 @@ from config import (
     KNOWN_SECTIONS_FALLBACK, ALERT_SCORE_THRESHOLD, ALERT_MAX_PER_SECTION_PER_HOUR,
     CATEGORY_KEYWORDS,
 )
-from collectors import marfeel, trends, competitors, rpp_own_feed
+from collectors import marfeel, trends, competitors, rpp_own_feed, trend_news
 from analyzers import scoring, opportunities, coverage
 from llm import provider as llm
 from notifiers import notify
 from writers.supabase_writer import (
     save_run_log, save_recommendations, save_alerts, save_trends,
     save_competitor_articles, get_scoring_weights, count_recent_alerts,
+    get_trends_context,
 )
 
 logging.basicConfig(
@@ -133,6 +134,35 @@ def run():
         item["own_momentum"] = min(sum(1 for w in kw_words if w in realtime_titles) / 2.0, 1.0)
         item["category"] = ((llm_cats or {}).get(item["keyword"])
                             or scoring._infer_category_from_keyword(item["keyword"]))
+
+    # "Por qué es tendencia": noticias de Google News por keyword + resumen LLM.
+    # Se reusa lo ya generado hoy (las tendencias se repiten entre corridas del
+    # radar) — solo las keywords nuevas consultan Google News y gastan LLM.
+    try:
+        existing = get_trends_context(today)
+    except Exception as e:
+        logger.warning(f"No se pudo leer el contexto previo de tendencias: {e}")
+        existing = {}
+    to_explain = []
+    for item in trends_data:
+        prev = existing.get(item["keyword"]) or {}
+        if prev.get("news"):
+            item["news"] = prev["news"]
+            item["why_trending"] = prev.get("why_trending")
+        else:
+            item["news"] = trend_news.fetch_news_for_keyword(item["keyword"])
+        if not item.get("why_trending") and item["news"]:
+            to_explain.append(item)
+    if to_explain:
+        explanations = llm.explain_trends([{
+            "keyword":   it["keyword"],
+            "headlines": [f'{n["title"]} ({n["source"]})' if n.get("source") else n["title"]
+                          for n in it["news"]],
+        } for it in to_explain])
+        for it in to_explain:
+            it["why_trending"] = (explanations or {}).get(it["keyword"])
+        if explanations:
+            logger.info(f"✅ LLM explicó {len(explanations)}/{len(to_explain)} tendencias nuevas")
 
     scored = scoring.score_all_topics(
         trends_data, competitor_data or [], gsc_data=[],
