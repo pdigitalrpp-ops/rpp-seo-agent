@@ -83,6 +83,30 @@ def categorize_articles(articles, categories):
     return updated
 
 
+# Lote para clasificar vigencia de queries GSC (mismo motivo que _ARTICLE_CHUNK:
+# lotes grandes agotan el presupuesto de razonamiento de Hy3).
+_FRESHNESS_CHUNK = 40
+
+
+def classify_query_freshness(queries, trend_keywords):
+    """
+    Clasifica la vigencia de la demanda de queries de GSC ('hot'|'evergreen'|
+    'past') en lotes. Devuelve {query: estado} o None si no hay proveedor o no
+    implementa classify_query_freshness (solo OpenRouter hoy — sin él quedan
+    las reglas de analyzers/freshness.py).
+    """
+    provider = _active_provider()
+    fn = getattr(provider, "classify_query_freshness", None) if provider else None
+    if not fn or not queries:
+        return None
+    merged = {}
+    for i in range(0, len(queries), _FRESHNESS_CHUNK):
+        part = fn(queries[i:i + _FRESHNESS_CHUNK], trend_keywords)
+        if part:
+            merged.update(part)
+    return merged or None
+
+
 def explain_trends(items):
     """
     Explica por qué cada tendencia lo es (1-2 frases por tema), usando los

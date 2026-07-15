@@ -251,6 +251,65 @@ def rewrite_onpage_batch(items, title_max=60, meta_min=120, meta_max=160):
 
 
 # ---------------------------------------------------------------------------
+# E) Vigencia de queries de GSC: ¿la demanda sigue viva?
+# ---------------------------------------------------------------------------
+
+def classify_query_freshness(queries, trend_keywords):
+    """
+    Clasifica queries de Search Console según si su demanda sigue viva HOY:
+    "hot" (evento futuro/tendencia activa), "evergreen" (demanda continua) o
+    "past" (el evento ya ocurrió, el interés murió). Devuelve dict
+    {query: clasificacion} o None (rules-first).
+    """
+    if not is_enabled() or not queries:
+        return None
+
+    from datetime import date
+    numbered = "\n".join(f"{i}. {q}" for i, q in enumerate(queries))
+    trends_txt = ", ".join(trend_keywords[:20]) if trend_keywords else "(sin datos)"
+    system = (
+        "Eres un editor SEO de RPP Noticias (Perú). Decides si la demanda de "
+        "una búsqueda de Google sigue viva HOY, para saber si aún vale la pena "
+        "optimizar la nota que posiciona por ella. Las búsquedas atadas a un "
+        "evento que YA OCURRIÓ (un partido jugado, una gala pasada) están "
+        "muertas aunque ayer tuvieran millones de impresiones. Respondes "
+        "exclusivamente en JSON, sin texto adicional ni markdown."
+    )
+    prompt = (
+        f"HOY es {date.today().isoformat()}. Tendencias activas en Perú ahora: "
+        f"{trends_txt}.\n\n"
+        "Clasifica CADA búsqueda en exactamente una de:\n"
+        '- "hot": atada a un evento FUTURO o a una tendencia activa hoy '
+        "(p.ej. la final que aún no se juega).\n"
+        '- "evergreen": demanda continua que no depende de un evento '
+        "(\"partidos de hoy\", \"precio del dólar\", \"rpp en vivo\").\n"
+        '- "past": atada a un evento que YA ocurrió (un partido ya jugado, '
+        "sus alineaciones, estadísticas o dónde verlo).\n"
+        "En la duda entre hot y past, usa las tendencias activas y la fecha "
+        "de hoy como árbitro.\n\n"
+        f"Búsquedas:\n{numbered}\n\n"
+        'Responde SOLO un JSON: {"items": [{"i": <indice>, "estado": "hot|evergreen|past"}]}'
+    )
+    data = _generate_json(prompt, system=system, max_tokens=5000)
+    if not isinstance(data, dict) or not isinstance(data.get("items"), list):
+        if data is not None:
+            logger.warning(f"OpenRouter: JSON de vigencia con forma inesperada: {str(data)[:200]!r}")
+        return None
+
+    valid = {"hot", "evergreen", "past"}
+    out = {}
+    for entry in data["items"]:
+        try:
+            idx = int(entry["i"])
+            estado = str(entry["estado"]).lower().strip()
+        except (KeyError, ValueError, TypeError):
+            continue
+        if 0 <= idx < len(queries) and estado in valid:
+            out[queries[idx]] = estado
+    return out or None
+
+
+# ---------------------------------------------------------------------------
 # D) Explicación de tendencias: por qué cada tema es tendencia hoy
 # ---------------------------------------------------------------------------
 

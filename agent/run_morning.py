@@ -18,13 +18,13 @@ from config import SITE_DOMAIN, SERPAPI_QUERIES_PER_RUN, CATEGORY_KEYWORDS
 from article_filter import is_real_article
 from collectors import marfeel, gsc, competitors, serpapi
 from collectors.rpp_articles import parse_article
-from analyzers import decay, onpage_audit, opportunities
+from analyzers import decay, onpage_audit, opportunities, freshness
 from llm import provider as llm
 from writers.supabase_writer import (
     save_run_log, save_traffic, save_traffic_channels, save_gsc_data,
     save_competitor_articles, save_decay, save_daily_insights,
     save_scoring_weights, save_onpage_audits, save_serp_opportunities,
-    get_historical_traffic,
+    get_historical_traffic, get_trends_context,
 )
 
 logging.basicConfig(
@@ -188,8 +188,41 @@ def run():
     logger.info(f"Filtrado a contenido: {len(marfeel_perf)} notas, {len(marfeel_channel)} filas por canal")
 
     # --- ANÁLISIS ---
+    # Vigencia de la demanda: ¿cada query de GSC sigue viva hoy? (rules-first +
+    # LLM). Marca "past" las de eventos ya ocurridos — el dashboard las oculta
+    # de la cola de acción (optimizar una nota cuyo interés murió no rinde).
+    trends_today = []
+    try:
+        trends_today = list(get_trends_context(today).keys())
+    except Exception as e:
+        logger.warning(f"No se pudieron leer las tendencias de hoy para vigencia: {e}")
+    fresh_map = freshness.classify_queries(gsc_search or [], trends_today, llm)
+    for r in (gsc_search or []):
+        f = fresh_map.get(r.get("query"))
+        if f:
+            r["query_freshness"] = f
+
     quick_wins = opportunities.find_gsc_quick_wins(gsc_search or [])
     insights, weights = compute_insights_and_weights(marfeel_perf or [], traffic_sources or [], quick_wins)
+
+    # Aprendizaje del evento: queries "past" con impresiones enormes = llegamos
+    # tarde al pico de búsqueda. La lección es preparar la nota ANTES del
+    # próximo evento comparable.
+    late = sorted(
+        ({"query": q} for q, f in fresh_map.items() if f == "past"),
+        key=lambda d: -max((r.get("impressions") or 0) for r in (gsc_search or [])
+                           if r.get("query") == d["query"]),
+    )[:5]
+    late_imps = sum(max((r.get("impressions") or 0) for r in (gsc_search or [])
+                        if r.get("query") == d["query"]) for d in late)
+    if late and late_imps >= 100000:
+        insights.append({
+            "headline": f"Llegamos tarde a {len(late)} búsquedas masivas ya apagadas",
+            "detail":   "Estas consultas explotaron alrededor de un evento que ya pasó "
+                        f"(~{late_imps:,} impresiones). Lección: preparar la nota ANTES "
+                        "del próximo evento comparable (previas, estadísticas, dónde ver).",
+            "evidence": {"queries": [d["query"] for d in late], "impressions": late_imps},
+        })
 
     # SerpApi: featured snippet / PAA / top stories para las quick wins de GSC
     # (rules-first: sin SERPAPI_KEY o sin quick wins, simplemente no hay datos).

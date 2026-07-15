@@ -247,3 +247,12 @@ CREATE POLICY "public_read" ON own_traffic_channels FOR SELECT USING (true);
 -- ===========================================================================
 ALTER TABLE daily_trends ADD COLUMN IF NOT EXISTS why_trending text;
 ALTER TABLE daily_trends ADD COLUMN IF NOT EXISTS news jsonb;
+
+-- ===========================================================================
+-- Vigencia de la demanda (2026-07-15): clasificación de cada query de GSC
+-- según si su interés sigue vivo ('hot' | 'evergreen' | 'past' | NULL).
+-- La escribe run_morning (reglas + LLM, analyzers/freshness.py); el dashboard
+-- oculta las 'past' de la cola de acción de /busqueda.
+-- PENDIENTE de aplicar en Supabase (el writer tolera su ausencia mientras).
+-- ===========================================================================
+ALTER TABLE gsc_daily ADD COLUMN IF NOT EXISTS query_freshness text;
