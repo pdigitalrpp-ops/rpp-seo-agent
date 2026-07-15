@@ -21,7 +21,7 @@ type NewsItem = {
 
 const decodeEntities = (s: string) =>
   s
-    .replace(/<!\[CDATA\[(.*?)\]\]>/gs, "$1")
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
@@ -53,7 +53,9 @@ export async function GET(req: NextRequest) {
     const xml = await res.text()
 
     const items: NewsItem[] = []
-    for (const m of xml.matchAll(/<item>([\s\S]*?)<\/item>/g)) {
+    const itemRe = /<item>([\s\S]*?)<\/item>/g
+    let m: RegExpExecArray | null
+    while ((m = itemRe.exec(xml)) !== null) {
       const block = m[1]
       let title = tag(block, "title")
       if (!title) continue
