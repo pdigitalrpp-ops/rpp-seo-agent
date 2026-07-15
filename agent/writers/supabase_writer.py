@@ -72,19 +72,33 @@ def save_gsc_data(gsc_rows, run_date):
     if not gsc_rows:
         return
     sb = _get_client()
+    # query_freshness requiere la migración 2026-07-15 (ALTER en schema.sql).
+    # Pre-flight: si la columna aún no existe, se guarda sin ella en vez de
+    # reventar el insert (el delete de abajo ya habría vaciado la fecha).
+    has_freshness = True
+    try:
+        sb.table("gsc_daily").select("query_freshness").limit(1).execute()
+    except Exception:
+        has_freshness = False
+        logger.warning("gsc_daily.query_freshness no existe aún (falta migración); se guarda sin vigencia")
     # Borra la fecha y reinserta: re-correr el benchmark reemplaza el snapshot
     # (append-only duplicaba todo el set en cada corrida del día).
     sb.table("gsc_daily").delete().eq("date", str(run_date)).execute()
-    rows = [{
-        "date":        str(run_date),
-        "page":        r["page"],
-        "query":       r.get("query"),
-        "clicks":      r.get("clicks", 0),
-        "impressions": r.get("impressions", 0),
-        "ctr":         r.get("ctr", 0),
-        "position":    r.get("position", 0),
-        "search_type": r.get("search_type", "web"),
-    } for r in gsc_rows]
+    rows = []
+    for r in gsc_rows:
+        row = {
+            "date":        str(run_date),
+            "page":        r["page"],
+            "query":       r.get("query"),
+            "clicks":      r.get("clicks", 0),
+            "impressions": r.get("impressions", 0),
+            "ctr":         r.get("ctr", 0),
+            "position":    r.get("position", 0),
+            "search_type": r.get("search_type", "web"),
+        }
+        if has_freshness:
+            row["query_freshness"] = r.get("query_freshness")
+        rows.append(row)
     for i in range(0, len(rows), 500):
         sb.table("gsc_daily").insert(rows[i:i+500]).execute()
     logger.info(f"Guardadas {len(rows)} filas GSC")
