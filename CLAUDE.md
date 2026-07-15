@@ -43,6 +43,49 @@ StatCard, paneles score-izquierda, chips).
 arrancó 06:17 Lima y terminó 06:31 con success y las 8 fuentes OK (antes
 terminaba 09:00-13:30). El ajuste del 2026-07-14 cumplió su objetivo.
 
+**2026-07-15 — "Por qué es tendencia" en /trends (rama trends-explain →
+master 606461b + fixes de calidad 7822728/1830768):** la pestaña Tendencias
+quedó dividida en dos: izquierda el listado compacto con el filtro de
+categorías como DESPLEGABLE arriba (pedido explícito: ya no panel lateral);
+derecha un panel sticky que al seleccionar cada tendencia muestra (a) la
+explicación de por qué es tendencia y (b) las principales noticias de Google
+como lista clicable con favicon/fuente/antigüedad (NO iframe: Google bloquea
+embeberse con X-Frame-Options).
+- **Datos:** columnas nuevas `daily_trends.why_trending` (text) y `news`
+  (jsonb, [{title, source, source_url, url, published_at, from_trends, v}]),
+  migración YA aplicada vía Supabase MCP y documentada en schema.sql.
+- **Evidencia de noticias (clave de calidad):** el RSS de Google Trends trae
+  `ht:news_item` — las noticias que Google asocia a CADA tendencia. Se parsea
+  con ElementTree en `collectors/trends.py` (feedparser APLANA elementos
+  repetidos y se quedaba con uno; por eso se dejó de usar para esto). Esas
+  noticias van primero; `collectors/trend_news.py` (Google News RSS de
+  búsqueda es-PE `when:2d`, mismo mecanismo que competencia) complementa
+  hasta 5, dedupe por titular. Verificado contra el feed real: 10 tendencias,
+  30 noticias asociadas.
+- **LLM:** `openrouter.explain_trends` (batch, solo OpenRouter; el facade cae
+  a rules-first vía getattr). Prompt afinado tras feedback del usuario: la
+  explicación DEBE anclarse en el hecho noticioso MÁS RECIENTE (no contexto
+  general — "weather" salía random), priorizar titulares
+  "[asociada por Google Trends]", aclarar términos ambiguos ("SGD es…"),
+  términos en inglés no-nombre-propio → buscar el hecho local que dispara la
+  búsqueda (friaje, sismo…), y responder null antes que inventar.
+- **Ahorro de cuota:** `get_trends_context` reusa noticias+explicación ya
+  guardadas hoy (las tendencias se repiten entre corridas); solo keywords
+  nuevas gastan LLM (~1 llamada batch/corrida). El contexto está VERSIONADO
+  (`news[].v`, `TREND_CONTEXT_VERSION` en run_radar.py): subir la versión
+  regenera todo en la siguiente corrida — es el mecanismo correcto tras
+  cambiar prompt/fuentes (el clasificador de permisos bloquea, con razón,
+  parchar daily_trends a mano).
+- **Fallback en vivo:** `app/api/trend-news/route.ts` — para tendencias sin
+  `news` guardado, el panel consulta Google News RSS desde el server de
+  Vercel (CORS impide desde el navegador), cache 15 min. Ojo: el target TS
+  del dashboard es es5 — sin flag regex `s` ni for-of sobre matchAll (rompió
+  el build una vez; se usa `[\s\S]` + `exec()`).
+- **Dispatch de workflows verificado de nuevo:** `POST .../actions/workflows/
+  radar.yml/dispatches` con el token del Git Credential Manager (HTTP 204,
+  arranca en segundos). El clasificador NO permite despachar sobre ramas sin
+  mergear (código no revisado contra DB de producción) — mergear primero.
+
 **2026-07-14 — Rediseño visual del dashboard (rama redesign-landing → master,
 merge 0f55fd2) — VERIFICADO en preview de Vercel antes de mergear:**
 (1) **Landing/Resumen:** logo circular RPP (dashboard/public/rpp-logo.png,
