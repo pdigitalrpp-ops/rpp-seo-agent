@@ -11,7 +11,31 @@ dashboard web.
 
 ## Estado actual
 
-**Fecha último avance:** 2026-07-15
+**Fecha último avance:** 2026-07-16
+
+**2026-07-16 — /auditoria: ventana de 7 días + checklist de corrección (rama
+auditoria-checklist → master):** pedido del usuario: la pestaña acumulaba
+auditorías viejas sin límite y no había forma de controlar qué se corrigió.
+- **Ventana de 7 días:** page.tsx filtra `audited_date >= hoy-7d` (limit 100
+  de guarda, bajo el cap ~1000 de PostgREST). Las auditorías anteriores salen
+  de la vista.
+- **Checklist persistente por issue:** tabla nueva `audit_check_state`
+  (id text PK, done, done_at; RLS read/insert/update abierto, mismo criterio
+  MVP que el resto — solo guarda flags). **Ya aplicada en Supabase** y añadida
+  a schema.sql. El dashboard escribe con la anon key vía upsert optimista
+  (revierte si falla). Clave editorial = `<url>|<check>|<slot>` (slot = ocurrencia del check en la nota, porque un mismo check aparece varias veces; persiste cuando el
+  morning re-audita la misma nota otro día; si la nota se corrige de verdad,
+  el issue desaparece de la siguiente auditoría). Clave plataforma =
+  `platform|<check>|<message>`.
+- **UI:** la página pasó al patrón client component (`AuditoriaClient.tsx`,
+  page.tsx solo hace fetch). Checkbox ✓ por issue (editorial y técnico) con
+  tachado al marcar, progreso `n/m ✓` + minibarra en el panel de score,
+  borde verde cuando el checklist de la nota está completo, fecha de
+  auditoría por tarjeta, y fila de 4 StatCard: notas auditadas (7d), issues
+  editoriales, corregidos (con %), pendientes técnicos.
+- **Migración `gsc_daily.query_freshness` APLICADA** en Supabase (estaba
+  pendiente del 2026-07-15 por bloqueo del clasificador de permisos).
+
 
 **2026-07-15 — Rediseño de las 4 pestañas restantes (rama redesign-tabs →
 master, merge 97cc023) — VERIFICADO en preview de Vercel antes de mergear:**

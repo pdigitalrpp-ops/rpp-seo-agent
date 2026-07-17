@@ -256,3 +256,22 @@ ALTER TABLE daily_trends ADD COLUMN IF NOT EXISTS news jsonb;
 -- PENDIENTE de aplicar en Supabase (el writer tolera su ausencia mientras).
 -- ===========================================================================
 ALTER TABLE gsc_daily ADD COLUMN IF NOT EXISTS query_freshness text;
+
+-- ===========================================================================
+-- Checklist de la auditoría on-page (/auditoria): estado marcado a mano por
+-- el equipo para controlar qué se ha ido corrigiendo. Escribe el dashboard
+-- con la anon key (mismo criterio MVP que el resto: RLS abierto, solo flags).
+--   id editorial:  '<url>|<check>|<slot>'     (persiste entre re-auditorías;
+--                  slot = nº de ocurrencia del check dentro de la nota)
+--   id plataforma: 'platform|<check>|<message>'
+-- ===========================================================================
+CREATE TABLE IF NOT EXISTS audit_check_state (
+  id         text PRIMARY KEY,
+  done       boolean NOT NULL DEFAULT false,
+  done_at    timestamptz,
+  created_at timestamptz DEFAULT now()
+);
+ALTER TABLE audit_check_state ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "public_read"   ON audit_check_state FOR SELECT USING (true);
+CREATE POLICY "public_insert" ON audit_check_state FOR INSERT WITH CHECK (true);
+CREATE POLICY "public_update" ON audit_check_state FOR UPDATE USING (true);
