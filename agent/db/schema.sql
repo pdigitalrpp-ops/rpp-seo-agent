@@ -261,7 +261,8 @@ ALTER TABLE gsc_daily ADD COLUMN IF NOT EXISTS query_freshness text;
 -- Checklist de la auditoría on-page (/auditoria): estado marcado a mano por
 -- el equipo para controlar qué se ha ido corrigiendo. Escribe el dashboard
 -- con la anon key (mismo criterio MVP que el resto: RLS abierto, solo flags).
---   id editorial:  '<url>|<check>'            (persiste entre re-auditorías)
+--   id editorial:  '<url>|<check>|<slot>'     (persiste entre re-auditorías;
+--                  slot = nº de ocurrencia del check dentro de la nota)
 --   id plataforma: 'platform|<check>|<message>'
 -- ===========================================================================
 CREATE TABLE IF NOT EXISTS audit_check_state (

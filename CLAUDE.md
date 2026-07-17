@@ -23,7 +23,7 @@ auditorías viejas sin límite y no había forma de controlar qué se corrigió.
   (id text PK, done, done_at; RLS read/insert/update abierto, mismo criterio
   MVP que el resto — solo guarda flags). **Ya aplicada en Supabase** y añadida
   a schema.sql. El dashboard escribe con la anon key vía upsert optimista
-  (revierte si falla). Clave editorial = `<url>|<check>` (persiste cuando el
+  (revierte si falla). Clave editorial = `<url>|<check>|<slot>` (slot = ocurrencia del check en la nota, porque un mismo check aparece varias veces; persiste cuando el
   morning re-audita la misma nota otro día; si la nota se corrige de verdad,
   el issue desaparece de la siguiente auditoría). Clave plataforma =
   `platform|<check>|<message>`.

@@ -25,5 +25,11 @@ export default async function AuditoriaPage() {
   const checks: Record<string, boolean> = {}
   for (const r of checkRows ?? []) checks[r.id] = !!r.done
 
-  return <AuditoriaClient audits={audits ?? []} initialChecks={checks} lastRun={lastRun} />
+  // Una tarjeta por nota: si el morning re-auditó la misma URL varios días de
+  // la semana, se muestra solo la auditoría más reciente (el orden ya viene
+  // por fecha desc, así que la primera aparición de cada URL es la más nueva).
+  const byUrl = new Map<string, any>()
+  for (const a of audits ?? []) if (!byUrl.has(a.url)) byUrl.set(a.url, a)
+
+  return <AuditoriaClient audits={[...byUrl.values()]} initialChecks={checks} lastRun={lastRun} />
 }

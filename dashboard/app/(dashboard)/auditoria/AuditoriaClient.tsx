@@ -18,9 +18,20 @@ const issueClass = (it: any) =>
   it.class ?? (PLATFORM_CHECKS.has(it.check) ? "platform" : "editorial")
 
 // Claves del checklist: por URL (no por id de auditoría) para que lo marcado
-// persista cuando el morning re-audita la misma nota otro día.
-const editorialKey = (a: any, it: any) => `${a.url}|${it.check}`
+// persista cuando el morning re-audita la misma nota otro día. El `check` se
+// repite dentro de una nota (p.ej. 3 issues distintos con check='title'), así
+// que se agrega un slot por ocurrencia: '<url>|<check>|<n>'.
 const platformKey = (check: string, message: string) => `platform|${check}|${message}`
+function editorialWithIds(a: any): { it: any; id: string }[] {
+  const counts: Record<string, number> = {}
+  return (a.issues ?? [])
+    .filter((it: any) => issueClass(it) === "editorial")
+    .map((it: any) => {
+      const slot = counts[it.check] ?? 0
+      counts[it.check] = slot + 1
+      return { it, id: `${a.url}|${it.check}|${slot}` }
+    })
+}
 
 function CheckBox({ done, onToggle }: { done: boolean; onToggle: () => void }) {
   return (
@@ -80,12 +91,10 @@ export default function AuditoriaClient({
   }, [audits])
 
   // KPIs del período (solo issues editoriales, que son los accionables por nota)
-  const editorialIds = useMemo(() => {
-    const ids: string[] = []
-    for (const a of audits)
-      for (const it of a.issues ?? []) if (issueClass(it) === "editorial") ids.push(editorialKey(a, it))
-    return ids
-  }, [audits])
+  const editorialIds = useMemo(
+    () => audits.flatMap((a) => editorialWithIds(a).map((x) => x.id)),
+    [audits]
+  )
   const editorialDone = editorialIds.filter((id) => checks[id]).length
   const platformDone = platformIssues.filter((it) => checks[platformKey(it.check, it.message)]).length
 
@@ -197,8 +206,8 @@ export default function AuditoriaClient({
       )}
       <div className="space-y-3">
         {audits.map((a: any) => {
-          const editorial = (a.issues ?? []).filter((it: any) => issueClass(it) === "editorial")
-          const doneCount = editorial.filter((it: any) => checks[editorialKey(a, it)]).length
+          const editorial = editorialWithIds(a)
+          const doneCount = editorial.filter(({ id }) => checks[id]).length
           const allDone = editorial.length > 0 && doneCount === editorial.length
           const scoreColor =
             a.score == null ? "#9CA3AF" : a.score >= 80 ? "#16A34A" : a.score >= 60 ? "#F97316" : "#DC2626"
@@ -254,8 +263,7 @@ export default function AuditoriaClient({
 
                   {editorial.length > 0 ? (
                     <ul className="mt-3 space-y-1.5">
-                      {editorial.map((it: any, i: number) => {
-                        const id = editorialKey(a, it)
+                      {editorial.map(({ it, id }: { it: any; id: string }, i: number) => {
                         const done = !!checks[id]
                         return (
                           <li key={i} className="flex items-start gap-2">
