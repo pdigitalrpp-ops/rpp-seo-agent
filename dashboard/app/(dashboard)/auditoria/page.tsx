@@ -31,5 +31,5 @@ export default async function AuditoriaPage() {
   const byUrl = new Map<string, any>()
   for (const a of audits ?? []) if (!byUrl.has(a.url)) byUrl.set(a.url, a)
 
-  return <AuditoriaClient audits={[...byUrl.values()]} initialChecks={checks} lastRun={lastRun} />
+  return <AuditoriaClient audits={Array.from(byUrl.values())} initialChecks={checks} lastRun={lastRun} />
 }
