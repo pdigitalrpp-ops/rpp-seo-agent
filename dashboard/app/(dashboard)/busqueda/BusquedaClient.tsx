@@ -145,6 +145,46 @@ function SortBar<F extends string>({
   )
 }
 
+// Celda de métrica: solo el número (sin repetir la unidad del header) +
+// barra de fondo proporcional al máximo de la columna, para comparar volumen
+// de un vistazo. value=null → sin dato cruzado (p.ej. SERP sin match en GSC).
+function DataBarCell({
+  value,
+  max,
+  color,
+  format,
+  width = 72,
+}: {
+  value: number | null
+  max: number
+  color: string
+  format?: (v: number) => string
+  width?: number
+}) {
+  if (value == null) {
+    return (
+      <div className="ml-auto text-xs text-gray-300 text-right" style={{ width }}>
+        —
+      </div>
+    )
+  }
+  const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0
+  return (
+    <div className="relative ml-auto rounded overflow-hidden shrink-0" style={{ width, height: 22 }}>
+      <div
+        className="absolute inset-y-0 left-0 rounded"
+        style={{ width: `${pct}%`, backgroundColor: `${color}26` }}
+      />
+      <span
+        className="relative z-10 flex items-center justify-end h-full pr-1.5 text-xs font-semibold"
+        style={{ color }}
+      >
+        {format ? format(value) : value.toLocaleString()}
+      </span>
+    </div>
+  )
+}
+
 export default function BusquedaClient({
   quickWins,
   ctrCandidates,
@@ -275,20 +315,38 @@ export default function BusquedaClient({
     return map
   }, [quickWins])
 
-  const sortedSerpOpps = useMemo(() => {
-    const enriched = serpOpps.map((row: any) => {
+  const serpEnriched = useMemo(() => {
+    return serpOpps.map((row: any) => {
       const m = gscByKey[`${row.query ?? ""}||${row.gsc_page ?? ""}`]
       return { ...row, _clicks: m?.clicks ?? null, _impressions: m?.impressions ?? null }
     })
+  }, [serpOpps, gscByKey])
+
+  const sortedSerpOpps = useMemo(() => {
+    const arr = [...serpEnriched]
     const { field, dir } = serpSort
     const key = field === "position" ? "gsc_position" : field === "clicks" ? "_clicks" : "_impressions"
-    enriched.sort((a, b) => {
+    arr.sort((a, b) => {
       const av = Number(a[key] ?? (field === "position" ? 999 : 0))
       const bv = Number(b[key] ?? (field === "position" ? 999 : 0))
       return dir === "asc" ? av - bv : bv - av
     })
-    return enriched
-  }, [serpOpps, gscByKey, serpSort])
+    return arr
+  }, [serpEnriched, serpSort])
+
+  // ---------- Máximos por columna (para el largo de la barra de datos) ----------
+  const maxQueryClicks = useMemo(() => Math.max(1, ...topQueries.map((r: any) => r.clicks ?? 0)), [topQueries])
+  const maxQueryImpressions = useMemo(() => Math.max(1, ...topQueries.map((r: any) => r.impressions ?? 0)), [topQueries])
+  const maxQueryCtr = useMemo(() => Math.max(1, ...topQueries.map((r: any) => r.ctr ?? 0)), [topQueries])
+  const maxQueryPosition = useMemo(() => Math.max(1, ...topQueries.map((r: any) => r.position ?? 0)), [topQueries])
+
+  const maxDiscoverClicks = useMemo(() => Math.max(1, ...discover.map((r: any) => r.clicks ?? 0)), [discover])
+  const maxDiscoverImpressions = useMemo(() => Math.max(1, ...discover.map((r: any) => r.impressions ?? 0)), [discover])
+  const maxDiscoverCtr = useMemo(() => Math.max(1, ...discover.map((r: any) => r.ctr ?? 0)), [discover])
+
+  const maxSerpPosition = useMemo(() => Math.max(1, ...serpEnriched.map((r: any) => r.gsc_position ?? 0)), [serpEnriched])
+  const maxSerpClicks = useMemo(() => Math.max(1, ...serpEnriched.map((r: any) => r._clicks ?? 0)), [serpEnriched])
+  const maxSerpImpressions = useMemo(() => Math.max(1, ...serpEnriched.map((r: any) => r._impressions ?? 0)), [serpEnriched])
 
   const discoverTotalClicks = discover.reduce((sum, r) => sum + (r.clicks ?? 0), 0)
   const serpFree = serpOpps.filter((r) => !r.rpp_has_snippet).length
@@ -557,10 +615,18 @@ export default function BusquedaClient({
                   {sortedTopQueries.map((row, i) => (
                     <tr key={i} className="hover:bg-gray-50">
                       <td className="px-4 py-2 text-gray-800 max-w-xs truncate">{row.query}</td>
-                      <td className="px-4 py-2 text-right font-semibold text-gray-700">{(row.clicks ?? 0).toLocaleString()}</td>
-                      <td className="px-4 py-2 text-right text-gray-500">{(row.impressions ?? 0).toLocaleString()}</td>
-                      <td className="px-4 py-2 text-right text-gray-500">{row.ctr?.toFixed(1)}%</td>
-                      <td className="px-4 py-2 text-right text-gray-500">{row.position?.toFixed(1)}</td>
+                      <td className="px-4 py-2">
+                        <DataBarCell value={row.clicks ?? 0} max={maxQueryClicks} color="#2563EB" width={90} />
+                      </td>
+                      <td className="px-4 py-2">
+                        <DataBarCell value={row.impressions ?? 0} max={maxQueryImpressions} color="#6B7280" width={90} />
+                      </td>
+                      <td className="px-4 py-2">
+                        <DataBarCell value={row.ctr ?? 0} max={maxQueryCtr} color="#0D9488" format={(v) => `${v.toFixed(1)}%`} width={64} />
+                      </td>
+                      <td className="px-4 py-2">
+                        <DataBarCell value={row.position ?? 0} max={maxQueryPosition} color="#D97706" format={(v) => v.toFixed(1)} width={56} />
+                      </td>
                     </tr>
                   ))}
                   {!sortedTopQueries.length && (
@@ -602,10 +668,10 @@ export default function BusquedaClient({
               {sortedDiscover.map((row, i) => (
                 <div key={i} className="px-4 py-3 flex items-center justify-between gap-3">
                   <p className="text-sm text-gray-800 truncate flex-1">{row.page}</p>
-                  <div className="flex gap-3 text-xs text-gray-500 shrink-0">
-                    <span className="font-semibold text-purple-700">{(row.clicks ?? 0).toLocaleString()} clics</span>
-                    <span>{(row.impressions ?? 0).toLocaleString()} imp.</span>
-                    <span>CTR: {row.ctr?.toFixed(1)}%</span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <DataBarCell value={row.clicks ?? 0} max={maxDiscoverClicks} color="#2563EB" width={80} />
+                    <DataBarCell value={row.impressions ?? 0} max={maxDiscoverImpressions} color="#6B7280" width={80} />
+                    <DataBarCell value={row.ctr ?? 0} max={maxDiscoverCtr} color="#0D9488" format={(v) => `${v.toFixed(1)}%`} width={60} />
                   </div>
                 </div>
               ))}
@@ -648,12 +714,12 @@ export default function BusquedaClient({
               {sortedSerpOpps.map((row: any, i) => (
                 <div key={i} className="px-4 py-3 space-y-2">
                   <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-medium text-gray-800 truncate">{row.query}</p>
-                    <span className="text-xs text-gray-500 shrink-0">
-                      Pos. GSC {row.gsc_position?.toFixed(1)}
-                      {row._clicks != null && <> · {Number(row._clicks).toLocaleString()} clics</>}
-                      {row._impressions != null && <> · {Number(row._impressions).toLocaleString()} imp.</>}
-                    </span>
+                    <p className="text-sm font-medium text-gray-800 truncate flex-1">{row.query}</p>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <DataBarCell value={row.gsc_position ?? null} max={maxSerpPosition} color="#D97706" format={(v) => v.toFixed(1)} width={56} />
+                      <DataBarCell value={row._clicks} max={maxSerpClicks} color="#2563EB" width={70} />
+                      <DataBarCell value={row._impressions} max={maxSerpImpressions} color="#6B7280" width={80} />
+                    </div>
                   </div>
 
                   <div className="flex flex-wrap gap-1.5">
