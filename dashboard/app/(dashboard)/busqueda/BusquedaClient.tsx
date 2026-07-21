@@ -92,6 +92,59 @@ type ActionItem = {
   freshness: Freshness
 }
 
+// ---------- Orden por métrica (subpestañas de Análisis y monitoreo) ----------
+type SortDir = "asc" | "desc"
+type QueriesSortField = "clicks" | "impressions" | "ctr" | "position"
+type DiscoverSortField = "clicks" | "impressions" | "ctr"
+type SerpSortField = "position" | "clicks" | "impressions"
+
+function toggleSort<F extends string>(
+  current: { field: F; dir: SortDir },
+  field: F,
+  defaultDir: SortDir = "desc"
+): { field: F; dir: SortDir } {
+  if (current.field === field) return { field, dir: current.dir === "asc" ? "desc" : "asc" }
+  return { field, dir: defaultDir }
+}
+
+function SortArrow({ active, dir }: { active: boolean; dir: SortDir }) {
+  if (!active) return <span className="text-gray-300">↕</span>
+  return <span className="text-rpp-teal">{dir === "asc" ? "↑" : "↓"}</span>
+}
+
+function SortBar<F extends string>({
+  options,
+  sort,
+  onChange,
+}: {
+  options: { field: F; label: string }[]
+  sort: { field: F; dir: SortDir }
+  onChange: (field: F) => void
+}) {
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap">
+      <span className="text-xs text-gray-400 mr-0.5">Ordenar:</span>
+      {options.map((opt) => {
+        const active = sort.field === opt.field
+        return (
+          <button
+            key={opt.field}
+            onClick={() => onChange(opt.field)}
+            className={`text-xs font-medium rounded-full border px-2.5 py-1 transition inline-flex items-center gap-1 ${
+              active
+                ? "bg-teal-50 border-rpp-teal text-rpp-teal"
+                : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"
+            }`}
+          >
+            {opt.label}
+            <SortArrow active={active} dir={sort.dir} />
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function BusquedaClient({
   quickWins,
   ctrCandidates,
@@ -110,6 +163,10 @@ export default function BusquedaClient({
   lastRun: string | null
 }) {
   const [showPast, setShowPast] = useState(false)
+  const [monitorTab, setMonitorTab] = useState<"queries" | "discover" | "serp">("queries")
+  const [queriesSort, setQueriesSort] = useState<{ field: QueriesSortField; dir: SortDir }>({ field: "clicks", dir: "desc" })
+  const [discoverSort, setDiscoverSort] = useState<{ field: DiscoverSortField; dir: SortDir }>({ field: "clicks", dir: "desc" })
+  const [serpSort, setSerpSort] = useState<{ field: SerpSortField; dir: SortDir }>({ field: "position", dir: "asc" })
 
   const trendTokens = useMemo(() => {
     const acc: Record<string, true> = {}
@@ -182,6 +239,56 @@ export default function BusquedaClient({
     const lost = alive.reduce((s, it) => s + it.lostPerDay, 0)
     return { queue: alive, pastItems: past, lostTotal: lost }
   }, [quickWins, ctrCandidates, serpOpps, trendTokens])
+
+  // ---------- Top queries ordenadas ----------
+  const sortedTopQueries = useMemo(() => {
+    const arr = [...topQueries]
+    const { field, dir } = queriesSort
+    arr.sort((a, b) => {
+      const av = Number(a?.[field] ?? 0)
+      const bv = Number(b?.[field] ?? 0)
+      return dir === "asc" ? av - bv : bv - av
+    })
+    return arr
+  }, [topQueries, queriesSort])
+
+  // ---------- Discover ordenado ----------
+  const sortedDiscover = useMemo(() => {
+    const arr = [...discover]
+    const { field, dir } = discoverSort
+    arr.sort((a, b) => {
+      const av = Number(a?.[field] ?? 0)
+      const bv = Number(b?.[field] ?? 0)
+      return dir === "asc" ? av - bv : bv - av
+    })
+    return arr
+  }, [discover, discoverSort])
+
+  // ---------- Detalle SERP: cruce con GSC (quickWins) para poder ordenar por
+  // clics/impresiones, que serp_opportunities no trae directamente ----------
+  const gscByKey = useMemo(() => {
+    const map: Record<string, { impressions: number; clicks: number }> = {}
+    quickWins.forEach((row: any) => {
+      const key = `${row.query ?? ""}||${row.page ?? ""}`
+      map[key] = { impressions: row.impressions ?? 0, clicks: row.clicks ?? 0 }
+    })
+    return map
+  }, [quickWins])
+
+  const sortedSerpOpps = useMemo(() => {
+    const enriched = serpOpps.map((row: any) => {
+      const m = gscByKey[`${row.query ?? ""}||${row.gsc_page ?? ""}`]
+      return { ...row, _clicks: m?.clicks ?? null, _impressions: m?.impressions ?? null }
+    })
+    const { field, dir } = serpSort
+    const key = field === "position" ? "gsc_position" : field === "clicks" ? "_clicks" : "_impressions"
+    enriched.sort((a, b) => {
+      const av = Number(a[key] ?? (field === "position" ? 999 : 0))
+      const bv = Number(b[key] ?? (field === "position" ? 999 : 0))
+      return dir === "asc" ? av - bv : bv - av
+    })
+    return enriched
+  }, [serpOpps, gscByKey, serpSort])
 
   const discoverTotalClicks = discover.reduce((sum, r) => sum + (r.clicks ?? 0), 0)
   const serpFree = serpOpps.filter((r) => !r.rpp_has_snippet).length
@@ -389,7 +496,28 @@ export default function BusquedaClient({
           Para leer patrones, no para actuar hoy.
         </p>
 
-        <div className="space-y-6">
+        {/* Subpestañas del bloque de análisis */}
+        <div className="flex gap-2 mb-4 flex-wrap">
+          {[
+            { key: "queries" as const, label: "Top queries", count: topQueries.length },
+            { key: "discover" as const, label: "Google Discover", count: discover.length },
+            { key: "serp" as const, label: "Detalle SERP", count: serpOpps.length },
+          ].map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setMonitorTab(t.key)}
+              className={`text-sm font-medium rounded-full border px-4 py-1.5 transition ${
+                monitorTab === t.key
+                  ? "bg-rpp-teal text-white border-rpp-teal"
+                  : "bg-white border-gray-200 text-gray-600 hover:border-gray-300"
+              }`}
+            >
+              {t.label} <span className="opacity-70">({t.count})</span>
+            </button>
+          ))}
+        </div>
+
+        {monitorTab === "queries" && (
           <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
             <div className="px-4 py-3 border-b bg-gray-50">
               <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
@@ -401,49 +529,77 @@ export default function BusquedaClient({
                 </InfoTooltip>
               </h3>
             </div>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-xs text-gray-500 border-b bg-gray-50">
-                  <th className="text-left px-4 py-2">Query</th>
-                  <th className="text-right px-4 py-2">Clics</th>
-                  <th className="text-right px-4 py-2">Impresiones</th>
-                  <th className="text-right px-4 py-2">CTR</th>
-                  <th className="text-right px-4 py-2">Posición</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {topQueries.map((row, i) => (
-                  <tr key={i} className="hover:bg-gray-50">
-                    <td className="px-4 py-2 text-gray-800 max-w-xs truncate">{row.query}</td>
-                    <td className="px-4 py-2 text-right font-semibold text-gray-700">{(row.clicks ?? 0).toLocaleString()}</td>
-                    <td className="px-4 py-2 text-right text-gray-500">{(row.impressions ?? 0).toLocaleString()}</td>
-                    <td className="px-4 py-2 text-right text-gray-500">{row.ctr?.toFixed(1)}%</td>
-                    <td className="px-4 py-2 text-right text-gray-500">{row.position?.toFixed(1)}</td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-xs text-gray-500 border-b bg-gray-50">
+                    <th className="text-left px-4 py-2">Query</th>
+                    {([
+                      { field: "clicks" as const, label: "Clics" },
+                      { field: "impressions" as const, label: "Impresiones" },
+                      { field: "ctr" as const, label: "CTR" },
+                      { field: "position" as const, label: "Posición" },
+                    ]).map((col) => (
+                      <th
+                        key={col.field}
+                        className="text-right px-4 py-2 cursor-pointer select-none hover:text-gray-700"
+                        onClick={() => setQueriesSort((s) => toggleSort(s, col.field, col.field === "position" ? "asc" : "desc"))}
+                      >
+                        <span className="inline-flex items-center gap-1 justify-end w-full">
+                          {col.label}
+                          <SortArrow active={queriesSort.field === col.field} dir={queriesSort.dir} />
+                        </span>
+                      </th>
+                    ))}
                   </tr>
-                ))}
-                {!topQueries.length && (
-                  <tr><td colSpan={5} className="px-4 py-6 text-sm text-gray-500 text-center">Sin datos.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden" style={{ borderLeftWidth: 4, borderLeftColor: "#7C3AED" }}>
-            <div className="px-4 py-3 border-b bg-gray-50">
-              <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
-                Google Discover (últimos 7 días)
-                <InfoTooltip align="left">
-                  Rendimiento en el feed de recomendados del móvil. Discover no reporta
-                  ni query ni posición: léelo como evidencia de QUÉ TIPO de contenido
-                  tuyo entra al feed (tema, formato, sección), no como URLs a optimizar.
-                </InfoTooltip>
-              </h3>
-              <p className="text-xs text-gray-500 mt-0.5">
-                Úsalo para detectar patrones de tema y formato que entran al feed — no es una lista de tareas
-              </p>
+                </thead>
+                <tbody className="divide-y">
+                  {sortedTopQueries.map((row, i) => (
+                    <tr key={i} className="hover:bg-gray-50">
+                      <td className="px-4 py-2 text-gray-800 max-w-xs truncate">{row.query}</td>
+                      <td className="px-4 py-2 text-right font-semibold text-gray-700">{(row.clicks ?? 0).toLocaleString()}</td>
+                      <td className="px-4 py-2 text-right text-gray-500">{(row.impressions ?? 0).toLocaleString()}</td>
+                      <td className="px-4 py-2 text-right text-gray-500">{row.ctr?.toFixed(1)}%</td>
+                      <td className="px-4 py-2 text-right text-gray-500">{row.position?.toFixed(1)}</td>
+                    </tr>
+                  ))}
+                  {!sortedTopQueries.length && (
+                    <tr><td colSpan={5} className="px-4 py-6 text-sm text-gray-500 text-center">Sin datos.</td></tr>
+                  )}
+                </tbody>
+              </table>
             </div>
-            <div className="divide-y max-h-96 overflow-y-auto">
-              {discover.slice(0, 15).map((row, i) => (
+          </div>
+        )}
+
+        {monitorTab === "discover" && (
+          <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden" style={{ borderLeftWidth: 4, borderLeftColor: "#7C3AED" }}>
+            <div className="px-4 py-3 border-b bg-gray-50 flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+                  Google Discover (últimos 7 días)
+                  <InfoTooltip align="left">
+                    Rendimiento en el feed de recomendados del móvil. Discover no reporta
+                    ni query ni posición: léelo como evidencia de QUÉ TIPO de contenido
+                    tuyo entra al feed (tema, formato, sección), no como URLs a optimizar.
+                  </InfoTooltip>
+                </h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Úsalo para detectar patrones de tema y formato que entran al feed — no es una lista de tareas
+                </p>
+              </div>
+              <SortBar
+                options={[
+                  { field: "clicks", label: "Clics" },
+                  { field: "impressions", label: "Impresiones" },
+                  { field: "ctr", label: "CTR" },
+                ]}
+                sort={discoverSort}
+                onChange={(f) => setDiscoverSort((s) => toggleSort(s, f))}
+              />
+            </div>
+            <div className="divide-y max-h-[32rem] overflow-y-auto">
+              {sortedDiscover.map((row, i) => (
                 <div key={i} className="px-4 py-3 flex items-center justify-between gap-3">
                   <p className="text-sm text-gray-800 truncate flex-1">{row.page}</p>
                   <div className="flex gap-3 text-xs text-gray-500 shrink-0">
@@ -453,33 +609,51 @@ export default function BusquedaClient({
                   </div>
                 </div>
               ))}
-              {!discover.length && (
+              {!sortedDiscover.length && (
                 <p className="px-4 py-6 text-sm text-gray-500 text-center">Sin datos de Discover todavía.</p>
               )}
             </div>
           </div>
+        )}
 
+        {monitorTab === "serp" && (
           <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden" style={{ borderLeftWidth: 4, borderLeftColor: "#0D9488" }}>
-            <div className="px-4 py-3 border-b bg-gray-50">
-              <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
-                Detalle del SERP en vivo (quick wins del día)
-                <InfoTooltip align="left">
-                  Cómo se ve la página de resultados de Google en vivo (SerpApi) para las
-                  quick wins: si hay featured snippet y de quién es, las preguntas de
-                  &quot;La gente también pregunta&quot; (ideas de subtítulos H2) y quién
-                  está en el carrusel de noticias. Requiere SERPAPI_KEY.
-                </InfoTooltip>
-              </h3>
-              <p className="text-xs text-gray-500 mt-0.5">
-                Las preguntas de &quot;La gente también pregunta&quot; son ideas listas de H2 para la nota
-              </p>
+            <div className="px-4 py-3 border-b bg-gray-50 flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+                  Detalle del SERP en vivo (quick wins del día)
+                  <InfoTooltip align="left">
+                    Cómo se ve la página de resultados de Google en vivo (SerpApi) para las
+                    quick wins: si hay featured snippet y de quién es, las preguntas de
+                    &quot;La gente también pregunta&quot; (ideas de subtítulos H2) y quién
+                    está en el carrusel de noticias. Requiere SERPAPI_KEY. Clics/impresiones
+                    se cruzan desde Search Console cuando la query coincide con una quick win.
+                  </InfoTooltip>
+                </h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Las preguntas de &quot;La gente también pregunta&quot; son ideas listas de H2 para la nota
+                </p>
+              </div>
+              <SortBar
+                options={[
+                  { field: "position", label: "Posición" },
+                  { field: "clicks", label: "Clics" },
+                  { field: "impressions", label: "Impresiones" },
+                ]}
+                sort={serpSort}
+                onChange={(f) => setSerpSort((s) => toggleSort(s, f, f === "position" ? "asc" : "desc"))}
+              />
             </div>
             <div className="divide-y max-h-[32rem] overflow-y-auto">
-              {serpOpps.map((row, i) => (
+              {sortedSerpOpps.map((row: any, i) => (
                 <div key={i} className="px-4 py-3 space-y-2">
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-sm font-medium text-gray-800 truncate">{row.query}</p>
-                    <span className="text-xs text-gray-500 shrink-0">Pos. GSC {row.gsc_position?.toFixed(1)}</span>
+                    <span className="text-xs text-gray-500 shrink-0">
+                      Pos. GSC {row.gsc_position?.toFixed(1)}
+                      {row._clicks != null && <> · {Number(row._clicks).toLocaleString()} clics</>}
+                      {row._impressions != null && <> · {Number(row._impressions).toLocaleString()} imp.</>}
+                    </span>
                   </div>
 
                   <div className="flex flex-wrap gap-1.5">
@@ -521,14 +695,14 @@ export default function BusquedaClient({
                   )}
                 </div>
               ))}
-              {!serpOpps.length && (
+              {!sortedSerpOpps.length && (
                 <p className="px-4 py-6 text-sm text-gray-500 text-center">
                   Sin datos aún — se llena en el benchmark de la mañana si <code className="text-xs">SERPAPI_KEY</code> está configurada.
                 </p>
               )}
             </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   )
