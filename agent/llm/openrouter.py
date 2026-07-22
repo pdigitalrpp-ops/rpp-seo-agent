@@ -1,18 +1,21 @@
 """
 Capa LLM — cliente de OpenRouter (API REST compatible con OpenAI Chat
-Completions), vía requests. Modelo por defecto: Llama 3.3 70B Instruct
-(free tier estable de OpenRouter — ver OPENROUTER_MODEL en config.py).
+Completions), vía requests. Modelo por defecto: "openrouter/free", el router
+que elige entre los modelos gratis vigentes en cada llamada (ver
+OPENROUTER_MODEL en config.py).
 
 Mismo contrato que llm/bedrock.py y llm/gemini.py: categorize_topics(...) y
 rewrite_onpage_batch(...), ambas devuelven None si no hay API key, si el
 modelo no está disponible, o la llamada falla (rules-first: el orquestador
 cae al comportamiento por reglas).
 
-Nota histórica: el default fue "tencent/hy3:free" (promo de Tencent en
-OpenRouter del 2026-07-06 al 2026-07-21); al terminar la promo el modelo
-empezó a devolver 404 "unavailable for free" y hubo que cambiar el default.
-Si el modelo actual también deja de estar disponible gratis, OPENROUTER_MODEL
-se puede apuntar a otro (gratis o de pago) por env, sin tocar este archivo.
+Nota histórica: el default fue "tencent/hy3:free" (promo de Tencent hasta
+2026-07-21) y luego, por un día, "meta-llama/llama-3.3-70b-instruct:free" —
+ambos slugs fijos terminaron devolviendo 404 "unavailable for free" a los
+pocos días/horas de fijarlos. El catálogo free de OpenRouter rota más rápido
+de lo que se puede fijar a mano, por eso el default pasó al router
+"openrouter/free". Si el router también falla, OPENROUTER_MODEL se puede
+apuntar a un modelo de pago por env, sin tocar este archivo.
 """
 
 import json
