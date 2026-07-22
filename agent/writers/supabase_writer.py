@@ -311,10 +311,24 @@ def get_scoring_weights(run_date=None):
 def count_recent_alerts(section, minutes=60):
     """Anti-spam: cuántas alertas se enviaron a una sección en los últimos N minutos."""
     sb = _get_client()
-    cutoff = (datetime.now() - timedelta(minutes=minutes)).isoformat()
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=minutes)).isoformat()
     result = (sb.table("alerts").select("id", count="exact")
               .eq("section", section).gte("created_at", cutoff).execute())
     return result.count or 0
+
+
+def get_recent_alert_titles(hours=12):
+    """
+    Títulos (normalizados a minúsculas) de las alertas emitidas en las últimas
+    N horas. Sirve para no re-alertar el MISMO evento en cada corrida del radar
+    (que corre cada ~10 min): sin esto, un sismo generaría una alerta nueva
+    cada ciclo hasta toparse con el anti-spam por sección.
+    """
+    sb = _get_client()
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+    result = (sb.table("alerts").select("title")
+              .gte("created_at", cutoff).execute())
+    return {(r.get("title") or "").lower().strip() for r in (result.data or [])}
 
 
 def save_onpage_audits(audits, run_date):

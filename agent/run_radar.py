@@ -15,17 +15,17 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from config import (
-    KNOWN_SECTIONS_FALLBACK, ALERT_SCORE_THRESHOLD, ALERT_MAX_PER_SECTION_PER_HOUR,
+    KNOWN_SECTIONS_FALLBACK, ALERT_MAX_PER_SECTION_PER_HOUR, ALERT_DEDUP_HOURS,
     CATEGORY_KEYWORDS,
 )
 from collectors import marfeel, trends, competitors, rpp_own_feed, trend_news
-from analyzers import scoring, opportunities, coverage
+from analyzers import scoring, opportunities, coverage, alerting
 from llm import provider as llm
 from notifiers import notify
 from writers.supabase_writer import (
     save_run_log, save_recommendations, save_alerts, save_trends,
     save_competitor_articles, get_scoring_weights, count_recent_alerts,
-    get_trends_context,
+    get_recent_alert_titles, get_trends_context,
 )
 
 logging.basicConfig(
@@ -48,23 +48,8 @@ def safe_collect(name, func, run_data, **kwargs):
         return None
 
 
-def build_alerts(scored_topics):
-    """Etapa 3 — convierte los temas de score alto en alertas por sección."""
-    alerts = []
-    for topic in scored_topics:
-        if topic["score"] < ALERT_SCORE_THRESHOLD:
-            continue
-        section = topic.get("section") or "actualidad"
-        alerts.append({
-            "type":        "trending_topic",
-            "severity":    "high" if topic["score"] >= 85 else "medium",
-            "section":     section,
-            "title":       topic["keyword"],
-            "description": f"Tendencia fuerte ahora · urgencia {topic['urgency']} · "
-                           f"formato sugerido: {topic['format']}",
-            "score":       topic["score"],
-        })
-    return alerts
+# La Etapa 3 (alertas) ahora vive en analyzers/alerting.py — se puntúa la
+# "alertabilidad" con evidencia de noticias, no con el score de recomendación.
 
 
 def run():
@@ -197,11 +182,27 @@ def run():
 
     recs = opportunities.build_recommendations(scored, gsc_data=[], ga4_data=realtime or [])
 
-    # --- ALERTAS (Etapa 3) con anti-spam ---
-    candidate_alerts = build_alerts(scored)
+    # --- ALERTAS (Etapa 3) ---
+    # Se puntúa la ALERTABILIDAD sobre las tendencias enriquecidas (news +
+    # why_trending + rank), NO sobre `scored`: el score de recomendación
+    # descarta temas de bajo tráfico Trends (una muerte, un feriado) que sí son
+    # noticia. alerting.build_alerts consolida además eventos fragmentados.
+    candidate_alerts = alerting.build_alerts(
+        trends_data, sections=KNOWN_SECTIONS_FALLBACK,
+    )
+    try:
+        already_alerted = get_recent_alert_titles(hours=ALERT_DEDUP_HOURS)
+    except Exception:
+        already_alerted = set()
+
     sent_alerts = []
     for alert in candidate_alerts:
         section = alert["section"]
+        title_key = (alert.get("title") or "").lower().strip()
+        # Dedup por evento: el radar corre cada ~10 min; no re-alertar lo mismo.
+        if title_key in already_alerted:
+            logger.info(f"Dedup: '{title_key}' ya alertado en las últimas {ALERT_DEDUP_HOURS}h; se omite")
+            continue
         try:
             recent = count_recent_alerts(section, minutes=60)
         except Exception:
@@ -211,6 +212,11 @@ def run():
             continue
         notify.dispatch_alert(alert)   # a Teams/WhatsApp si hay responsable
         sent_alerts.append(alert)
+        already_alerted.add(title_key)
+        logger.info(
+            f"🚨 Alerta [{alert['severity']}] {alert['score']}/100 · "
+            f"'{title_key}' → {section} ({alert.get('_n_sources', 0)} fuentes)"
+        )
 
     # --- GUARDAR ---
     try:

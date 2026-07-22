@@ -108,9 +108,17 @@ URGENCY_THRESHOLDS = {
     # < 40 -> DESCARTAR
 }
 
-# Etapa 3 — alertas en tiempo real
-ALERT_SCORE_THRESHOLD          = 75   # solo alerta temas con score >= esto
-ALERT_MAX_PER_SECTION_PER_HOUR = 3    # anti-spam
+# Etapa 3 — alertas en tiempo real (ver analyzers/alerting.py).
+# La alertabilidad es un score PROPIO (0-100), distinto del score de
+# recomendación: mide "¿hay una noticia rompiendo ahora?" a partir de la
+# evidencia de noticias + rank de Trends + términos de urgencia, NO del
+# approx_traffic. El viejo ALERT_SCORE_THRESHOLD=75 sobre el score de
+# recomendación dejaba la sección vacía días enteros (solo cruzaban deportes
+# grandes); se reemplazó por estos umbrales, calibrados con datos reales.
+ALERT_WORTHINESS_THRESHOLD     = 55   # alerta si la alertabilidad >= esto
+ALERT_SEVERITY_HIGH            = 78   # >= esto → severidad "alta", si no "media"
+ALERT_MAX_PER_SECTION_PER_HOUR = 3    # anti-spam por sección/hora
+ALERT_DEDUP_HOURS              = 12   # no re-alertar el mismo evento en esta ventana
 
 # ---------------------------------------------------------------------------
 # SerpAPI (cuota escasa: free tier 100/mes). Mantener bajo.
