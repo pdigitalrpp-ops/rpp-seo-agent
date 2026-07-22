@@ -11,7 +11,60 @@ dashboard web.
 
 ## Estado actual
 
-**Fecha último avance:** 2026-07-16
+**Fecha último avance:** 2026-07-22
+
+**2026-07-22 — Rediseño de las ALERTAS (Etapa 3) + fix del modelo LLM +
+ventana de 24h en /alertas:**
+- **Modelo LLM (config.py):** el free tier `tencent/hy3:free` venció el
+  2026-07-21 y empezó a dar 404 "unavailable for free" → `why_trending` y
+  categorías LLM quedaban null. Se probó `meta-llama/llama-3.3-70b-instruct
+  :free` y también dio 404 el mismo día (el catálogo free de OpenRouter rota
+  rápido). Solución: `OPENROUTER_MODEL` default = **`openrouter/free`** (el
+  router oficial que elige un modelo gratis vigente en cada llamada).
+  Verificado en producción: `✅ LLM explicó 9/10 tendencias`. Ojo: el router
+  es más lento (corridas de ~11 min vs ~40s con modelo fijo) y a veces enruta
+  a un modelo de "safety" que responde texto en vez de JSON (cae a rules-first
+  en ese lote, sin romper). Si el router falla, apuntar a un modelo de pago
+  por env.
+- **Rediseño de alertas (`analyzers/alerting.py` NUEVO):** la alerta usaba el
+  score de recomendación con umbral 75, dominado por el `approx_traffic` de
+  Trends (casi siempre 1.5/10) — la sección quedaba días vacía y solo cruzaban
+  deportes grandes. Sismos con muertos, muertes de famosos, renuncias nunca
+  alertaban. Ahora hay un score de **ALERTABILIDAD propio** (0-100),
+  rules-first, que usa la evidencia que el radar ya recolecta:
+  - **nº de fuentes distintas × frescura** de `item["news"]` (driver
+    principal, W_NEWS=40 — reemplaza al approx_traffic).
+  - **why_trending** del LLM: si es null (no hay hecho noticioso), multiplica
+    ×0.5 → deja fuera queries genéricas ("te") y evergreen.
+  - **rank** del feed de Trends Perú (W_RANK=15).
+  - **términos de urgencia** (muerte, sismo, renuncia, en vivo… W_URGENCY=30,
+    alto a propósito: alerta = noticia rompiendo, no explicador de tráfico).
+  - **momentum** (W_MOMENTUM=15): max(growth de Trends, tracción Marfeel).
+  - **Consolida eventos fragmentados** por URL de ARTÍCULO compartida
+    (`_news_key_urls` usa SOLO `n["url"]`, NO `source_url` — este último en los
+    ítems de Google News es el dominio pelado y fusionaba temas sin relación;
+    bug detectado y corregido en calibración). El sismo salía como 4 keywords
+    sueltas ("temblor hoy", "igp ultimo sismo"…), ninguna cruzaba el umbral.
+  - **Dedup por título entre corridas** (`get_recent_alert_titles`, ventana
+    ALERT_DEDUP_HOURS=12): el radar corre cada ~10 min, sin esto re-alertaría
+    lo mismo cada ciclo.
+  - **La descripción de la alerta ahora es el `why_trending` del LLM** (no el
+    texto genérico "Tendencia fuerte ahora · urgencia…").
+  - Config: `ALERT_SCORE_THRESHOLD`(75) eliminado →
+    `ALERT_WORTHINESS_THRESHOLD`(55) + `ALERT_SEVERITY_HIGH`(78).
+  - **Calibrado con datos reales del 2026-07-22** (test offline
+    `test_alerting.py` en scratchpad): dispara el sismo (98.5), Junín 5
+    muertos (80.6), muerte de la actriz de Godzilla (80.1), renuncia #1
+    (87.2); excluye "te" (28.6) y feriado 23 julio (34.1). El score de
+    recomendación (`analyzers/scoring.py`) NO se tocó — sigue alimentando las
+    recomendaciones del dashboard.
+- **/alertas (dashboard):** ahora filtra `created_at >= hoy-24h`
+  (`ALERT_WINDOW_HOURS` en `alertas/page.tsx`) — las alertas NO se resuelven
+  nunca en la DB (`resolved` nace false y nada lo cambia), así que partidos ya
+  jugados hace semanas se mostraban como "Tendencia fuerte ahora · INMEDIATO".
+  Mismo patrón de vigencia que /busqueda y /auditoria.
+
+**Fecha avance anterior:** 2026-07-16
 
 **2026-07-16 — /auditoria: ventana de 7 días + checklist de corrección (rama
 auditoria-checklist → master):** pedido del usuario: la pestaña acumulaba
