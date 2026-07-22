@@ -1,17 +1,18 @@
 """
 Capa LLM — cliente de OpenRouter (API REST compatible con OpenAI Chat
-Completions), vía requests. Modelo por defecto: Tencent Hy3 (free tier de
-OpenRouter, gratis mientras dure la promo).
+Completions), vía requests. Modelo por defecto: Llama 3.3 70B Instruct
+(free tier estable de OpenRouter — ver OPENROUTER_MODEL en config.py).
 
 Mismo contrato que llm/bedrock.py y llm/gemini.py: categorize_topics(...) y
 rewrite_onpage_batch(...), ambas devuelven None si no hay API key, si el
 modelo no está disponible, o la llamada falla (rules-first: el orquestador
 cae al comportamiento por reglas).
 
-Nota sobre el modelo gratis: Tencent liberó "Hy3" (295B MoE) en OpenRouter
-gratis del 2026-07-06 al 2026-07-21 (slug "tencent/hy3:free"). Si esa
-promoción termina o el modelo deja de estar disponible, OPENROUTER_MODEL se
-puede apuntar a otro modelo (gratis o de pago) sin tocar este archivo.
+Nota histórica: el default fue "tencent/hy3:free" (promo de Tencent en
+OpenRouter del 2026-07-06 al 2026-07-21); al terminar la promo el modelo
+empezó a devolver 404 "unavailable for free" y hubo que cambiar el default.
+Si el modelo actual también deja de estar disponible gratis, OPENROUTER_MODEL
+se puede apuntar a otro (gratis o de pago) por env, sin tocar este archivo.
 """
 
 import json

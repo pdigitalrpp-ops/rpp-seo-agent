@@ -192,12 +192,14 @@ BEDROCK_MODEL_ID      = os.environ.get("BEDROCK_MODEL_ID") or "anthropic.claude-
 # Bedrock: la cuenta AWS del usuario tiene los Claude de gen. 3 marcados
 # Legacy/sin acceso, Bedrock nunca llegó a responder en producción).
 # API REST compatible con OpenAI Chat Completions (POST /chat/completions).
-# Modelo default: Tencent Hy3 ("tencent/hy3:free"), gratis en OpenRouter del
-# 2026-07-06 al 2026-07-21 (295B MoE, 21B activos). Si la promo termina o el
-# modelo deja de estar disponible, apuntar OPENROUTER_MODEL a otro (gratis o
-# de pago) por env, sin tocar código — ver catálogo en openrouter.ai/models.
+# Modelo default: Llama 3.3 70B Instruct ("meta-llama/llama-3.3-70b-instruct
+# :free"), free tier estable de OpenRouter (no promo con fecha de corte, a
+# diferencia de Tencent Hy3 que se usó del 2026-07-06 al 2026-07-21 y luego
+# devolvió 404 "unavailable for free"). Si este modelo también deja de estar
+# disponible gratis, apuntar OPENROUTER_MODEL a otro por env, sin tocar
+# código — ver catálogo en openrouter.ai/models.
 # ---------------------------------------------------------------------------
 OPENROUTER_API_KEY  = os.environ.get("OPENROUTER_API_KEY", "")
-OPENROUTER_MODEL    = os.environ.get("OPENROUTER_MODEL") or "tencent/hy3:free"
+OPENROUTER_MODEL    = os.environ.get("OPENROUTER_MODEL") or "meta-llama/llama-3.3-70b-instruct:free"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 OPENROUTER_TIMEOUT_SECONDS = 30
