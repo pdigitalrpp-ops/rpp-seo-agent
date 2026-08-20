@@ -62,6 +62,13 @@ NEWS_SEARCH_URL = (
     "&hl=es-419&gl=PE&ceid=PE:es-419"
 )
 
+# Varios feeds de ticketeras están detrás de filtros anti-bot que responden
+# vacío al User-Agent por defecto de feedparser (ver _fetch_feed).
+FEED_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
+)
+
 
 # ---------------------------------------------------------------------------
 # Normalización y parseo de la query
@@ -209,7 +216,12 @@ def _entry_to_hit(entry, found_via, fallback_source=""):
 def _fetch_feed(url, found_via, fallback_source="", limit=50):
     """Entradas normalizadas de un feed RSS cualquiera. Nunca lanza."""
     try:
-        feed = feedparser.parse(url)
+        # User-Agent de navegador OBLIGATORIO: con el UA por defecto de
+        # feedparser, blog.joinnus.com devuelve 0 items desde GitHub Actions
+        # (detectado en la corrida #712 gracias al conteo por feed; el mismo
+        # feed responde con RSS válido a un cliente normal). Es filtrado
+        # anti-bot, no un feed roto.
+        feed = feedparser.parse(url, agent=FEED_USER_AGENT)
         hits = []
         for entry in feed.entries[:limit]:
             hit = _entry_to_hit(entry, found_via, fallback_source)
