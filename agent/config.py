@@ -162,19 +162,23 @@ WATCH_MAX_AGE_HOURS = int(os.environ.get("WATCH_MAX_AGE_HOURS", "36"))
 # interesa a UNA keyword, usar su campo `extra_feeds` desde el dashboard en vez
 # de esta lista global.
 #
-# Las 4 ticketeras principales del país. Joinnus y Ticketmaster publican RSS
-# nativo en sus blogs (verificado: RSS 2.0 con items reales). Teleticket y
-# Passline NO tienen feed propio — teleticket.com.pe/feed da 404,
-# passline.com/rss da 403 — pero SÍ están indexadas en Google News, así que se
-# leen con una búsqueda `site:` acotada, exactamente el mismo recurso que usa
-# COMPETITOR_SITES para los medios cuyo RSS murió.
+# Las 4 ticketeras principales del país. Solo Ticketmaster Perú se lee por su
+# RSS nativo; las otras tres van por búsqueda `site:` en Google News, el mismo
+# recurso que usa COMPETITOR_SITES para los medios cuyo RSS murió:
+#   · Teleticket y Passline no tienen feed propio (`/feed` → 404, `/rss` → 403).
+#   · Joinnus SÍ publica RSS 2.0 válido en blog.joinnus.com/feed, pero desde
+#     GitHub Actions devuelve 0 items — bloqueo por IP de datacenter, igual que
+#     pytrends. Se confirmó que un UA de navegador NO lo destraba (corridas
+#     #712 y #713 siguieron en Joinnus=0). Vía Google News trae 50 items.
+# Cambiar esto sin medir el conteo por feed que loguea el collector es
+# retroceder: fue ese conteo el que hizo visible el 0 silencioso de Joinnus.
 _GNEWS_SITE = (
     "https://news.google.com/rss/search?q=site:{site}%20when:2d"
     "&hl=es-419&gl=PE&ceid=PE:es-419"
 )
 WATCH_PRIMARY_FEEDS = [
-    {"name": "Joinnus",           "url": "https://blog.joinnus.com/feed"},
     {"name": "Ticketmaster Perú", "url": "https://blog.ticketmaster.pe/feed"},
+    {"name": "Joinnus",           "url": _GNEWS_SITE.format(site="joinnus.com")},
     {"name": "Teleticket",        "url": _GNEWS_SITE.format(site="teleticket.com.pe")},
     {"name": "Passline",          "url": _GNEWS_SITE.format(site="passline.com")},
 ]
