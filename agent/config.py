@@ -121,6 +121,65 @@ ALERT_MAX_PER_SECTION_PER_HOUR = 3    # anti-spam por sección/hora
 ALERT_DEDUP_HOURS              = 12   # no re-alertar el mismo evento en esta ventana
 
 # ---------------------------------------------------------------------------
+# Vigilancia de temas por keyword ("Google Alerts" propias) — 2026-08-20
+# Ver collectors/watchlist.py. Las keywords NO viven acá: se administran desde
+# el dashboard (tabla watch_keywords). Esto son solo los parámetros del
+# recolector.
+#
+# Por qué existe: las alertas de Trends (analyzers/alerting.py) solo pueden ver
+# el top ~10 nacional de búsquedas del día. Un tema de nicho pero editorialmente
+# valioso — un concierto que se anuncia, una empresa, un vocero — nunca cruza
+# ese umbral y hoy es invisible para el agente.
+# ---------------------------------------------------------------------------
+# Ventana de la query de Google News. Se deja en 1 día (no 1 hora) A PROPÓSITO:
+# el cron de GitHub Actions se retrasa y saltea (medido: el radar corre 5-7
+# veces/día con gaps de 2-5h, ver CLAUDE.md), así que una ventana corta perdería
+# publicaciones en cada hueco. La ventana amplia + el dedup por URL de
+# watch_hits hace que re-ver lo mismo sea gratis y no se pierda nada.
+WATCH_NEWS_WINDOW = os.environ.get("WATCH_NEWS_WINDOW", "1d")
+# Tope de keywords activas que se consultan por corrida (1 request RSS c/u).
+WATCH_MAX_ACTIVE_KEYWORDS = int(os.environ.get("WATCH_MAX_ACTIVE_KEYWORDS", "25"))
+# Tope de resultados por keyword y por fuente en cada corrida.
+WATCH_MAX_HITS_PER_KEYWORD = int(os.environ.get("WATCH_MAX_HITS_PER_KEYWORD", "10"))
+# Antigüedad máxima de una publicación para considerarla un hallazgo. Sin esto,
+# al dar de alta una keyword nueva entraría todo lo del último día de golpe.
+WATCH_MAX_AGE_HOURS = int(os.environ.get("WATCH_MAX_AGE_HOURS", "36"))
+
+# Feeds RSS DIRECTOS que se escanean completos y se cruzan contra TODAS las
+# keywords activas. Son las fuentes primarias del anuncio: publican el evento
+# ANTES de que ningún medio escriba sobre él, así que son la mitad del sistema
+# que gana tiempo real frente a Google News.
+# Formato: {"name": "Etiqueta legible", "url": "https://…/feed"}.
+#
+# IMPORTANTE — cómo se filtran: a diferencia de Google News (que matchea contra
+# el cuerpo del artículo), estos feeds se filtran por TITULAR contra la keyword.
+# Por eso rinden con keywords tipo ENTIDAD ("shakira", "estadio nacional") —
+# ahí sí matchea "SHAKIRA EN LIMA" apenas Teleticket publica la página. Las
+# keywords tipo TEMA ("concierto en lima") las cubre Google News.
+#
+# Solo feeds VERIFICADOS (2026-08-20): un feed muerto se loguea como warning y
+# se ignora, pero ensucia el log en cada corrida. Para una fuente que solo
+# interesa a UNA keyword, usar su campo `extra_feeds` desde el dashboard en vez
+# de esta lista global.
+#
+# Las 4 ticketeras principales del país. Joinnus y Ticketmaster publican RSS
+# nativo en sus blogs (verificado: RSS 2.0 con items reales). Teleticket y
+# Passline NO tienen feed propio — teleticket.com.pe/feed da 404,
+# passline.com/rss da 403 — pero SÍ están indexadas en Google News, así que se
+# leen con una búsqueda `site:` acotada, exactamente el mismo recurso que usa
+# COMPETITOR_SITES para los medios cuyo RSS murió.
+_GNEWS_SITE = (
+    "https://news.google.com/rss/search?q=site:{site}%20when:2d"
+    "&hl=es-419&gl=PE&ceid=PE:es-419"
+)
+WATCH_PRIMARY_FEEDS = [
+    {"name": "Joinnus",           "url": "https://blog.joinnus.com/feed"},
+    {"name": "Ticketmaster Perú", "url": "https://blog.ticketmaster.pe/feed"},
+    {"name": "Teleticket",        "url": _GNEWS_SITE.format(site="teleticket.com.pe")},
+    {"name": "Passline",          "url": _GNEWS_SITE.format(site="passline.com")},
+]
+
+# ---------------------------------------------------------------------------
 # SerpAPI (cuota escasa: free tier 100/mes). Mantener bajo.
 # Se usa 1 vez/día (benchmark matutino) sobre los quick wins de GSC (posición
 # 4-10, ya priorizados): identifica featured snippet / PAA / top stories para

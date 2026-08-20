@@ -16,9 +16,9 @@ load_dotenv()
 
 from config import (
     KNOWN_SECTIONS_FALLBACK, ALERT_MAX_PER_SECTION_PER_HOUR, ALERT_DEDUP_HOURS,
-    CATEGORY_KEYWORDS,
+    CATEGORY_KEYWORDS, WATCH_MAX_ACTIVE_KEYWORDS,
 )
-from collectors import marfeel, trends, competitors, rpp_own_feed, trend_news
+from collectors import marfeel, trends, competitors, rpp_own_feed, trend_news, watchlist
 from analyzers import scoring, opportunities, coverage, alerting
 from llm import provider as llm
 from notifiers import notify
@@ -26,6 +26,7 @@ from writers.supabase_writer import (
     save_run_log, save_recommendations, save_alerts, save_trends,
     save_competitor_articles, get_scoring_weights, count_recent_alerts,
     get_recent_alert_titles, get_trends_context,
+    get_watch_keywords, save_watch_hits,
 )
 
 logging.basicConfig(
@@ -85,6 +86,27 @@ def run():
         own_recent = safe_collect("rpp_own_feed", rpp_own_feed.fetch_recent_articles, run_data)
         n_cov = coverage.compute_coverage(competitor_data, own_recent or [])
         logger.info(f"📰 Cobertura RPP: {n_cov}/{len(competitor_data)} titulares ya publicados")
+
+    # --- VIGILANCIA DE TEMAS (keywords que define el equipo) ---
+    # Va ANTES del return por falta de tendencias: no depende de Google Trends
+    # (justamente existe para cubrir lo que Trends no ve), así que un feed de
+    # Trends caído no debe apagarla. Se guarda acá mismo porque el bloque
+    # GUARDAR de abajo es inalcanzable en ese camino.
+    try:
+        watched = get_watch_keywords(WATCH_MAX_ACTIVE_KEYWORDS)
+    except Exception as e:
+        logger.warning(f"No se pudo leer la lista de temas vigilados: {e}")
+        watched = []
+    if watched:
+        watch_hits = safe_collect(
+            "watchlist", watchlist.collect_hits, run_data,
+            keywords=watched, competitor_articles=competitor_data or [],
+        )
+        if watch_hits:
+            try:
+                save_watch_hits(watch_hits)   # loguea cuántos eran nuevos
+            except Exception as e:
+                logger.error(f"❌ Error guardando hallazgos de vigilancia: {e}")
 
     if not trends_data:
         logger.info("Sin tendencias; nada que puntuar en este ciclo")

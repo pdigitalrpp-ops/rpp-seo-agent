@@ -4,6 +4,7 @@ import { useMemo, useState } from "react"
 import { InfoTooltip } from "@/components/ui/InfoTooltip"
 import { LastUpdated } from "@/components/ui/LastUpdated"
 import { FilterCard, FilterItem, FilterChip } from "@/components/ui/FilterList"
+import VigilanciaPanel, { WatchKeyword, WatchHit } from "./VigilanciaPanel"
 
 export type Alert = {
   id: string
@@ -64,10 +65,14 @@ const TODAS = "__todas__"
 export default function AlertasClient({
   alerts,
   decayList,
+  watchKeywords,
+  watchHits,
   lastRun,
 }: {
   alerts: Alert[]
   decayList: DecayItem[]
+  watchKeywords: WatchKeyword[]
+  watchHits: WatchHit[]
   lastRun: string | null
 }) {
   const [severity, setSeverity] = useState<string>(TODAS)
@@ -112,7 +117,10 @@ export default function AlertasClient({
             Avisos automáticos cuando el agente detecta algo que revisar: caídas de
             tráfico, caídas de posición en Google o content decay (notas que perdieron
             fuerza). Cada alerta trae severidad, sección afectada y la nota involucrada.
-            Es el panel para reaccionar rápido a problemas.
+            Es el panel para reaccionar rápido a problemas. Más abajo está la
+            &quot;Vigilancia de temas&quot;: tus propias alertas por keyword, para
+            enterarte cuando se publica algo sobre un tema que sigues aunque no sea
+            tendencia nacional.
           </InfoTooltip>
         </h1>
         <div className="flex flex-col items-end gap-1">
@@ -130,7 +138,10 @@ export default function AlertasClient({
       {!alerts.length && (
         <div className="bg-green-50 border border-green-200 rounded-2xl p-6 text-center">
           <p className="text-green-700 font-medium">Sin alertas activas</p>
-          <p className="text-green-600 text-sm mt-1">El agente no detectó caídas significativas.</p>
+          <p className="text-green-600 text-sm mt-1">
+            El agente no detectó caídas ni temas en tendencia que ameriten alertar.
+            La vigilancia de temas se muestra más abajo.
+          </p>
         </div>
       )}
 
@@ -247,6 +258,15 @@ export default function AlertasClient({
               )}
             </div>
           )}
+
+          {/* Vigilancia de temas por keyword ("Google Alerts" propias).
+              Va sobre Content Decay a propósito: es lo accionable del momento,
+              el decay es trabajo de mantenimiento. */}
+          <VigilanciaPanel
+            keywords={watchKeywords}
+            hits={watchHits}
+            lastRun={lastRun}
+          />
 
           {/* Content Decay */}
           {decayList.length > 0 && (

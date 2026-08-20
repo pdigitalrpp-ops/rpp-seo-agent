@@ -275,3 +275,60 @@ ALTER TABLE audit_check_state ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "public_read"   ON audit_check_state FOR SELECT USING (true);
 CREATE POLICY "public_insert" ON audit_check_state FOR INSERT WITH CHECK (true);
 CREATE POLICY "public_update" ON audit_check_state FOR UPDATE USING (true);
+
+-- ===========================================================================
+-- Vigilancia de temas por keyword (2026-08-20) — "Google Alerts" propias.
+-- Complementa a las alertas de Trends (analyzers/alerting.py), que solo ven el
+-- top ~10 nacional de búsquedas: un tema de nicho (un concierto, una empresa,
+-- un vocero) jamás cruza ese umbral y hoy es invisible. Acá el equipo define
+-- QUÉ vigilar desde el dashboard y el radar avisa cuando aparece publicación
+-- nueva en la web.
+--
+-- watch_keywords lo administra el DASHBOARD con la anon key (insert/update/
+-- delete abiertos, mismo criterio MVP que audit_check_state). watch_hits lo
+-- escribe el agente con la service_role; el dashboard solo lee y marca
+-- `dismissed` para sacar falsos positivos del panel.
+-- ===========================================================================
+CREATE TABLE IF NOT EXISTS watch_keywords (
+  id          uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  -- Se usa VERBATIM como query de Google News, así que acepta sus operadores:
+  -- "frase exacta", OR, -excluir, site:dominio.pe
+  keyword     text NOT NULL,
+  label       text,                      -- nombre legible en el panel
+  active      boolean NOT NULL DEFAULT true,
+  section     text,                      -- sección de rpp.pe a la que interesa
+  extra_feeds text[],                    -- RSS directos propios de esta keyword
+  created_at  timestamptz DEFAULT now(),
+  CONSTRAINT watch_keywords_keyword_key UNIQUE (keyword)
+);
+
+CREATE TABLE IF NOT EXISTS watch_hits (
+  id           uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  keyword_id   uuid REFERENCES watch_keywords(id) ON DELETE CASCADE,
+  keyword      text NOT NULL,            -- desnormalizado: el panel no hace join
+  title        text NOT NULL,
+  url          text NOT NULL,
+  source       text,
+  published_at timestamptz,
+  found_via    text,                     -- 'google_news' | 'feed:<nombre>' | 'competencia'
+  dismissed    boolean NOT NULL DEFAULT false,
+  created_at   timestamptz DEFAULT now(),
+  -- Dedup: el radar corre varias veces al día sobre una ventana de 1 día, así
+  -- que sin esto re-insertaría el mismo artículo en cada corrida. Por
+  -- (keyword_id, url) y no solo url: dos keywords distintas SÍ pueden querer
+  -- avisar del mismo artículo.
+  CONSTRAINT watch_hits_keyword_url_key UNIQUE (keyword_id, url)
+);
+
+CREATE INDEX IF NOT EXISTS idx_watch_hits_created ON watch_hits(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_watch_hits_keyword ON watch_hits(keyword_id);
+
+ALTER TABLE watch_keywords ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "public_read"   ON watch_keywords FOR SELECT USING (true);
+CREATE POLICY "public_insert" ON watch_keywords FOR INSERT WITH CHECK (true);
+CREATE POLICY "public_update" ON watch_keywords FOR UPDATE USING (true);
+CREATE POLICY "public_delete" ON watch_keywords FOR DELETE USING (true);
+
+ALTER TABLE watch_hits ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "public_read"   ON watch_hits FOR SELECT USING (true);
+CREATE POLICY "public_update" ON watch_hits FOR UPDATE USING (true);
