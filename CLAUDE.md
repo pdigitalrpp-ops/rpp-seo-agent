@@ -69,6 +69,12 @@ apenas se publique algo al respecto quiero verlo en el panel").
   positivo descartado no reaparece en la siguiente corrida) y el `ON DELETE
   CASCADE` limpia los hallazgos al borrar la keyword. El matcher tiene test
   offline (20 casos) en scratchpad `test_watchlist.py`.
+- **VERIFICADO END-TO-END EN PRODUCCIÓN (2026-08-20, corridas #711-#714):** con
+  la keyword `"concierto en lima"` dada de alta desde el panel, el radar trajo
+  8 publicaciones reales (RPP, El Comercio, Trome, Infobae…) incluida
+  "De La Rose anuncia concierto en Lima"; el dedup confirmado en vivo
+  (`8 hallazgos guardados (0 nuevos)` en la corrida siguiente); el panel de
+  /alertas las muestra con badge NUEVO, medio y antigüedad.
 - **`/alertas`:** bloque nuevo "Vigilancia de temas"
   (`alertas/VigilanciaPanel.tsx`) sobre Content Decay, con alta/pausa/borrado
   de keywords desde el panel, chips por tema con conteo, lista de hallazgos
@@ -85,14 +91,27 @@ apenas se publique algo al respecto quiero verlo en el panel").
   del cron (1-5h). Si hace falta latencia de minutos de verdad, la migración
   natural es mover el disparo a **Supabase pg_cron + Edge Function cada 5 min**
   (free tier, cron confiable) sin tocar el modelo de datos ni la UI.
-- **`WATCH_PRIMARY_FEEDS` — las 4 ticketeras principales, TODAS verificadas el
-  2026-08-20:** Joinnus (`blog.joinnus.com/feed`) y Ticketmaster Perú
-  (`blog.ticketmaster.pe/feed`) publican **RSS 2.0 nativo** en sus blogs.
-  Teleticket y Passline **NO tienen feed propio** (`teleticket.com.pe/feed` →
-  404, `passline.com/rss` → 403, tampoco existe `blog.teleticket.com.pe`), pero
-  **sí están indexadas en Google News**, así que se leen con búsqueda `site:`
-  acotada (`when:2d`) — el mismo recurso que `COMPETITOR_SITES` usa para los
-  medios cuyo RSS murió. Songkick tampoco sirve (su RSS por metro-area da 404).
+- **`WATCH_PRIMARY_FEEDS` — las 4 ticketeras principales, verificadas EN
+  PRODUCCIÓN el 2026-08-20** (corrida #714: `Ticketmaster Perú=10 · Joinnus=48
+  · Teleticket=19 · Passline=50`, sin warnings). Solo **Ticketmaster Perú** va
+  por RSS nativo (`blog.ticketmaster.pe/feed`); las otras tres por búsqueda
+  `site:` en Google News (`when:2d`), mismo recurso que `COMPETITOR_SITES`:
+  - Teleticket y Passline no tienen feed propio (`/feed` → 404, `/rss` → 403;
+    tampoco existe `blog.teleticket.com.pe`). Songkick tampoco sirve (su RSS
+    por metro-area da 404).
+  - **GOTCHA que costó dos corridas:** `blog.joinnus.com/feed` SÍ es RSS 2.0
+    válido y responde bien a un cliente normal, pero **desde GitHub Actions
+    devuelve 0 items siempre** — es bloqueo por IP de datacenter, el mismo
+    motivo por el que pytrends no funciona acá. Se probó UA de navegador y
+    **NO lo destraba** (#712 y #713 siguieron en Joinnus=0). Vía Google News
+    trae 48-50 items. Moraleja: verificar un feed desde fuera NO prueba que
+    funcione desde el CI.
+- **Por eso el collector loguea el CONTEO por feed** (`Feeds primarios: …`) y
+  un warning por feed que devuelva 0: `_fetch_feed` solo avisa cuando lanza
+  excepción, pero feedparser devuelve `entries` vacío EN SILENCIO si el feed
+  murió o lo bloquean — sin ese conteo, Joinnus caído se veía idéntico a
+  Joinnus sin novedades, y la corrida #711 pasó como "success" sin que se
+  notara. No quitar ese log.
   **Cómo rinden:** estos feeds se filtran por TITULAR (a diferencia de Google
   News, que matchea el cuerpo), así que dan su valor con keywords tipo ENTIDAD
   ("shakira", "estadio nacional") — ahí matchean "SHAKIRA EN LIMA" apenas
