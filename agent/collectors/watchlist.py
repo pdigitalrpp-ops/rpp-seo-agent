@@ -264,11 +264,22 @@ def collect_hits(keywords, competitor_articles=None, now=None):
 
     # Los feeds globales se descargan UNA vez y se cruzan contra todas las
     # keywords (si se bajaran por keyword serían N descargas del mismo feed).
+    # Se loguea el CONTEO por feed a propósito: _fetch_feed solo avisa cuando
+    # lanza excepción, pero feedparser devuelve `entries` vacío en silencio si
+    # el feed cambió de formato o murió — sin este conteo, una ticketera caída
+    # se vería idéntica a una ticketera sin novedades.
     global_entries = []
+    feed_counts = []
     for feed in WATCH_PRIMARY_FEEDS or []:
-        global_entries.extend(
-            _fetch_feed(feed["url"], f"feed:{feed['name']}", feed["name"])
-        )
+        entries = _fetch_feed(feed["url"], f"feed:{feed['name']}", feed["name"])
+        if not entries:
+            logger.warning(
+                f"Feed primario '{feed['name']}' no devolvió items — revisar {feed['url']}"
+            )
+        feed_counts.append(f"{feed['name']}={len(entries)}")
+        global_entries.extend(entries)
+    if feed_counts:
+        logger.info("Feeds primarios: " + " · ".join(feed_counts))
 
     # La competencia ya está en memoria: se adapta al mismo formato de hallazgo.
     competitor_entries = []
