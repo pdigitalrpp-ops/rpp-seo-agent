@@ -373,3 +373,65 @@ def save_serp_opportunities(opportunities, run_date):
     } for o in opportunities]
     sb.table("serp_opportunities").insert(rows).execute()
     logger.info(f"Guardadas {len(rows)} oportunidades SERP")
+
+
+def get_watch_keywords(limit=25):
+    """
+    Keywords activas de la vigilancia de temas (tabla watch_keywords, que el
+    equipo administra desde el dashboard). Las más antiguas primero: si alguien
+    pasa del tope, se recorta lo agregado al final, no lo que ya venía
+    vigilándose.
+    """
+    sb = _get_client()
+    result = (sb.table("watch_keywords")
+              .select("id, keyword, label, section, extra_feeds")
+              .eq("active", True)
+              .order("created_at", desc=False)
+              .limit(limit).execute())
+    return result.data or []
+
+
+def save_watch_hits(hits):
+    """
+    Guarda los hallazgos de la vigilancia y devuelve cuántos eran NUEVOS.
+
+    El dedup real lo hace la constraint (keyword_id, url) de watch_hits: el
+    radar consulta una ventana de 1 día en cada corrida, así que la mayoría de
+    los hallazgos ya se vieron en la corrida anterior. Para saber cuáles son
+    nuevos se consultan primero las URLs ya conocidas de esas keywords — hay
+    que hacerlo antes del upsert, porque después ya no se distinguen.
+
+    Se usa upsert (no insert) para que un re-fetch actualice el titular si el
+    medio lo cambió, sin romper por clave duplicada.
+    """
+    if not hits:
+        return 0
+    sb = _get_client()
+
+    keyword_ids = {h["keyword_id"] for h in hits if h.get("keyword_id")}
+    known = set()
+    if keyword_ids:
+        existing = (sb.table("watch_hits").select("keyword_id, url")
+                    .in_("keyword_id", list(keyword_ids)).execute())
+        known = {(r["keyword_id"], r["url"]) for r in (existing.data or [])}
+
+    rows, new_count = [], 0
+    for h in hits:
+        key = (h.get("keyword_id"), h.get("url"))
+        if key not in known:
+            new_count += 1
+            known.add(key)
+        published = h.get("published_at")
+        rows.append({
+            "keyword_id":   h.get("keyword_id"),
+            "keyword":      h["keyword"],
+            "title":        h["title"],
+            "url":          h["url"],
+            "source":       h.get("source"),
+            "published_at": published.isoformat() if hasattr(published, "isoformat") else published,
+            "found_via":    h.get("found_via"),
+        })
+
+    sb.table("watch_hits").upsert(rows, on_conflict="keyword_id,url").execute()
+    logger.info(f"Vigilancia: {len(rows)} hallazgos guardados ({new_count} nuevos)")
+    return new_count

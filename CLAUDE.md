@@ -11,7 +11,103 @@ dashboard web.
 
 ## Estado actual
 
-**Fecha último avance:** 2026-07-22
+**Fecha último avance:** 2026-08-20
+
+**2026-08-20 — VIGILANCIA DE TEMAS por keyword ("Google Alerts" propias),
+feature nueva:** pedido del usuario: poder definir keywords y enterarse apenas
+se publique algo sobre ellas en la web ("si hay un nuevo concierto en Lima,
+apenas se publique algo al respecto quiero verlo en el panel").
+- **Por qué hacía falta:** las alertas de la Etapa 3 (`analyzers/alerting.py`)
+  nacen SOLO del feed de Google Trends Perú (~10 keywords/día, top nacional de
+  búsquedas). Un tema de nicho pero editorialmente valioso — un concierto, una
+  empresa, un vocero — nunca cruza ese umbral y era invisible para el agente.
+  Esto cubre el eje complementario: **la lista la define el equipo, no Google**.
+- **Por qué Google News RSS y NO la búsqueda web de Google (decisión
+  investigada, no asumida):** la búsqueda web no tiene RSS; su API oficial
+  (**Custom Search JSON API**) está **cerrada a clientes nuevos desde 2025**
+  (los existentes siguen hasta el 2027-01-01), así que no es una opción para
+  este proyecto; **Brave Search API eliminó su free tier en febrero de 2026**;
+  SerpApi sirve pero el free tier (~100/mes, ya capado a 10/día para las quick
+  wins) no aguanta vigilancia continua; y scrapear google.com se bloquea desde
+  las IPs de datacenter de GitHub Actions (mismo motivo por el que pytrends no
+  funciona). Además Google News es **técnicamente mejor** acá: indexa notas de
+  medios en minutos y su RSS acepta `when:1h`, mientras que el filtro de fecha
+  de la API oficial tiene granularidad mínima de 1 día.
+- **`collectors/watchlist.py` (NUEVO) — tres fuentes:** (1) **Google News RSS
+  por keyword** (motor principal, mismo mecanismo probado de `trend_news.py`);
+  (2) **feeds RSS directos** — `WATCH_PRIMARY_FEEDS` globales en config +
+  `extra_feeds` por keyword; son las fuentes primarias que Google News no
+  indexa o indexa tarde (ticketeras, agendas, salas de prensa) y suelen dar el
+  anuncio ANTES que cualquier medio; (3) **`competitor_articles` ya en memoria**
+  de la misma corrida (costo cero de red).
+- **GOTCHA de matching (la decisión no obvia):** los hits de **Google News NO
+  se re-filtran por titular**, solo se les aplican los términos negativos.
+  Google matchea contra el CUERPO del artículo, así que `"concierto en lima"`
+  devuelve legítimamente "De La Rose anuncia concierto en Lima…" pero también
+  "Shakira anuncia fecha en el Estadio Nacional" — re-verificar contra el
+  titular tiraría justo los hallazgos buenos. Los hits de **feeds directos y de
+  la DB SÍ** pasan por el matcher local (`matches()`): ahí nadie buscó nada, se
+  escanea el feed completo y sin filtro entraría todo.
+- **Sintaxis de keyword:** se manda VERBATIM a Google News (acepta sus
+  operadores) y en paralelo se parsea para el match local (`parse_query`):
+  `"frase exacta"` · tokens sueltos en AND · `-excluir`. `site:`/`OR` se
+  ignoran en el match local (solo significan algo para Google).
+- **Ventana de 1 día a propósito, no 1 hora:** el cron de GitHub Actions se
+  retrasa y saltea (medido: radar 5-7 veces/día, gaps 2-5h), así que una
+  ventana corta perdería publicaciones en cada hueco. Ventana amplia + dedup
+  por URL = re-ver lo mismo es gratis y no se pierde nada.
+- **Tablas nuevas `watch_keywords` + `watch_hits`** (schema.sql, **YA APLICADAS
+  en Supabase vía MCP**). `watch_keywords` la administra el DASHBOARD con la
+  anon key (RLS insert/update/delete abiertos, mismo criterio MVP que
+  `audit_check_state`); `watch_hits` la escribe el agente con service_role y el
+  dashboard solo lee + marca `dismissed`. Dedup por
+  `UNIQUE (keyword_id, url)` — por keyword y no solo por url, porque dos
+  keywords distintas sí pueden querer avisar del mismo artículo.
+- **Verificado con SQL contra la DB real (round-trip de 2 corridas):** no
+  duplica, actualiza la misma fila, `created_at` se preserva, el titular se
+  actualiza si el medio lo cambia, **`dismissed` NO se pisa** (un falso
+  positivo descartado no reaparece en la siguiente corrida) y el `ON DELETE
+  CASCADE` limpia los hallazgos al borrar la keyword. El matcher tiene test
+  offline (20 casos) en scratchpad `test_watchlist.py`.
+- **`/alertas`:** bloque nuevo "Vigilancia de temas"
+  (`alertas/VigilanciaPanel.tsx`) sobre Content Decay, con alta/pausa/borrado
+  de keywords desde el panel, chips por tema con conteo, lista de hallazgos
+  clicables (medio + antigüedad + de qué fuente salió) y botón de descarte por
+  hallazgo. Badge **NUEVO** = encontrado en la ÚLTIMA corrida del radar
+  (`created_at >= lastRun - 10min`), no un plazo fijo arbitrario. Ventana del
+  panel: 48h (más larga que las 24h de las alertas de tendencia — un tema de
+  nicho puede tener una sola nota en todo el día).
+- **Corre dentro de `run_radar.py`, ANTES del return por falta de tendencias**
+  (no depende de Trends; un feed de Trends caído no debe apagar la vigilancia).
+  Por eso guarda ahí mismo: el bloque GUARDAR de abajo es inalcanzable en ese
+  camino.
+- **Latencia real:** minutos de indexación de Google News + la cadencia real
+  del cron (1-5h). Si hace falta latencia de minutos de verdad, la migración
+  natural es mover el disparo a **Supabase pg_cron + Edge Function cada 5 min**
+  (free tier, cron confiable) sin tocar el modelo de datos ni la UI.
+- **`WATCH_PRIMARY_FEEDS` — las 4 ticketeras principales, TODAS verificadas el
+  2026-08-20:** Joinnus (`blog.joinnus.com/feed`) y Ticketmaster Perú
+  (`blog.ticketmaster.pe/feed`) publican **RSS 2.0 nativo** en sus blogs.
+  Teleticket y Passline **NO tienen feed propio** (`teleticket.com.pe/feed` →
+  404, `passline.com/rss` → 403, tampoco existe `blog.teleticket.com.pe`), pero
+  **sí están indexadas en Google News**, así que se leen con búsqueda `site:`
+  acotada (`when:2d`) — el mismo recurso que `COMPETITOR_SITES` usa para los
+  medios cuyo RSS murió. Songkick tampoco sirve (su RSS por metro-area da 404).
+  **Cómo rinden:** estos feeds se filtran por TITULAR (a diferencia de Google
+  News, que matchea el cuerpo), así que dan su valor con keywords tipo ENTIDAD
+  ("shakira", "estadio nacional") — ahí matchean "SHAKIRA EN LIMA" apenas
+  Teleticket indexa la página, antes de que ningún medio escriba. Las keywords
+  tipo TEMA ("concierto en lima") las cubre Google News. Las dos mitades son
+  complementarias a propósito.
+- **Pendientes conscientes:** (a) sin
+  filtro LLM de relevancia: la query amplia mete algo de ruido (Google matchea
+  el cuerpo), se limpia con el botón de descarte o afinando la keyword — un
+  pase LLM con `provider` sería el v2 natural, pero compite por la cuota free
+  de OpenRouter con la categorización y la cobertura; (c) no escribe en
+  `alerts` ni dispara Teams/WhatsApp (ese enganche sigue bloqueado por
+  `SECTION_RESPONSIBLES`).
+
+**Fecha avance anterior:** 2026-07-22
 
 **2026-07-22 — Rediseño de las ALERTAS (Etapa 3) + fix del modelo LLM +
 ventana de 24h en /alertas:**
@@ -466,6 +562,7 @@ rpp-seo-agent/
 │   │   ├── gsc.py                  ← Google Search Console (posiciones, CTR, drops)
 │   │   ├── trends.py               ← Google Trends vía RSS (NO pytrends en CI)
 │   │   ├── competitors.py          ← RSS de competencia
+│   │   ├── watchlist.py            ← vigilancia por keyword ("Google Alerts" propias)
 │   │   ├── rpp_articles.py         ← descarga+parseo HTML de notas (auditor on-page)
 │   │   └── serpapi.py              ← rankings/SERP (cuota escasa)
 │   ├── analyzers/
@@ -736,6 +833,8 @@ rpp-seo-agent/
 | `scoring_weights` | morning | radar (lee aprendizajes) |
 | `onpage_audits` | morning | dashboard auditoria |
 | `serp_opportunities` | morning (borra+reinserta, solo si hay `SERPAPI_KEY`) | dashboard busqueda |
+| `watch_keywords` | **dashboard** (anon key: alta/pausa/borrado) | radar (qué vigilar) |
+| `watch_hits` | radar (upsert por `keyword_id,url`) | dashboard alertas (bloque Vigilancia; marca `dismissed`) |
 | `publishing_windows` | (reusable) | dashboard home |
 | `agent_runs` | ambos (con `kind`: "morning"\|"radar") | dashboard home (semáforo) + "última actualización" por pestaña |
 
