@@ -33,8 +33,11 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION:            ${{ secrets.AWS_REGION }}
           BEDROCK_MODEL_ID:      ${{ secrets.BEDROCK_MODEL_ID }}
+          OPENAI_API_KEY:        ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL:          ${{ secrets.OPENAI_MODEL }}
           OPENROUTER_API_KEY:    ${{ secrets.OPENROUTER_API_KEY }}
           OPENROUTER_MODEL:      ${{ secrets.OPENROUTER_MODEL }}
+          LLM_PROVIDER:          ${{ vars.LLM_PROVIDER }}
           TZ: America/Lima
         run: |
           cd agent

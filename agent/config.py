@@ -277,3 +277,56 @@ OPENROUTER_API_KEY  = os.environ.get("OPENROUTER_API_KEY", "")
 OPENROUTER_MODEL    = os.environ.get("OPENROUTER_MODEL") or "openrouter/free"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 OPENROUTER_TIMEOUT_SECONDS = 30
+
+# ---------------------------------------------------------------------------
+# Capa LLM — OpenAI (proveedor PREFERIDO desde 2026-08-21: key propia del
+# usuario). Desplaza a OpenRouter, que pasa a primer fallback.
+#
+# Por qué se prefiere: con OpenRouter el modelo real lo elegía el router
+# `openrouter/free` en cada llamada — corridas de ~11 min (vs ~40s con modelo
+# fijo) y algún lote perdido cuando enrutaba a un modelo que respondía prosa
+# en vez de JSON. Con key propia el modelo es estable, conocido y factura por
+# uso real, así que desaparecen las dos fuentes de ruido.
+#
+# POR QUÉ EL DEFAULT ES LUNA Y NO TERRA/SOL (decisión medida, 2026-08-21)
+# La familia GPT-5.6 son tres modelos de razonamiento con el mismo contexto
+# (1.05M) que se diferencian por precio: sol $5/$30, terra $2/$12,
+# luna $0.20/$1.20 por millón de tokens (entrada/salida).
+# El COSTO de este agente lo domina `categorize_articles`: ~470 titulares de
+# competencia por corrida = ~12 de las ~17 llamadas, y es meter titulares en 8
+# cajas — la tarea más fácil de las cinco. Las otras cuatro son extracción y
+# clasificación con prompts ya calibrados, no razonamiento frontera. Terra
+# cuesta 10× Luna por hacer lo mismo.
+# Estimado con ~15k tokens de entrada y ~25k de salida por corrida (los tokens
+# de razonamiento se facturan como SALIDA): a la cadencia real medida del cron
+# (~6 corridas/día) Terra sale ~$60/mes y Luna ~$6/mes; si el cron `*/10`
+# llegara a cumplirse, ~$1.100 vs ~$110/mes. Este proyecto figura como $0/mes.
+# Todo es rules-first: si el modelo falla, se cae a reglas y no se rompe nada,
+# lo que hace rendir todavía menos apostar por el modelo caro.
+# Si una tarea concreta decepciona, se sube SOLO esa a terra (hoy el modelo es
+# por proveedor; por tarea son pocas líneas más).
+#
+# OPENAI_MODEL es overrideable por env sin tocar código (misma disciplina que
+# OPENROUTER_MODEL, y por la misma razón: los catálogos cambian).
+# ---------------------------------------------------------------------------
+OPENAI_API_KEY  = os.environ.get("OPENAI_API_KEY", "")
+OPENAI_MODEL    = os.environ.get("OPENAI_MODEL") or "gpt-5.6-luna"
+OPENAI_BASE_URL = os.environ.get("OPENAI_BASE_URL") or "https://api.openai.com/v1"
+OPENAI_TIMEOUT_SECONDS = 60
+
+# Cuánto puede "pensar" el modelo antes de responder. Acepta
+# none|low|medium|high|xhigh|max; el default de OpenAI es `medium`.
+# Acá va en "low" A PROPÓSITO: los tokens de razonamiento se facturan como
+# salida (la parte cara) y salen del MISMO presupuesto que la respuesta, así
+# que razonar de más no solo encarece — puede agotar el presupuesto antes de
+# escribir el JSON, que es exactamente cómo se cayó la categorización con
+# Tencent Hy3 el 2026-07-10. Las 5 tareas son clasificación/extracción con
+# prompts explícitos: no ganan casi nada con más deliberación.
+OPENAI_REASONING_EFFORT = os.environ.get("OPENAI_REASONING_EFFORT") or "low"
+
+# Fuerza un proveedor concreto ignorando el orden de preferencia de
+# llm/provider.py. Valores: "openai" | "openrouter" | "bedrock" | "gemini".
+# Existe para no tener que BORRAR secretos de GitHub: con las keys de OpenAI y
+# OpenRouter conviviendo, este switch decide cuál manda, y volver atrás ante un
+# problema es cambiar una variable en vez de re-pegar una credencial.
+LLM_PROVIDER = (os.environ.get("LLM_PROVIDER") or "").strip().lower()

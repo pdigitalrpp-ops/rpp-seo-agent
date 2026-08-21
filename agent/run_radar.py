@@ -59,12 +59,7 @@ def run():
     # en el workflow) se interpretaba como UTC → dashboard restaba 5h dos veces
     run_data = {"started_at": datetime.now(timezone.utc), "sources_ok": [], "sources_failed": [], "kind": "radar"}
     logger.info(f"📡 Radar en tiempo real — {datetime.now():%H:%M}")
-    logger.info(
-        "🔑 Proveedores LLM detectados (solo presencia de credenciales, no validez): "
-        f"openrouter={llm.openrouter.is_enabled()} "
-        f"bedrock={llm.bedrock.is_enabled()} "
-        f"gemini={llm.gemini.is_enabled()}"
-    )
+    logger.info(llm.describe_providers())
 
     # --- RECOLECCIÓN (ligera) ---
     realtime       = safe_collect("marfeel_realtime", marfeel.fetch_realtime_top,        run_data)

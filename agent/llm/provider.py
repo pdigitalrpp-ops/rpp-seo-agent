@@ -3,30 +3,92 @@ Selector de proveedor LLM. Los orquestadores (run_morning.py, run_radar.py)
 importan este módulo en vez de un proveedor específico — cambiar de proveedor
 (o añadir uno nuevo) no toca el resto del código, solo este archivo.
 
-Orden de preferencia: OpenRouter (si hay OPENROUTER_API_KEY) > Bedrock (si hay
-credenciales AWS) > Gemini (si hay GEMINI_API_KEY) > ninguno (el orquestador
-cae al comportamiento por reglas).
+Orden de preferencia: OpenAI (si hay OPENAI_API_KEY) > OpenRouter (si hay
+OPENROUTER_API_KEY) > Bedrock (si hay credenciales AWS) > Gemini (si hay
+GEMINI_API_KEY) > ninguno (el orquestador cae al comportamiento por reglas).
 
-OpenRouter va primero desde 2026-07-10: reemplaza a Bedrock como proveedor
-preferido porque la cuenta AWS del usuario tiene los modelos Claude de
-generación 3 marcados como Legacy (ResourceNotFoundException en los 3 IDs
-probados) — Bedrock nunca llegó a responder en producción. Bedrock y Gemini
-se dejan como fallback en cadena por si algún día se destraban (no cuesta
-nada mantenerlos: rules-first, cada uno cae al siguiente si no está
-habilitado o falla).
+**OpenAI va primero desde 2026-08-21** (key propia del usuario). Desplaza a
+OpenRouter, que era el preferido desde 2026-07-10 y ahora es el primer
+fallback: con el router `openrouter/free` el modelo real cambiaba en cada
+llamada — corridas de ~11 min y algún lote perdido cuando enrutaba a un modelo
+que devolvía prosa en vez de JSON. Con key propia el modelo es estable.
+
+Antes de OpenRouter el preferido era Bedrock, que NUNCA llegó a responder en
+producción (la cuenta AWS tiene los Claude de gen. 3 marcados Legacy,
+ResourceNotFoundException en los 3 IDs probados). Bedrock y Gemini siguen en
+la cadena por si algún día se destraban: no cuesta nada mantenerlos, cada uno
+cae al siguiente si no está habilitado o falla.
+
+`LLM_PROVIDER` (env) fuerza uno concreto e ignora el orden. Existe para no
+tener que BORRAR secretos: con las keys de OpenAI y OpenRouter conviviendo en
+GitHub, volver atrás ante un problema es cambiar una variable, no re-pegar una
+credencial.
 """
 
-from llm import bedrock, gemini, openrouter
+import logging
+
+from config import LLM_PROVIDER
+from llm import bedrock, gemini, openai_api, openrouter
+
+logger = logging.getLogger(__name__)
+
+# Orden de preferencia. El primero habilitado gana.
+_CHAIN = [
+    ("openai",     openai_api),
+    ("openrouter", openrouter),
+    ("bedrock",    bedrock),
+    ("gemini",     gemini),
+]
+
+_BY_NAME = dict(_CHAIN)
 
 
 def _active_provider():
-    if openrouter.is_enabled():
-        return openrouter
-    if bedrock.is_enabled():
-        return bedrock
-    if gemini.is_enabled():
-        return gemini
+    if LLM_PROVIDER:
+        forced = _BY_NAME.get(LLM_PROVIDER)
+        if forced is None:
+            logger.warning(
+                f"LLM_PROVIDER='{LLM_PROVIDER}' no es un proveedor conocido "
+                f"({', '.join(_BY_NAME)}); se ignora y se usa el orden por defecto"
+            )
+        elif forced.is_enabled():
+            return forced
+        else:
+            # Se avisa y se sigue con la cadena: quedarse sin LLM por un
+            # secreto mal puesto es peor que usar el siguiente proveedor.
+            logger.warning(
+                f"LLM_PROVIDER='{LLM_PROVIDER}' está forzado pero no tiene "
+                "credenciales; se cae al orden por defecto"
+            )
+    for _, module in _CHAIN:
+        if module.is_enabled():
+            return module
     return None
+
+
+def active_provider_name():
+    """Nombre del proveedor que se va a usar, o 'reglas' si no hay ninguno."""
+    active = _active_provider()
+    for name, module in _CHAIN:
+        if module is active:
+            return name
+    return "reglas"
+
+
+def describe_providers():
+    """
+    Línea de diagnóstico para el log de arranque de los orquestadores: qué
+    credenciales llegaron al workflow y CUÁL manda. Lo segundo importa desde
+    que hay dos proveedores plausibles conviviendo — ver solo la presencia de
+    credenciales no dice cuál se está usando de verdad, que es justo el dato
+    que hace falta cuando algo sale null en silencio.
+    """
+    detected = " ".join(f"{name}={module.is_enabled()}" for name, module in _CHAIN)
+    forced = f" (forzado por LLM_PROVIDER={LLM_PROVIDER})" if LLM_PROVIDER else ""
+    return (
+        "🔑 Proveedores LLM detectados (solo presencia de credenciales, no validez): "
+        f"{detected} → activo: {active_provider_name()}{forced}"
+    )
 
 
 def is_enabled():
@@ -43,7 +105,10 @@ def categorize_topics(keywords, categories):
 # Tamaño de lote para categorizar titulares de competencia. Con Tencent Hy3
 # (razonador, vía OpenRouter) un lote de 100 agotaba max_tokens PENSANDO y
 # nunca llegaba a responder (finish_reason=length, visto en producción
-# 2026-07-10) — se baja a 40 para que la respuesta quepa con margen.
+# 2026-07-10) — se baja a 40 para que la respuesta quepa con margen. Se
+# mantiene en 40 con OpenAI: el límite ahora no es el razonamiento sino el
+# tamaño de la respuesta JSON, y 40 ítems ya estaba calibrado contra
+# producción. Subirlo abarata la corrida pero hay que re-verificarlo.
 # ~470 titulares/corrida → ~12 llamadas. Ojo con el límite free de OpenRouter
 # (50 req/día con <$10 de crédito): morning (1×) + radar (4-6×/día reales) ≈
 # 70-85 req/día — por encima del límite si el radar corre seguido. Si eso pasa
@@ -92,8 +157,8 @@ def classify_query_freshness(queries, trend_keywords):
     """
     Clasifica la vigencia de la demanda de queries de GSC ('hot'|'evergreen'|
     'past') en lotes. Devuelve {query: estado} o None si no hay proveedor o no
-    implementa classify_query_freshness (solo OpenRouter hoy — sin él quedan
-    las reglas de analyzers/freshness.py).
+    implementa classify_query_freshness (OpenAI y OpenRouter sí; Bedrock y
+    Gemini no — sin ella quedan las reglas de analyzers/freshness.py).
     """
     provider = _active_provider()
     fn = getattr(provider, "classify_query_freshness", None) if provider else None
@@ -111,8 +176,9 @@ def explain_trends(items):
     """
     Explica por qué cada tendencia lo es (1-2 frases por tema), usando los
     titulares de Google News como evidencia. Devuelve {keyword: explicacion}
-    o None si no hay proveedor o no implementa explain_trends (solo
-    OpenRouter lo tiene hoy — sin él, el dashboard muestra solo las noticias).
+    o None si no hay proveedor o no implementa explain_trends (OpenAI y
+    OpenRouter sí; Bedrock y Gemini no — sin ella el dashboard muestra solo
+    las noticias).
     """
     provider = _active_provider()
     fn = getattr(provider, "explain_trends", None) if provider else None
@@ -139,8 +205,8 @@ def match_coverage(competitor_titles, own_titles):
     """
     Empareja titulares de competencia con titulares de RPP usando el LLM.
     Devuelve dict {indice_competencia: indice_rpp | -1} o None si no hay
-    proveedor activo o el proveedor no implementa match_coverage (p.ej.
-    Bedrock/Gemini, que hoy no lo tienen — cae al matcher por reglas).
+    proveedor activo o el proveedor no implementa match_coverage (Bedrock y
+    Gemini hoy no lo tienen — cae al matcher por reglas).
     -1 significa "el LLM afirma que RPP NO lo cubre".
     """
     provider = _active_provider()

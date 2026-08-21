@@ -11,7 +11,100 @@ dashboard web.
 
 ## Estado actual
 
-**Fecha último avance:** 2026-08-20
+**Fecha último avance:** 2026-08-21
+
+**2026-08-21 — OpenAI pasa a ser el proveedor LLM PREFERIDO (key propia del
+usuario); los prompts se unifican en un modulo compartido:** pedido del
+usuario: "quiero cambiar la api key del LLM para todas las tareas que pida el
+dashboard".
+- **Aclaracion que hubo que hacer primero:** el dashboard NO llama al LLM.
+  Ninguna de sus 3 rutas API lo hace. Todo el trabajo LLM ocurre en el agente
+  Python dentro de GitHub Actions; el dashboard solo LEE de Supabase lo que el
+  agente dejo escrito. Su unico vinculo es indirecto: el boton "⚡ Actualizar
+  ahora" despacha `radar.yml`, y esa corrida si usa el modelo.
+- **`agent/llm/openai_compat.py` (NUEVO) — nucleo compartido.** OpenRouter ya
+  hablaba el protocolo de OpenAI, asi que el transporte y los 5 prompts viven
+  ahora ahi, y `openrouter.py` / `openai_api.py` son adaptadores de ~40 lineas
+  que solo declaran su `Client`. **Motivo concreto, no estetico:** duplicar por
+  proveedor YA fallo — `bedrock.py` y `gemini.py` se quedaron con 2 de las 5
+  tareas porque vigencia, explicacion de tendencias y cobertura solo se
+  escribieron en `openrouter.py`. Con el nucleo compartido, OpenAI nace con las
+  5 completas.
+- **VERIFICADO con test offline** (scratchpad `test_llm_refactor.py`): para las
+  5 tareas, con las mismas entradas, el `(system, prompt, max_tokens)` que
+  genera el codigo nuevo es IDENTICO al del codigo viejo en HEAD, y el parseo
+  de una respuesta simulada devuelve lo mismo. Era la condicion para no perder
+  la calibracion contra produccion. Segundo test (`test_provider_chain.py`):
+  7 escenarios de seleccion de proveedor + la auto-adaptacion ante un 400.
+- **Diferencias reales entre los dos clientes** (por eso el `Client` se
+  parametriza y no se comparte tal cual): (a) `reasoning: {effort, exclude}` es
+  una EXTENSION de OpenRouter — mandarselo a la API de OpenAI da 400, asi que
+  viaja en `extra_body` solo del cliente de OpenRouter; (b) `response_format:
+  json_object` se activa SOLO en OpenAI (`json_mode=True`), donde esta
+  garantizado — en OpenRouter el router puede caer en cualquier modelo del
+  catalogo y no se puede asumir; (c) los headers HTTP-Referer/X-Title son solo
+  para el ranking de apps de OpenRouter.
+- **Auto-adaptacion ante 400 por parametro no soportado** (`_adapt_to_400`):
+  los modelos de razonamiento de OpenAI rechazan `max_tokens` (piden
+  `max_completion_tokens`) y `temperature` != 1. En vez de fallar en silencio
+  —que en este proyecto significa TODA la categorizacion en null sin que nadie
+  se entere hasta el dia siguiente, ya paso dos veces— se detecta el 400, se
+  corrige el body y se reintenta UNA vez; el ajuste queda pegado al cliente,
+  asi que solo se paga en la primera llamada de la corrida. Un 400 por otra
+  causa (key mala) NO se toca: enmascararia el error real.
+- **`LLM_PROVIDER` (env, NUEVO):** fuerza un proveedor ignorando el orden
+  (`openai|openrouter|bedrock|gemini`). Existe para NO tener que borrar
+  secretos: con las dos keys conviviendo, volver atras es cambiar una variable.
+  Si apunta a un proveedor sin credenciales, avisa y cae al orden por defecto
+  (quedarse sin LLM por un secreto mal puesto seria peor).
+- **Orden nuevo:** OpenAI > OpenRouter > Bedrock > Gemini > reglas.
+- **MODELO: `gpt-5.6-luna` por default (decision de costo, no de capacidad).**
+  La familia GPT-5.6 son tres modelos de RAZONAMIENTO con el mismo contexto
+  (1.05M) que solo se diferencian en precio por millon de tokens
+  entrada/salida: **sol $5/$30 · terra $2/$12 · luna $0.20/$1.20**. El
+  usuario pidio terra; se recomendo luna y quedo luna. Razon: el costo lo
+  domina `categorize_articles` (~470 titulares/corrida = ~12 de las ~17
+  llamadas) y es meter titulares en 8 cajas — la tarea mas facil de las
+  cinco; las otras son extraccion/clasificacion con prompts ya calibrados,
+  no razonamiento frontera. **Estimado** (~15k tokens entrada + ~25k salida
+  por corrida, con los de razonamiento facturados como SALIDA): a la
+  cadencia real medida (~6 corridas/dia) terra ~$60/mes vs luna ~$6/mes; si
+  el cron `*/10` llegara a cumplirse, ~$1.100 vs ~$110/mes. El proyecto
+  figura como $0/mes. **No verificado contra facturacion real** — revisar
+  los primeros dias. Si una tarea decepciona, subir SOLO esa a terra
+  (hoy el modelo es por proveedor; por tarea son pocas lineas).
+- **Los tres cambian el contrato de Chat Completions** y por eso hubo que
+  tocar el cliente: exigen `max_completion_tokens` (no `max_tokens`),
+  **rechazan `temperature`** y aceptan `reasoning_effort`
+  (none|low|medium|high|xhigh|max, default medium). `openai_api._is_reasoning`
+  lo detecta por prefijo del nombre (`gpt-5`, `o1`, `o3`, `o4`) y configura
+  el Client de ENTRADA — `_adapt_to_400` queda como red para modelos cuyo
+  prefijo no conozcamos, no como via normal (gastaria una llamada fallida
+  por corrida).
+- **`OPENAI_REASONING_EFFORT=low` a proposito:** los tokens de razonamiento
+  se facturan como salida (la parte cara) Y salen del MISMO presupuesto que
+  la respuesta — razonar de mas puede agotarlo antes de escribir el JSON,
+  que es EXACTAMENTE como se cayo la categorizacion con Tencent Hy3 el
+  2026-07-10. Por lo mismo el Client aplica `max_tokens_scale=4.0` a los
+  topes de las tareas (4000-6000, calibrados para un modelo que no piensa):
+  se factura lo GENERADO, no lo reservado, asi que la holgura no cuesta.
+- **OJO al escribir el parametro:** OpenRouter usa el objeto anidado
+  `reasoning: {effort, exclude}` y OpenAI el campo plano `reasoning_effort`.
+  Cruzarlos da 400. Hay test que lo cubre.
+- Timeout 60s (vs 30s de OpenRouter).
+- **El log de arranque ahora dice CUAL manda,** no solo que credenciales
+  llegaron: `llm.describe_providers()` (antes el bloque estaba duplicado a mano
+  en los dos orquestadores). Con dos proveedores plausibles conviviendo, saber
+  cual se esta usando de verdad es justo el dato que falta cuando algo sale
+  null.
+- **GOTCHA DE RED, medido hoy:** `api.openai.com` esta **igual de bloqueado que
+  openrouter.ai** desde la red corporativa de Grupo RPP (ConnectionError sin
+  credenciales, o sea ni siquiera resuelve/conecta). **No se puede validar la
+  key desde una maquina de RPP** — la verificacion real es una corrida de
+  GitHub Actions, que corre en infraestructura de GitHub sin esa restriccion.
+- **PENDIENTE DEL USUARIO:** pegar `OPENAI_API_KEY` en GitHub Secrets. Los dos
+  workflows ya la referencian. Sin ella el agente sigue cayendo a OpenRouter
+  exactamente como hasta ahora (rules-first, nada se rompe).
 
 **2026-08-20 — VIGILANCIA DE TEMAS por keyword ("Google Alerts" propias),
 feature nueva:** pedido del usuario: poder definir keywords y enterarse apenas
@@ -590,6 +683,12 @@ rpp-seo-agent/
 │   │   ├── decay.py                ← content decay vs pico histórico
 │   │   ├── signals.py              ← early signals, ventanas (reusable)
 │   │   └── onpage_audit.py         ← auditoría SEO on-page de una nota
+│   ├── llm/
+│   │   ├── provider.py              ← facade/selector (OpenAI > OpenRouter > Bedrock > Gemini > reglas)
+│   │   ├── openai_compat.py         ← transporte + los 5 prompts, compartidos
+│   │   ├── openai_api.py            ← adaptador OpenAI (preferido)
+│   │   ├── openrouter.py            ← adaptador OpenRouter (fallback)
+│   │   ├── bedrock.py / gemini.py   ← fallbacks historicos (solo 2 de las 5 tareas)
 │   ├── notifiers/notify.py         ← dispatch de alertas a Teams/WhatsApp (WhatsApp = stub)
 │   ├── writers/supabase_writer.py  ← escribe todas las tablas
 │   └── db/schema.sql               ← 12 tablas (9 v1 + v2: daily_insights, scoring_weights, onpage_audits)
@@ -869,6 +968,10 @@ SUPABASE_URL           → https://tfrnpjbvxulswvqtosoq.supabase.co  [✅ config
 SUPABASE_KEY           → service_role key (NO la anon)         [✅ configurado]
 GSC_CREDENTIALS_JSON   → service account de Google             [✅ configurado]
 SERPAPI_KEY            → clave de serpapi.com                  [⏳ pendiente, opcional]
+OPENAI_API_KEY         → key propia de OpenAI (PREFERIDO)      [⏳ pendiente, la pega el usuario]
+OPENAI_MODEL           → opcional, default gpt-4o-mini         [opcional]
+OPENROUTER_API_KEY     → fallback                              [✅ configurado]
+LLM_PROVIDER           → opcional (variable, no secreto): fuerza proveedor
 ```
 
 ### Dashboard (Vercel) — todas ✅ configuradas
@@ -880,7 +983,7 @@ PASS_EDITORIAL / PASS_DIRECCION / PASS_ADMIN   (contraseñas temporales: <rol>20
 
 ---
 
-## Fase 2 — capa LLM (OpenRouter preferido desde 2026-07-10, Bedrock y Gemini como fallback)
+## Fase 2 — capa LLM (OpenAI preferido desde 2026-08-21; OpenRouter, Bedrock y Gemini como fallback)
 
 **Estado (2026-07-10): VERIFICADO EN PRODUCCIÓN.** La capa LLM está
 implementada y funcionando con OpenRouter (modelo Tencent Hy3, gratis) como

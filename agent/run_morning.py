@@ -152,12 +152,7 @@ def run():
     # en el workflow) se interpretaba como UTC → dashboard restaba 5h dos veces
     run_data = {"started_at": datetime.now(timezone.utc), "sources_ok": [], "sources_failed": [], "kind": "morning"}
     logger.info(f"🌅 Benchmark de la mañana — {today}")
-    logger.info(
-        "🔑 Proveedores LLM detectados (solo presencia de credenciales, no validez): "
-        f"openrouter={llm.openrouter.is_enabled()} "
-        f"bedrock={llm.bedrock.is_enabled()} "
-        f"gemini={llm.gemini.is_enabled()}"
-    )
+    logger.info(llm.describe_providers())
 
     # --- RECOLECCIÓN ---
     marfeel_perf    = safe_collect("marfeel_yesterday", marfeel.fetch_yesterday_performance, run_data)

@@ -1,432 +1,89 @@
 """
 Capa LLM — cliente de OpenRouter (API REST compatible con OpenAI Chat
-Completions), vía requests. Modelo por defecto: "openrouter/free", el router
-que elige entre los modelos gratis vigentes en cada llamada (ver
-OPENROUTER_MODEL en config.py).
+Completions), vía requests.
 
-Mismo contrato que llm/bedrock.py y llm/gemini.py: categorize_topics(...) y
-rewrite_onpage_batch(...), ambas devuelven None si no hay API key, si el
-modelo no está disponible, o la llamada falla (rules-first: el orquestador
-cae al comportamiento por reglas).
+Fue el proveedor PREFERIDO del 2026-07-10 al 2026-08-21; desde entonces es el
+primer FALLBACK, detrás de OpenAI (llm/openai_api.py), que usa una key propia
+del usuario en vez del catálogo gratis rotativo.
 
-Nota histórica: el default fue "tencent/hy3:free" (promo de Tencent hasta
-2026-07-21) y luego, por un día, "meta-llama/llama-3.3-70b-instruct:free" —
-ambos slugs fijos terminaron devolviendo 404 "unavailable for free" a los
-pocos días/horas de fijarlos. El catálogo free de OpenRouter rota más rápido
-de lo que se puede fijar a mano, por eso el default pasó al router
-"openrouter/free". Si el router también falla, OPENROUTER_MODEL se puede
-apuntar a un modelo de pago por env, sin tocar este archivo.
+Desde 2026-08-21 este archivo es un adaptador: el transporte y los 5 prompts
+viven en `llm/openai_compat.py`, compartidos con OpenAI porque ambos hablan el
+mismo protocolo. Acá solo queda lo que es específico de OpenRouter (el modelo,
+el parámetro `reasoning`, los headers de identificación de la app) y la
+historia de por qué está configurado así.
+
+POR QUÉ EL MODELO DEFAULT ES UN ROUTER Y NO UN SLUG
+---------------------------------------------------
+El default fue "tencent/hy3:free" (promo de Tencent hasta 2026-07-21) y luego,
+por un día, "meta-llama/llama-3.3-70b-instruct:free" — ambos slugs fijos
+terminaron devolviendo 404 "unavailable for free" a los pocos días/horas de
+fijarlos. El catálogo free de OpenRouter rota más rápido de lo que se puede
+fijar a mano, por eso el default pasó al router "openrouter/free". Si el
+router también falla, OPENROUTER_MODEL se puede apuntar a un modelo de pago
+por env, sin tocar este archivo.
+
+POR QUÉ SE ENVÍA `reasoning` (y por qué OpenAI NO lo lleva)
+-----------------------------------------------------------
+Tencent Hy3 resultó ser un modelo razonador: gastaba TODO el `max_tokens`
+pensando y cortaba antes de escribir la respuesta (`finish_reason="length"`,
+`content` vacío) — visto en producción el 2026-07-10 con lotes de ~80-100
+ítems. El fix no fue subir tokens a lo bruto sino limitar el razonamiento con
+`reasoning: {"effort": "low", "exclude": True}`, el parámetro unificado de
+OpenRouter. Es una EXTENSIÓN de OpenRouter: mandárselo a la API de OpenAI da
+400, por eso viaja en `extra_body` de este cliente y no en el núcleo
+compartido.
+
+`json_mode` va APAGADO acá a propósito: `response_format` no está garantizado
+para todo el catálogo de OpenRouter (y menos aún para el modelo que el router
+elija en cada llamada). El parseo tolerante de `openai_compat.generate_json`
+—que limpia ```json y rescata el primer objeto embebido en prosa— es la red
+que cubre eso.
 """
-
-import json
-import logging
-import time
-
-import requests
 
 from config import (
     OPENROUTER_API_KEY, OPENROUTER_MODEL, OPENROUTER_BASE_URL,
     OPENROUTER_TIMEOUT_SECONDS,
 )
+from llm import openai_compat
+from llm.openai_compat import Client
 
-logger = logging.getLogger(__name__)
+_client = Client(
+    label="OpenRouter",
+    base_url=OPENROUTER_BASE_URL,
+    api_key=OPENROUTER_API_KEY,
+    model=OPENROUTER_MODEL,
+    timeout=OPENROUTER_TIMEOUT_SECONDS,
+    extra_body={"reasoning": {"effort": "low", "exclude": True}},
+    extra_headers={
+        # Recomendados por OpenRouter para identificar la app (no son secretos).
+        "HTTP-Referer": "https://rpp-seo-agent.vercel.app",
+        "X-Title":      "RPP SEO Agent",
+    },
+    json_mode=False,
+)
 
 
 def is_enabled():
-    return bool(OPENROUTER_API_KEY)
+    return _client.is_enabled()
 
-
-def _generate(prompt, system=None, max_tokens=4000, retries=1):
-    """
-    Llama a /chat/completions (formato OpenAI). Devuelve el texto (str) o None
-    si falla — nunca lanza, para no bloquear al orquestador.
-
-    Tencent Hy3 es un modelo razonador (chain-of-thought): antes de responder
-    "piensa" y esos tokens de razonamiento salen del mismo `max_tokens`. Con
-    poco presupuesto, el modelo se queda pensando y corta ANTES de escribir
-    la respuesta (`finish_reason: "length"`, `content` vacío, solo el
-    razonamiento a medias en `reasoning`) — visto en producción con
-    max_tokens=2000/4000 en lotes de ~80-100 ítems. Por eso: (a) se limita el
-    razonamiento con `reasoning.effort: "low"` (deja el grueso del
-    presupuesto para la respuesta) vía el parámetro unificado de OpenRouter
-    (openrouter.ai/docs/guides/best-practices/reasoning-tokens), y (b) el
-    default de `max_tokens` sube a 4000. El campo `reasoning` NUNCA se usa
-    como respuesta si `content` viene vacío — es el pensamiento truncado del
-    modelo, no la salida estructurada que se pidió.
-    """
-    if not is_enabled():
-        return None
-
-    messages = []
-    if system:
-        messages.append({"role": "system", "content": system})
-    messages.append({"role": "user", "content": prompt})
-
-    body = {
-        "model":       OPENROUTER_MODEL,
-        "messages":    messages,
-        "temperature": 0.4,
-        "max_tokens":  max_tokens,
-        "reasoning":   {"effort": "low", "exclude": True},
-    }
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type":  "application/json",
-        # Recomendados por OpenRouter para identificar la app (no son secretos).
-        "HTTP-Referer":  "https://rpp-seo-agent.vercel.app",
-        "X-Title":       "RPP SEO Agent",
-    }
-
-    last_err = None
-    for attempt in range(retries + 1):
-        try:
-            resp = requests.post(
-                f"{OPENROUTER_BASE_URL}/chat/completions",
-                headers=headers,
-                json=body,
-                timeout=OPENROUTER_TIMEOUT_SECONDS,
-            )
-            if not resp.ok:
-                last_err = f"{resp.status_code}: {resp.text[:2000]}"
-                if resp.status_code == 429 and attempt < retries:
-                    time.sleep(10 * (attempt + 1))
-                    continue
-                logger.warning(f"OpenRouter {resp.status_code}: {resp.text[:2000]}")
-                return None
-            data = resp.json()
-            choice = data["choices"][0]
-            content = (choice["message"].get("content") or "").strip()
-            if not content:
-                finish = choice.get("finish_reason")
-                hint = (
-                    " — se agotó max_tokens pensando, sin llegar a responder "
-                    "(subir max_tokens o bajar el tamaño del lote)"
-                    if finish == "length" else ""
-                )
-                logger.warning(
-                    f"OpenRouter respondió 200 pero sin content (finish_reason={finish}){hint}; "
-                    "se usa el fallback por reglas"
-                )
-                return None
-            return content
-        except Exception as e:
-            last_err = e
-            if attempt < retries:
-                time.sleep(2)
-    logger.warning(f"OpenRouter no respondió ({last_err}); se usa el fallback por reglas")
-    return None
-
-
-def _generate_json(prompt, system=None, max_tokens=2000):
-    """Como _generate pero parsea el JSON. Devuelve el objeto o None."""
-    raw = _generate(prompt, system=system, max_tokens=max_tokens)
-    if not raw:
-        return None
-    raw = raw.strip()
-    # Algunos modelos envuelven el JSON en ```json ... ``` pese a la
-    # instrucción de responder SOLO JSON; se limpia antes de parsear.
-    if raw.startswith("```"):
-        raw = raw.strip("`")
-        if raw.lower().startswith("json"):
-            raw = raw[4:]
-        raw = raw.strip()
-    try:
-        return json.loads(raw)
-    except (json.JSONDecodeError, TypeError):
-        pass
-    # Último recurso: extraer el primer objeto JSON embebido en texto (modelos
-    # razonadores a veces anteponen/agregan prosa pese a la instrucción).
-    start, end = raw.find("{"), raw.rfind("}")
-    if start != -1 and end > start:
-        try:
-            return json.loads(raw[start:end + 1])
-        except (json.JSONDecodeError, TypeError):
-            pass
-    logger.warning(f"OpenRouter devolvió JSON inválido; primeros 200 chars: {raw[:200]!r}")
-    return None
-
-
-# ---------------------------------------------------------------------------
-# A) Categorización de temas del radar
-# ---------------------------------------------------------------------------
 
 def categorize_topics(keywords, categories):
-    """
-    Clasifica una lista de keywords en una de las `categories`, en UNA sola
-    llamada. Devuelve dict {keyword: categoria} o None si el LLM no está.
-    """
-    if not is_enabled() or not keywords:
-        return None
+    return openai_compat.categorize_topics(_client, keywords, categories)
 
-    cats = ", ".join(categories)
-    numbered = "\n".join(f"{i}. {k}" for i, k in enumerate(keywords))
-    system = (
-        "Eres un editor SEO de RPP Noticias (Perú). Clasificas temas de "
-        "actualidad en la sección editorial correcta de un medio de noticias. "
-        "Respondes exclusivamente en JSON, sin texto adicional ni markdown."
-    )
-    prompt = (
-        f"Clasifica cada tema en EXACTAMENTE una de estas categorías: {cats}.\n"
-        "Ejemplos de criterio: nombres de futbolistas, clubes o partidos → deportes; "
-        "artistas, farándula, TV, cine → entretenimiento; sismos, clima, sucesos → "
-        "según corresponda (mundo/actualidad); si de verdad no encaja → otros.\n\n"
-        f"Temas:\n{numbered}\n\n"
-        'Responde SOLO un JSON: {"items": [{"i": <indice>, "categoria": "<categoria>"}]}'
-    )
-    data = _generate_json(prompt, system=system, max_tokens=6000)
-    if not isinstance(data, dict) or not isinstance(data.get("items"), list):
-        if data is not None:
-            logger.warning(f"OpenRouter: JSON de categorización con forma inesperada: {str(data)[:200]!r}")
-        return None
-
-    valid = set(categories)
-    out = {}
-    for it in data["items"]:
-        try:
-            idx = int(it["i"])
-            cat = str(it["categoria"]).lower().strip()
-        except (KeyError, ValueError, TypeError):
-            continue
-        if 0 <= idx < len(keywords) and cat in valid:
-            out[keywords[idx]] = cat
-    return out or None
-
-
-# ---------------------------------------------------------------------------
-# B) Reescritura on-page (título / meta / H2) para la auditoría
-# ---------------------------------------------------------------------------
 
 def rewrite_onpage_batch(items, title_max=60, meta_min=120, meta_max=160):
-    """
-    Reescribe VARIAS notas en UNA sola llamada. `items` = lista de dicts con
-    keys {title, meta_description, keyword, issues, first_paragraph}.
-    Devuelve una lista alineada por índice: [suggestion|None, ...] o None global.
-    """
-    if not is_enabled() or not items:
-        return None
-
-    notes = []
-    for i, it in enumerate(items):
-        notes.append({
-            "i":         i,
-            "keyword":   it.get("keyword") or "",
-            "title":     it.get("title") or "",
-            "meta":      it.get("meta_description") or "",
-            "parrafo":   (it.get("first_paragraph") or "")[:300],
-            "problemas": [p.get("message") for p in (it.get("issues") or [])],
-        })
-    system = (
-        "Eres un editor SEO de RPP Noticias (Perú). Reescribes títulos y meta "
-        "descriptions de notas ya publicadas para mejorar posicionamiento y CTR, "
-        "en español neutro peruano, sin clickbait ni inventar datos. Respondes "
-        "exclusivamente en JSON, sin texto adicional ni markdown."
+    return openai_compat.rewrite_onpage_batch(
+        _client, items, title_max=title_max, meta_min=meta_min, meta_max=meta_max
     )
-    prompt = (
-        f"Para CADA nota reescribe: un título ≤ {title_max} caracteres con la "
-        f"keyword de forma natural; una meta description entre {meta_min} y "
-        f"{meta_max} caracteres con la keyword; y hasta 3 subtítulos H2 útiles.\n"
-        "Si una nota no trae keyword, optimiza igual por su tema.\n\n"
-        f"Notas (JSON):\n{json.dumps(notes, ensure_ascii=False)}\n\n"
-        'Responde SOLO un JSON: {"items": [{"i": <indice>, "title": "...", '
-        '"meta_description": "...", "h2": ["...","..."]}]}'
-    )
-    data = _generate_json(prompt, system=system, max_tokens=4000)
-    if not isinstance(data, dict) or not isinstance(data.get("items"), list):
-        if data is not None:
-            logger.warning(f"OpenRouter: JSON de reescritura con forma inesperada: {str(data)[:200]!r}")
-        return None
 
-    out = [None] * len(items)
-    for entry in data["items"]:
-        try:
-            idx = int(entry["i"])
-        except (KeyError, ValueError, TypeError):
-            continue
-        if not (0 <= idx < len(items)):
-            continue
-        sug = {
-            "title":            (entry.get("title") or "").strip() or None,
-            "meta_description": (entry.get("meta_description") or "").strip() or None,
-            "h2":               [h for h in (entry.get("h2") or []) if isinstance(h, str)][:3],
-        }
-        if sug["title"] or sug["meta_description"]:
-            out[idx] = sug
-    return out
-
-
-# ---------------------------------------------------------------------------
-# E) Vigencia de queries de GSC: ¿la demanda sigue viva?
-# ---------------------------------------------------------------------------
 
 def classify_query_freshness(queries, trend_keywords):
-    """
-    Clasifica queries de Search Console según si su demanda sigue viva HOY:
-    "hot" (evento futuro/tendencia activa), "evergreen" (demanda continua) o
-    "past" (el evento ya ocurrió, el interés murió). Devuelve dict
-    {query: clasificacion} o None (rules-first).
-    """
-    if not is_enabled() or not queries:
-        return None
+    return openai_compat.classify_query_freshness(_client, queries, trend_keywords)
 
-    from datetime import date
-    numbered = "\n".join(f"{i}. {q}" for i, q in enumerate(queries))
-    trends_txt = ", ".join(trend_keywords[:20]) if trend_keywords else "(sin datos)"
-    system = (
-        "Eres un editor SEO de RPP Noticias (Perú). Decides si la demanda de "
-        "una búsqueda de Google sigue viva HOY, para saber si aún vale la pena "
-        "optimizar la nota que posiciona por ella. Las búsquedas atadas a un "
-        "evento que YA OCURRIÓ (un partido jugado, una gala pasada) están "
-        "muertas aunque ayer tuvieran millones de impresiones. Respondes "
-        "exclusivamente en JSON, sin texto adicional ni markdown."
-    )
-    prompt = (
-        f"HOY es {date.today().isoformat()}. Tendencias activas en Perú ahora: "
-        f"{trends_txt}.\n\n"
-        "Clasifica CADA búsqueda en exactamente una de:\n"
-        '- "hot": atada a un evento FUTURO o a una tendencia activa hoy '
-        "(p.ej. la final que aún no se juega).\n"
-        '- "evergreen": demanda continua que no depende de un evento '
-        "(\"partidos de hoy\", \"precio del dólar\", \"rpp en vivo\").\n"
-        '- "past": atada a un evento que YA ocurrió (un partido ya jugado, '
-        "sus alineaciones, estadísticas o dónde verlo).\n"
-        "En la duda entre hot y past, usa las tendencias activas y la fecha "
-        "de hoy como árbitro.\n\n"
-        f"Búsquedas:\n{numbered}\n\n"
-        'Responde SOLO un JSON: {"items": [{"i": <indice>, "estado": "hot|evergreen|past"}]}'
-    )
-    data = _generate_json(prompt, system=system, max_tokens=5000)
-    if not isinstance(data, dict) or not isinstance(data.get("items"), list):
-        if data is not None:
-            logger.warning(f"OpenRouter: JSON de vigencia con forma inesperada: {str(data)[:200]!r}")
-        return None
-
-    valid = {"hot", "evergreen", "past"}
-    out = {}
-    for entry in data["items"]:
-        try:
-            idx = int(entry["i"])
-            estado = str(entry["estado"]).lower().strip()
-        except (KeyError, ValueError, TypeError):
-            continue
-        if 0 <= idx < len(queries) and estado in valid:
-            out[queries[idx]] = estado
-    return out or None
-
-
-# ---------------------------------------------------------------------------
-# D) Explicación de tendencias: por qué cada tema es tendencia hoy
-# ---------------------------------------------------------------------------
 
 def explain_trends(items):
-    """
-    Explica en 1-2 frases por qué cada tema es tendencia hoy en Perú, usando
-    como evidencia los titulares recientes de Google News de cada uno.
-    `items` = lista de dicts {keyword, headlines: [str, ...]}.
-    Devuelve dict {keyword: explicacion} o None (rules-first).
-    """
-    if not is_enabled() or not items:
-        return None
+    return openai_compat.explain_trends(_client, items)
 
-    payload = [{
-        "i":         i,
-        "tema":      it.get("keyword") or "",
-        "titulares": [h for h in (it.get("headlines") or []) if h][:5],
-    } for i, it in enumerate(items)]
-
-    system = (
-        "Eres un editor de actualidad de RPP Noticias (Perú). Explicas por qué "
-        "un tema está entre lo más buscado en Google Perú HOY. La causa de una "
-        "tendencia es casi siempre un HECHO NOTICIOSO reciente: tu explicación "
-        "debe anclarse en la noticia MÁS RECIENTE y repetida entre los titulares "
-        "dados como evidencia, no en contexto general ni en artículos viejos o "
-        "de otro país que mencionen el término de pasada. Nunca inventes hechos "
-        "que no estén en los titulares. Respondes exclusivamente en JSON, sin "
-        "texto adicional ni markdown."
-    )
-    prompt = (
-        "Para CADA tema escribe una explicación de 1 a 2 frases (máx ~220 "
-        "caracteres) de POR QUÉ es tendencia de búsqueda hoy: el hecho concreto "
-        "que la disparó (qué pasó, quién es, qué evento). Reglas:\n"
-        "- Prioriza los titulares marcados [asociada por Google Trends] (son "
-        "las noticias que Google vincula directamente a la tendencia) y los de "
-        "fecha más reciente.\n"
-        "- Si el tema es ambiguo (siglas, nombres cortos), acláralo primero "
-        "(\"SGD es...\").\n"
-        "- Si el término está en inglés y NO es un nombre propio (p.ej. "
-        "'weather'), en Perú suele buscarse por un hecho local (friaje, "
-        "lluvias, sismo, oleajes…): explica el hecho reciente en Perú que lo "
-        "dispara según los titulares.\n"
-        "- Si ningún titular muestra un hecho noticioso que explique la "
-        "búsqueda, responde exactamente null en ese ítem — nunca rellenes con "
-        "una definición del término ni con noticias sin relación.\n\n"
-        f"Temas con sus titulares recientes (JSON):\n{json.dumps(payload, ensure_ascii=False)}\n\n"
-        'Responde SOLO un JSON: {"items": [{"i": <indice>, "why": "<explicacion o null>"}]}'
-    )
-    data = _generate_json(prompt, system=system, max_tokens=4000)
-    if not isinstance(data, dict) or not isinstance(data.get("items"), list):
-        if data is not None:
-            logger.warning(f"OpenRouter: JSON de explicación de tendencias con forma inesperada: {str(data)[:200]!r}")
-        return None
-
-    out = {}
-    for entry in data["items"]:
-        try:
-            idx = int(entry["i"])
-        except (KeyError, ValueError, TypeError):
-            continue
-        if not (0 <= idx < len(items)):
-            continue
-        why = entry.get("why")
-        if isinstance(why, str) and why.strip() and why.strip().lower() != "null":
-            out[items[idx]["keyword"]] = why.strip()
-    return out or None
-
-
-# ---------------------------------------------------------------------------
-# C) Cobertura: ¿RPP ya publicó lo que publicó la competencia?
-# ---------------------------------------------------------------------------
 
 def match_coverage(competitor_titles, own_titles):
-    """
-    Para cada titular de competencia, decide si alguno de los `own_titles`
-    (notas recientes de RPP) cubre el MISMO hecho/tema, y cuál. Devuelve dict
-    {indice_competencia: indice_rpp | -1} o None. -1 = RPP no lo cubre.
-    """
-    if not is_enabled() or not competitor_titles or not own_titles:
-        return None
-
-    comp_num = "\n".join(f"{i}. {t}" for i, t in enumerate(competitor_titles))
-    own_num = "\n".join(f"{i}. {t}" for i, t in enumerate(own_titles))
-    system = (
-        "Eres un editor de RPP Noticias (Perú). Comparas titulares de otros "
-        "medios contra los titulares ya publicados por RPP y determinas si RPP "
-        "cubre el MISMO HECHO NOTICIOSO. Regla estricta: que compartan una "
-        "persona, equipo o tema NO basta — debe ser el mismo evento concreto. "
-        "Ejemplos de lo que NO es el mismo hecho: 'bebés llamados Haaland' vs "
-        "'el pronóstico de Haaland'; 'precio del euro' vs 'precio del dólar'; "
-        "'vacaciones escolares de julio' vs 'gratificación de julio'. En la duda, "
-        "responde -1. Respondes exclusivamente en JSON, sin texto ni markdown."
-    )
-    prompt = (
-        "TITULARES DE RPP (ya publicados):\n" + own_num + "\n\n"
-        "TITULARES DE LA COMPETENCIA (¿RPP cubre el mismo hecho?):\n" + comp_num + "\n\n"
-        "Para CADA titular de competencia indica el índice del titular de RPP "
-        "que cubre EXACTAMENTE el mismo hecho, o -1 si RPP no lo ha cubierto.\n"
-        'Responde SOLO un JSON: {"items": [{"i": <indice_competencia>, "rpp": <indice_rpp_o_-1>}]}'
-    )
-    data = _generate_json(prompt, system=system, max_tokens=4000)
-    if not isinstance(data, dict) or not isinstance(data.get("items"), list):
-        if data is not None:
-            logger.warning(f"OpenRouter: JSON de cobertura con forma inesperada: {str(data)[:200]!r}")
-        return None
-
-    out = {}
-    for entry in data["items"]:
-        try:
-            ci = int(entry["i"])
-            oi = int(entry["rpp"])
-        except (KeyError, ValueError, TypeError):
-            continue
-        if 0 <= ci < len(competitor_titles):
-            out[ci] = oi if (0 <= oi < len(own_titles)) else -1
-    return out or None
+    return openai_compat.match_coverage(_client, competitor_titles, own_titles)
