@@ -67,9 +67,9 @@ dashboard".
   llamadas) y es meter titulares en 8 cajas — la tarea mas facil de las
   cinco; las otras son extraccion/clasificacion con prompts ya calibrados,
   no razonamiento frontera. **Estimado** (~15k tokens entrada + ~25k salida
-  por corrida, con los de razonamiento facturados como SALIDA): a la
-  cadencia real medida (~6 corridas/dia) terra ~$60/mes vs luna ~$6/mes; si
-  el cron `*/10` llegara a cumplirse, ~$1.100 vs ~$110/mes. El proyecto
+  por corrida, con los de razonamiento facturados como SALIDA): a la cadencia
+  REAL re-medida el 2026-08-21 (**32 corridas/dia**, no las 4-6 que decia este
+  archivo desde julio) terra saldria ~$330/mes y luna ~$33/mes. El proyecto
   figura como $0/mes. **No verificado contra facturacion real** — revisar
   los primeros dias. Si una tarea decepciona, subir SOLO esa a terra
   (hoy el modelo es por proveedor; por tarea son pocas lineas).
@@ -102,7 +102,24 @@ dashboard".
   credenciales, o sea ni siquiera resuelve/conecta). **No se puede validar la
   key desde una maquina de RPP** — la verificacion real es una corrida de
   GitHub Actions, que corre en infraestructura de GitHub sin esa restriccion.
-- **PENDIENTE DEL USUARIO:** pegar `OPENAI_API_KEY` en GitHub Secrets. Los dos
+- **VERIFICADO END-TO-END EN PRODUCCION (2026-08-21, corrida #740, workflow_dispatch sobre master 8dd79a6):**
+  `🔑 Proveedores LLM detectados: openai=True openrouter=True bedrock=True gemini=False → activo: openai` · `✅ LLM categorizó 237/237 titulares de competencia` · `✅ LLM categorizó 10/10 temas` · `✅ LLM explicó 10/10 tendencias nuevas` · `✅ Radar guardado: 3 recomendaciones, 9 alertas`.
+  **Sin un solo 400, sin caída a reglas**: confirma que `gpt-5.6-luna` responde
+  por Chat Completions y que `max_completion_tokens` + sin `temperature` +
+  `reasoning_effort=low` es la combinación correcta (si hubiera estado mal,
+  `_adapt_to_400` habría dejado su INFO en el log — no aparece).
+- **LA CORRIDA BAJO DE ~11 MIN A 63 SEGUNDOS** (15:12:50 → 15:13:53). Con el
+  router `openrouter/free` cada corrida tardaba ~11 min porque el router
+  elegia modelo en cada llamada. Era el argumento principal para salir de ahi,
+  aparte de la calidad.
+- **CADENCIA REAL DEL CRON, RE-MEDIDA HOY: 32 corridas programadas en 24h**
+  (gap mediano 33 min, minimo 16, maximo 304). El dato de "4-6 veces/dia" que
+  este archivo repetia desde 2026-07-13 quedo VIEJO — GitHub ahora cumple el
+  cron mucho mejor. Multiplica por ~5 cualquier estimacion de costo previa:
+  con luna son ~$33/mes y con terra habrian sido ~$330/mes. Refuerza la
+  eleccion de modelo. **Sigue sin contrastarse contra facturacion real.**
+- **PENDIENTE DEL USUARIO:** ~~pegar `OPENAI_API_KEY` en GitHub Secrets~~
+  **HECHO el 2026-08-21.** Los dos
   workflows ya la referencian. Sin ella el agente sigue cayendo a OpenRouter
   exactamente como hasta ahora (rules-first, nada se rompe).
 
