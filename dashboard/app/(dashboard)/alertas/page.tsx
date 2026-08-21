@@ -1,7 +1,6 @@
 import { supabase } from "@/lib/supabase"
 import { getLastRunFinishedAt } from "@/lib/lastRun"
 import AlertasClient, { Alert, DecayItem } from "./AlertasClient"
-import { WatchKeyword, WatchHit } from "./VigilanciaPanel"
 
 export const revalidate = 60
 
@@ -11,22 +10,10 @@ export const revalidate = 60
 // /auditoria). No se auto-resuelven en la DB — se ocultan por antigüedad acá.
 const ALERT_WINDOW_HOURS = 24
 
-// La vigilancia por keyword usa una ventana más larga que las alertas de
-// tendencia: no es "algo está rompiendo ahora" sino "esto se publicó sobre un
-// tema que sigues", y un tema de nicho puede tener una sola nota en todo el día.
-const WATCH_WINDOW_HOURS = 48
-
 export default async function AlertasPage() {
   const cutoff = new Date(Date.now() - ALERT_WINDOW_HOURS * 60 * 60 * 1000).toISOString()
-  const watchCutoff = new Date(Date.now() - WATCH_WINDOW_HOURS * 60 * 60 * 1000).toISOString()
 
-  const [
-    { data: activeAlerts },
-    { data: decayList },
-    { data: watchKeywords },
-    { data: watchHits },
-    lastRun,
-  ] = await Promise.all([
+  const [{ data: activeAlerts }, { data: decayList }, lastRun] = await Promise.all([
     supabase
       .from("alerts")
       .select("id, severity, type, section, score, date, title, description, url")
@@ -42,23 +29,6 @@ export default async function AlertasPage() {
       .order("drop_percentage", { ascending: false })
       .limit(20),
 
-    // Incluye las pausadas (active=false): el panel deja reanudarlas.
-    supabase
-      .from("watch_keywords")
-      .select("id, keyword, label, active, section, extra_feeds")
-      .order("created_at", { ascending: true }),
-
-    // Orden por fecha de PUBLICACIÓN, no por cuándo lo encontró el agente: lo
-    // que importa es qué salió más reciente. nullsFirst:false manda al fondo
-    // los feeds que no traen fecha.
-    supabase
-      .from("watch_hits")
-      .select("id, keyword_id, keyword, title, url, source, published_at, found_via, created_at")
-      .eq("dismissed", false)
-      .gte("created_at", watchCutoff)
-      .order("published_at", { ascending: false, nullsFirst: false })
-      .limit(200),
-
     getLastRunFinishedAt("radar"),
   ])
 
@@ -66,8 +36,6 @@ export default async function AlertasPage() {
     <AlertasClient
       alerts={(activeAlerts as Alert[]) ?? []}
       decayList={(decayList as DecayItem[]) ?? []}
-      watchKeywords={(watchKeywords as WatchKeyword[]) ?? []}
-      watchHits={(watchHits as WatchHit[]) ?? []}
       lastRun={lastRun}
     />
   )
