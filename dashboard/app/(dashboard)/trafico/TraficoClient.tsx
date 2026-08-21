@@ -6,7 +6,7 @@ import { InfoTooltip } from "@/components/ui/InfoTooltip"
 import { LastUpdated } from "@/components/ui/LastUpdated"
 import { DatePicker } from "@/components/ui/DatePicker"
 import { FilterCard, FilterChip, FilterItem } from "@/components/ui/FilterList"
-import { isRealArticle, sectionOf } from "@/lib/articleFilter"
+import { isRealArticle, sectionOf, sectionGroup } from "@/lib/articleFilter"
 import { ChannelTrendChart, type TrendChannelMeta, type TrendPoint } from "./ChannelTrendChart"
 
 export type ChannelRow = {
@@ -46,7 +46,7 @@ function aggregateTotals(rowsIn: ChannelRow[], section: string, channel: string)
   const clean = rowsIn.filter((r) => isRealArticle(r.page_path))
   const filtered = clean.filter((r) => {
     if (channel !== TODOS && (r.channel || "Otros") !== channel) return false
-    if (section !== TODOS && sectionOf(r.page_path) !== section) return false
+    if (section !== TODOS && sectionGroup(sectionOf(r.page_path)) !== section) return false
     return true
   })
   const byArticle: Record<string, { pageviews: number; unique_users: number }> = {}
@@ -128,17 +128,16 @@ export default function TraficoClient({
   const pvPorSeccion = useMemo(() => {
     const m: Record<string, number> = {}
     for (const r of daySections) {
-      const clave = (r.section || "")
-        .normalize("NFD").replace(/[̀-ͯ]/g, "")
-        .toLowerCase().trim()
+      // sectionGroup normaliza Y fusiona: las ~25 etiquetas deportivas de
+      // Marfeel (Futbol, Voley, Copa Sudamericana, Descentralizado...) se
+      // suman en una sola "deportes", igual que del lado de las URLs.
+      const clave = sectionGroup(r.section)
       if (clave) m[clave] = (m[clave] ?? 0) + (r.page_views ?? 0)
     }
     return m
   }, [daySections])
 
-  /** Misma normalizacion del lado del dashboard, para poder cruzar. */
-  const claveSeccion = (s: string) =>
-    (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim()
+
 
   const maxPvSeccion = useMemo(
     // El maximo se toma de las secciones que SI cruzan con el panel: si se
@@ -151,7 +150,7 @@ export default function TraficoClient({
   const sectionCounts = useMemo(() => {
     const acc: Record<string, Set<string>> = {}
     for (const r of cleanRows) {
-      const s = sectionOf(r.page_path)
+      const s = sectionGroup(sectionOf(r.page_path))
       ;(acc[s] ??= new Set()).add(r.page_path)
     }
     return Object.entries(acc)
@@ -165,7 +164,7 @@ export default function TraficoClient({
   const channels = useMemo(() => {
     const acc: Record<string, number> = {}
     for (const r of cleanRows) {
-      if (section !== TODOS && sectionOf(r.page_path) !== section) continue
+      if (section !== TODOS && sectionGroup(sectionOf(r.page_path)) !== section) continue
       const c = r.channel || "Otros"
       acc[c] = (acc[c] ?? 0) + (r.pageviews ?? 0)
     }
@@ -184,7 +183,7 @@ export default function TraficoClient({
   const filtered = useMemo(() => {
     return cleanRows.filter((r) => {
       if (channel !== TODOS && (r.channel || "Otros") !== channel) return false
-      if (section !== TODOS && sectionOf(r.page_path) !== section) return false
+      if (section !== TODOS && sectionGroup(sectionOf(r.page_path)) !== section) return false
       return true
     })
   }, [cleanRows, channel, section])
@@ -326,7 +325,7 @@ export default function TraficoClient({
             />
             <div className="max-h-56 overflow-y-auto -mr-1 pr-1">
               {sectionCounts.map(([s, count]) => {
-                const pv = pvPorSeccion[claveSeccion(s)]
+                const pv = pvPorSeccion[sectionGroup(s)]
                 return (
                   <FilterItem
                     key={s}
