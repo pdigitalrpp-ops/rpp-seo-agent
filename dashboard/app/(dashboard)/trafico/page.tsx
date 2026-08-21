@@ -63,6 +63,28 @@ async function fetchDaySnapshot(dataDay: string): Promise<{ rows: ChannelRow[]; 
 }
 
 /**
+ * Totales REALES del dia, tal como los reporta Marfeel sin agrupar.
+ *
+ * Los KPI NO deben salir de sumar las filas por articulo: esas tablas tienen
+ * tope de filas (200 URLs / 500 pares url x canal), asi que la suma es "lo que
+ * alcanzamos a traer", no el trafico del dia. Medido el 2026-08-21: 706.823
+ * sumando vs 933.233 que reportaba Marfeel. Y los usuarios unicos ni siquiera
+ * son sumables por articulo (una persona lee varias notas).
+ *
+ * Devuelve null para los dias anteriores a la migracion; el cliente cae
+ * entonces a la suma, avisando que es parcial.
+ */
+async function fetchDayTotals(dataDay: string) {
+  const { data } = await supabase
+    .from("own_traffic_totals")
+    .select("page_views, unique_users")
+    .eq("date", runDateOf(dataDay))
+    .maybeSingle()
+  if (!data || !data.page_views) return null
+  return { pageViews: data.page_views as number, uniqueUsers: (data.unique_users ?? null) as number | null }
+}
+
+/**
  * Trae TODAS las filas por canal de un rango de fechas de corrida, paginando.
  * PostgREST capea cada respuesta a ~1000 filas aunque se pida .limit(15000) —
  * por eso el gráfico salía "incompleto" (solo llegaban los primeros días del
@@ -114,9 +136,11 @@ export default async function TraficoPage({
   const selIdx = availableDataDays.indexOf(selectedDay)
   const previousDay = selIdx > 0 ? availableDataDays[selIdx - 1] : null
 
-  const [{ rows, hasChannelData }, prevSnapshot, lastRun] = await Promise.all([
+  const [{ rows, hasChannelData }, prevSnapshot, dayTotals, prevTotals, lastRun] = await Promise.all([
     fetchDaySnapshot(selectedDay),
     previousDay ? fetchDaySnapshot(previousDay) : Promise.resolve(null),
+    fetchDayTotals(selectedDay),
+    previousDay ? fetchDayTotals(previousDay) : Promise.resolve(null),
     getLastRunFinishedAt("morning"),
   ])
 
@@ -170,6 +194,8 @@ export default async function TraficoPage({
       availableDates={availableDataDays}
       prevRows={prevSnapshot?.rows ?? null}
       previousDate={previousDay}
+      dayTotals={dayTotals}
+      prevDayTotals={prevTotals}
       trendData={trendData}
       trendChannels={trendChannels}
       lastRun={lastRun}

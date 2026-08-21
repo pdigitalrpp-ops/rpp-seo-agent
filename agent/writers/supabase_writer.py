@@ -142,6 +142,28 @@ def save_traffic(traffic_rows, run_date):
     logger.info(f"Guardadas {len(rows)} filas de tráfico")
 
 
+def save_traffic_totals(totals, run_date):
+    """
+    Totales del dia (sin agrupar) para los KPI de /trafico. Upsert por fecha.
+
+    Sin esto el panel sumaba las filas por articulo, o sea "lo que alcanzamos a
+    traer": con el tope de filas se perdia ~24% del trafico. Y los usuarios
+    unicos ni siquiera son sumables por articulo (una persona lee varias notas).
+    """
+    if not totals or not totals.get("page_views"):
+        return
+    sb = _get_client()
+    sb.table("own_traffic_totals").upsert({
+        "date":         str(run_date),
+        "page_views":   totals.get("page_views"),
+        "unique_users": totals.get("unique_users"),
+    }, on_conflict="date").execute()
+    logger.info(
+        f"Guardados totales del dia: {totals.get('page_views')} page views, "
+        f"{totals.get('unique_users')} usuarios unicos"
+    )
+
+
 def save_traffic_channels(channel_rows, run_date):
     """Tráfico por (artículo × canal). Borra+reinserta la fecha (idempotente)."""
     sb = _get_client()

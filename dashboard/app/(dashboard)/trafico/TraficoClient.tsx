@@ -76,6 +76,8 @@ export default function TraficoClient({
   availableDates,
   prevRows,
   previousDate,
+  dayTotals,
+  prevDayTotals,
   trendData,
   trendChannels,
   lastRun,
@@ -87,6 +89,12 @@ export default function TraficoClient({
   availableDates: string[]
   prevRows: ChannelRow[] | null
   previousDate: string | null
+  /**
+   * Totales REALES del dia segun Marfeel (sin agrupar). null en dias previos a
+   * la migracion del 2026-08-21. Ver fetchDayTotals en page.tsx.
+   */
+  dayTotals: { pageViews: number; uniqueUsers: number | null } | null
+  prevDayTotals: { pageViews: number; uniqueUsers: number | null } | null
   trendData: TrendPoint[]
   trendChannels: TrendChannelMeta[]
   lastRun: string | null
@@ -171,11 +179,38 @@ export default function TraficoClient({
   }, [prevRows, section, channel])
 
   const vsLabel = previousDate ? `vs ${fmtShortDate(previousDate)}` : ""
-  const pvDelta = prevTotals ? computeDelta(totalPv, prevTotals.totalPv, vsLabel) : undefined
-  const usersDelta = prevTotals ? computeDelta(totalUsers, prevTotals.totalUsers, vsLabel) : undefined
-  const articlesDelta = prevTotals ? computeDelta(articles.length, prevTotals.articleCount, vsLabel) : undefined
-
   const hasActiveFilters = section !== TODOS || channel !== TODOS
+
+  /**
+   * SIN filtros el KPI muestra el total REAL del dia; con filtros, la suma de
+   * lo que matchea.
+   *
+   * No es un capricho: sumar las filas por articulo da "lo que alcanzamos a
+   * traer" (las tablas tienen tope de 200 URLs / 500 pares url x canal), y eso
+   * subestimaba el dia un ~24% -- 706.823 sumando vs 933.233 reales el
+   * 2026-08-21. El total sin agrupar no se puede desglosar por seccion ni por
+   * canal, asi que en cuanto hay filtro activo la suma vuelve a ser la
+   * respuesta correcta, ya no como total del sitio sino del subconjunto.
+   *
+   * Los USUARIOS UNICOS ademas nunca fueron sumables por articulo: una persona
+   * lee varias notas y la suma la cuenta repetida. Con filtros sigue siendo un
+   * limite superior; el tooltip lo dice.
+   */
+  const usaTotalReal = !hasActiveFilters && !!dayTotals
+  const pvMostrado = usaTotalReal ? dayTotals!.pageViews : totalPv
+  const usersMostrado =
+    usaTotalReal && dayTotals!.uniqueUsers ? dayTotals!.uniqueUsers : totalUsers
+
+  // La comparativa usa la MISMA fuente en ambos dias: mezclar total real con
+  // suma parcial inventaria un salto que no ocurrio.
+  const pvPrev = usaTotalReal ? (prevDayTotals?.pageViews ?? null) : (prevTotals?.totalPv ?? null)
+  const usersPrev = usaTotalReal
+    ? (prevDayTotals?.uniqueUsers ?? null)
+    : (prevTotals?.totalUsers ?? null)
+
+  const pvDelta = computeDelta(pvMostrado, pvPrev, vsLabel)
+  const usersDelta = computeDelta(usersMostrado, usersPrev, vsLabel)
+  const articlesDelta = prevTotals ? computeDelta(articles.length, prevTotals.articleCount, vsLabel) : undefined
   const trendFrom = trendData[0]?.date
   const trendTo = trendData[trendData.length - 1]?.date
 
@@ -217,24 +252,34 @@ export default function TraficoClient({
       <div className="grid grid-cols-3 gap-4">
         <StatCard
           label="Page views"
-          value={fmt(totalPv)}
+          value={fmt(pvMostrado)}
+          subtitle={usaTotalReal ? "todo el sitio" : "según el filtro activo"}
           delta={pvDelta}
           accent="#F97316"
-          info="Total de vistas de página de los artículos según el filtro activo (sección y canal). La comparativa es contra el día anterior con datos disponibles, bajo el mismo filtro."
+          info={
+            usaTotalReal
+              ? "Vistas de página de TODO el sitio ese día, tal como las reporta Marfeel. No es la suma de la lista de abajo: esa lista son las notas más leídas (el agente trae un top, no el catálogo completo), así que sumarla se quedaría corta."
+              : "Suma de las vistas de los artículos que entran en el filtro activo. Ojo: la lista es un top de notas, no el catálogo completo del día, así que con filtros muy amplios el número se queda algo corto."
+          }
         />
         <StatCard
           label="Usuarios únicos"
-          value={fmt(totalUsers)}
+          value={fmt(usersMostrado)}
+          subtitle={usaTotalReal ? "todo el sitio" : "aprox. según el filtro"}
           delta={usersDelta}
           accent="#0D9488"
-          info="Personas distintas que leyeron esos artículos (según el filtro activo). A diferencia de page views, no cuenta las visitas repetidas del mismo usuario."
+          info={
+            usaTotalReal
+              ? "Personas distintas que visitaron el sitio ese día, según Marfeel. Una misma persona cuenta una sola vez aunque lea varias notas."
+              : "Aproximación: se suman los usuarios de cada nota del filtro, y quien leyó varias se cuenta más de una vez. Sin filtros, la tarjeta muestra el dato real de Marfeel, sin ese doble conteo."
+          }
         />
         <StatCard
           label="Artículos"
           value={fmt(articles.length)}
           delta={articlesDelta}
           accent="#8B5CF6"
-          info="Cuántas notas distintas entran en el filtro actual de sección y canal."
+          info="Cuántas notas distintas entran en el filtro actual. No es cuántas publicó RPP ese día: el agente trae las más leídas (un top), no el catálogo completo."
         />
       </div>
 

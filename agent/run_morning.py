@@ -23,7 +23,7 @@ from llm import provider as llm
 from writers.supabase_writer import (
     save_run_log, save_traffic, save_traffic_channels, save_gsc_data,
     save_competitor_articles, save_decay, save_daily_insights,
-    save_scoring_weights, save_onpage_audits, save_serp_opportunities,
+    save_scoring_weights, save_onpage_audits, save_serp_opportunities, save_traffic_totals,
     get_historical_traffic, get_trends_context,
 )
 
@@ -157,6 +157,9 @@ def run():
     # --- RECOLECCIÓN ---
     marfeel_perf    = safe_collect("marfeel_yesterday", marfeel.fetch_yesterday_performance, run_data)
     marfeel_channel = safe_collect("marfeel_by_channel", marfeel.fetch_yesterday_by_channel, run_data)
+    # Totales SIN agrupar: es el unico numero honesto para los KPI. Las tablas
+    # por articulo tienen tope de filas, asi que sumarlas subestima el dia.
+    marfeel_totals = safe_collect("marfeel_totals",     marfeel.fetch_yesterday_totals,       run_data)
     traffic_sources = safe_collect("marfeel_sources",   marfeel.fetch_traffic_sources,       run_data)
     gsc_search      = safe_collect("gsc_search",        gsc.fetch_search_performance,        run_data)
     gsc_discover    = safe_collect("gsc_discover",      gsc.fetch_discover_performance,      run_data)
@@ -289,6 +292,7 @@ def run():
     gsc_rows_all = (gsc_search or []) + (gsc_discover or [])
     safe_save("own_traffic",          save_traffic,             run_data, traffic_rows, today)
     safe_save("own_traffic_channels", save_traffic_channels,    run_data, marfeel_channel or [], today)
+    safe_save("own_traffic_totals",   save_traffic_totals,      run_data, marfeel_totals, today)
     safe_save("gsc_daily",            save_gsc_data,            run_data, gsc_rows_all, today)
     safe_save("competitor_articles",  save_competitor_articles, run_data, competitor_data or [])
     safe_save("content_decay",        save_decay,               run_data, decay_list, today)

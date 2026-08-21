@@ -332,3 +332,23 @@ CREATE POLICY "public_delete" ON watch_keywords FOR DELETE USING (true);
 ALTER TABLE watch_hits ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "public_read"   ON watch_hits FOR SELECT USING (true);
 CREATE POLICY "public_update" ON watch_hits FOR UPDATE USING (true);
+
+-- ===========================================================================
+-- own_traffic_totals — totales REALES del día (Marfeel sin agrupar).
+-- Los KPI de /trafico se calculaban SUMANDO own_traffic_channels, o sea "la
+-- suma de lo que alcanzamos a traer": con el tope de 500 pares (url x canal)
+-- eso cubría 168 URLs y daba 706.823 page views cuando Marfeel reportaba
+-- 933.233 para el mismo día (2026-08-21). Ademas los usuarios únicos NUNCA
+-- fueron sumables por artículo: una persona lee varias notas.
+-- `date` = día de la CORRIDA (el tráfico medido es el del día anterior),
+-- misma semántica que own_traffic y own_traffic_channels.
+-- ===========================================================================
+CREATE TABLE IF NOT EXISTS own_traffic_totals (
+  date         date PRIMARY KEY,
+  page_views   bigint,
+  unique_users bigint,
+  created_at   timestamptz DEFAULT now()
+);
+
+ALTER TABLE own_traffic_totals ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "public_read" ON own_traffic_totals FOR SELECT USING (true);
