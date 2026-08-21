@@ -111,16 +111,41 @@ export default function TraficoClient({
 
   // Conteo de artículos por sección (facetado por el canal activo se omite a
   // propósito: la sección es el eje editorial y conviene que sus números sean estables).
-  /** Page views REALES por seccion, indexadas para el panel de filtros. */
+  /**
+   * Page views REALES por seccion, indexadas para el panel de filtros.
+   *
+   * La clave se NORMALIZA (minusculas, sin tildes) porque los dos lados no
+   * escriben igual la misma seccion: Marfeel devuelve "Perú", "Fútbol",
+   * "Economía" y el dashboard deriva "peru", "futbol", "economia" del primer
+   * segmento de la URL. Comparando tal cual no cruzaba NINGUNA y el panel caia
+   * en silencio al conteo de notas (verificado con datos reales el 2026-08-21).
+   *
+   * OJO con "Unknown": es el cajon de Marfeel para lo que no puede atribuir a
+   * una seccion (portada, homes). Ese dia eran 1.048.264 page views, el 53% del
+   * sitio. No cruza con ninguna seccion del panel y es correcto que no lo haga:
+   * la lista de abajo son notas, y la portada no es una nota.
+   */
   const pvPorSeccion = useMemo(() => {
     const m: Record<string, number> = {}
-    for (const r of daySections) m[r.section] = r.page_views ?? 0
+    for (const r of daySections) {
+      const clave = (r.section || "")
+        .normalize("NFD").replace(/[̀-ͯ]/g, "")
+        .toLowerCase().trim()
+      if (clave) m[clave] = (m[clave] ?? 0) + (r.page_views ?? 0)
+    }
     return m
   }, [daySections])
 
+  /** Misma normalizacion del lado del dashboard, para poder cruzar. */
+  const claveSeccion = (s: string) =>
+    (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim()
+
   const maxPvSeccion = useMemo(
-    () => Math.max(1, ...daySections.map((r) => r.page_views ?? 0)),
-    [daySections],
+    // El maximo se toma de las secciones que SI cruzan con el panel: si se
+    // usara el maximo absoluto, "Unknown" (el 53% del sitio) aplastaria todas
+    // las barras y ninguna seria comparable con otra.
+    () => Math.max(1, ...Object.values(pvPorSeccion)),
+    [pvPorSeccion],
   )
 
   const sectionCounts = useMemo(() => {
@@ -301,7 +326,7 @@ export default function TraficoClient({
             />
             <div className="max-h-56 overflow-y-auto -mr-1 pr-1">
               {sectionCounts.map(([s, count]) => {
-                const pv = pvPorSeccion[s]
+                const pv = pvPorSeccion[claveSeccion(s)]
                 return (
                   <FilterItem
                     key={s}
