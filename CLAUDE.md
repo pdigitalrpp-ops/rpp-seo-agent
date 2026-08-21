@@ -177,9 +177,32 @@ y se vea mejor organizada".
   del medio (mismo problema que ya tenía Perú21 en /competencia).
 - **Sin cambios en el agente ni en la DB:** `collectors/watchlist.py`,
   `watch_keywords` y `watch_hits` intactos. Es solo la capa de presentación.
-- **No verificado en navegador:** no hay Node en el sandbox (ver nota de
-  entorno en "Dashboard Next.js"), así que la revisión fue estática. Falta
-  build de Vercel en preview antes de mergear a master.
+- **VERIFICADO EN PREVIEW DE VERCEL Y MERGEADO A MASTER (2026-08-21):** la
+  pestaña renderiza con datos reales (2 temas vigilados, 35 hallazgos, 23
+  medios), el enlace "Radar de temas" aparece en el menú, el **filtrado
+  cruzado** recalcula las otras facetas (al filtrar por "Papa León XIV" los
+  conteos de fuente y medio bajan de 35 a 18), la agrupación por día funciona
+  y la consola queda limpia. No hubo captura de pantalla (el panel del
+  navegador no componía frames); se verificó por read_page + consola.
+- **BUG REAL ENCONTRADO EN EL PREVIEW — errores de hidratación de React
+  (#425/#418/#423) en cada carga de /radar (fix 98d45c3). GOTCHA REUTILIZABLE:**
+  la pestaña derivaba de la hora casi todo lo que pinta — el corte de la
+  ventana, la agrupación por día y los "hace X min" — leyendo `Date.now()`
+  DURANTE EL RENDER. El HTML del servidor y el primer render del cliente se
+  separan por milisegundos, y basta para que un "hace 13 min" pase a "hace 14
+  min" y el texto no coincida. Fix: `page.tsx` pasa `serverNow={Date.now()}`,
+  el cliente lo reusa en su PRIMER render (hidratación idéntica) y recién
+  montado pasa a su propio reloj, refrescado cada minuto; `hace()` y
+  `dayLabel()` reciben `now` por parámetro. **Aplica a cualquier pestaña
+  futura que pinte tiempos relativos o filtre por "ahora".** Se confirmó que
+  era propio de /radar comparando con /alertas en pestaña limpia (0 errores).
+- **Calidad de datos observada, NO es bug de la UI:** entre los hallazgos
+  aparecen posts de `facebook.com` como "medio" (Google News los indexa) con
+  el texto completo del post como titular, y la nota de Aterciopelados sale
+  DUPLICADA con dos URLs distintas de Google News. Lo segundo es el hueco de
+  dedup ya conocido: `watch_hits` deduplica por `(keyword_id, url)`, no por
+  título. Si molesta, deduplicar también por título normalizado + fuente en
+  `collect_hits`.
 - **Pendiente consciente heredado:** sigue sin poderse EDITAR una keyword ya
   creada (solo alta/pausa/baja); afinar una query obliga a borrar y recrear, y
   el `ON DELETE CASCADE` se lleva sus hallazgos.
