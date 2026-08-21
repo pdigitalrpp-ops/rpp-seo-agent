@@ -22,36 +22,53 @@ export function FilterCard({ title, info, children }: { title: string; info: Rea
   )
 }
 
-/** Fila de filtro. `count` admite string ya formateado; `barPct` pinta una minibarra de volumen. */
+/**
+ * Fila de filtro. `count` admite string ya formateado; `barPct` pinta una
+ * minibarra de volumen; `action` cuelga controles a la derecha (p.ej. pausar /
+ * borrar el ítem que se está filtrando, en Radar de temas).
+ *
+ * `action` va FUERA del <button> del filtro, no dentro: anidar botones es HTML
+ * inválido y además el click en "borrar" burbujearía como "filtrar por esto".
+ * Por eso el <li> es el flex container y el botón de filtro es el que crece.
+ */
 export function FilterItem({
   icon,
   label,
+  title,
   count,
   active,
   onClick,
   accent = "#0D9488",
   barPct,
+  action,
+  muted = false,
 }: {
   icon?: ReactNode
   label: string
+  /** Tooltip nativo de la fila; útil cuando el label va truncado. */
+  title?: string
   count: ReactNode
   active: boolean
   onClick: () => void
   accent?: string
   barPct?: number
+  action?: ReactNode
+  /** Atenúa la fila sin desactivarla (ítem pausado, sin datos…). */
+  muted?: boolean
 }) {
   return (
-    <li>
+    <li className="group flex items-center gap-0.5">
       <button
         onClick={onClick}
-        className={`flex w-full flex-col rounded-lg px-2 py-1.5 text-sm transition ${
-          active ? "font-semibold" : "text-gray-700 hover:bg-gray-50"
+        title={title}
+        className={`flex min-w-0 flex-1 flex-col rounded-lg px-2 py-1.5 text-sm transition ${
+          active ? "font-semibold" : muted ? "text-gray-400 hover:bg-gray-50" : "text-gray-700 hover:bg-gray-50"
         }`}
         style={active ? { backgroundColor: `${accent}14`, color: accent } : undefined}
       >
         <span className="flex w-full items-center gap-2">
           {icon ?? <span className="w-4 shrink-0" />}
-          <span className="truncate flex-1 text-left">{label}</span>
+          <span className={`truncate flex-1 text-left ${muted ? "line-through" : ""}`}>{label}</span>
           <span className="text-xs shrink-0" style={{ color: active ? accent : "#9ca3af" }}>
             {count}
           </span>
@@ -65,6 +82,15 @@ export function FilterItem({
           </span>
         )}
       </button>
+      {action && (
+        // En desktop se revela al pasar el cursor: las acciones destructivas no
+        // deben competir con el conteo en reposo. Por debajo de `lg` quedan
+        // visibles (atenuadas) porque en táctil no existe el hover y si no
+        // serían inalcanzables.
+        <span className="flex shrink-0 items-center gap-0.5 opacity-60 transition group-hover:opacity-100 group-focus-within:opacity-100 lg:opacity-0">
+          {action}
+        </span>
+      )}
     </li>
   )
 }

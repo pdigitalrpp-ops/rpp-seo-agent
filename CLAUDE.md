@@ -106,6 +106,67 @@ dashboard".
   workflows ya la referencian. Sin ella el agente sigue cayendo a OpenRouter
   exactamente como hasta ahora (rules-first, nada se rompe).
 
+**2026-08-21 — La vigilancia de temas sale de /alertas y pasa a pestaña
+propia "Radar de temas" (`/radar`), con UI rehecha (rama radar-temas):** pedido
+del usuario: "quita ese módulo de la página de Alertas y crea una pestaña nueva
+… que sea una ventana independiente, y mejora la UI para que sea muy funcional
+y se vea mejor organizada".
+- **Por qué separarlo:** /alertas y /radar responden preguntas distintas.
+  En /alertas la lista la pone Google (top ~10 de búsquedas del país, vía
+  `analyzers/alerting.py`); en /radar la pone el equipo. Colgado al pie de
+  /alertas el bloque quedaba tercero en la página, sin filtros propios y sin
+  espacio para crecer.
+- **Nombre:** "Radar de temas" elegido por el usuario sobre "Seguimiento de
+  temas" / "En la mira" / "Mis temas". Ruta `/radar`. **Ojo con la ambigüedad
+  interna:** el orquestador `run_radar.py` también se llama radar y NO son lo
+  mismo — la pestaña muestra solo `watch_hits`, no las recomendaciones ni las
+  alertas que ese orquestador también produce.
+- **Archivos:** `radar/page.tsx` (server, solo fetch) + `radar/RadarClient.tsx`
+  (client) + `radar/types.ts` (WatchKeyword/WatchHit, antes exportados desde
+  VigilanciaPanel). `alertas/VigilanciaPanel.tsx` **eliminado**; `alertas/
+  page.tsx` y `alertas/AlertasClient.tsx` ya no consultan ni reciben watch_*.
+  Entrada nueva en `components/NavPills.tsx` (son 9 pestañas ahora).
+- **El servidor trae 7 DÍAS y el filtrado por ventana es en cliente** (24 h /
+  48 h / 7 días, default 48 h): cambiar de ventana es instantáneo y no dispara
+  otra consulta. Antes /alertas traía 48h fijas desde el server. La ventana
+  filtra por `created_at` (cuándo lo ENCONTRÓ el agente), no por
+  `published_at`: una nota de anteayer recién descubierta hoy SÍ es novedad, y
+  varios feeds ni siquiera traen fecha de publicación. El orden de la lista
+  sí usa `published_at` (con `tsOf` cayendo a `created_at`).
+- **UI nueva:** 4 StatCard (temas activos, publicaciones de la ventana, nuevas
+  desde la última corrida, medios distintos) · panel lateral con FilterList
+  (Temas con minibarra de volumen + De dónde salió + Medio) y **conteo cruzado**
+  como en /alertas y /competencia · barra con buscador local sobre titulares,
+  selector de ventana, "Solo nuevas" y orden · hallazgos **agrupados por día de
+  Lima** ("Hoy"/"Ayer"/fecha) · favicon del medio · estados vacíos distintos
+  para "sin temas" (onboarding con ejemplos), "sin nada en la ventana" (ofrece
+  ampliar a 7 días) y "los filtros no matchean".
+- **`FilterItem` (ui/FilterList.tsx) ganó 3 props opcionales** — `action`
+  (controles a la derecha, aquí pausar/borrar el tema), `title` (tooltip nativo
+  cuando el label va truncado: muestra la query cruda) y `muted` (tema en
+  pausa). `action` se renderiza FUERA del `<button>` del filtro: anidar botones
+  es HTML inválido y el click en "borrar" burbujearía como "filtrar por esto".
+  Retrocompatible — Competencia, Tráfico y Alertas no se tocaron.
+- **Dos gotchas de UI resueltos en revisión, no dar marcha atrás:** (a) la
+  cabecera de día **no** puede ser `sticky top-0` — el header amarillo del
+  layout ya es sticky en z-10 y la taparía; (b) los controles por fila
+  (descartar hallazgo, pausar/borrar tema) quedan `opacity-0` **solo desde
+  `lg:`**; por debajo van atenuados pero visibles, porque en táctil no existe
+  el hover y serían inalcanzables.
+- **Favicon del medio:** se deriva del dominio de la URL, pero los hits de
+  Google News apuntan a su redirector `news.google.com/rss/articles/...` — el
+  favicon sería el de Google para TODOS. Por eso `domainOf` devuelve "" en ese
+  caso y cae a un cuadro de color con la inicial, con color hasheado del nombre
+  del medio (mismo problema que ya tenía Perú21 en /competencia).
+- **Sin cambios en el agente ni en la DB:** `collectors/watchlist.py`,
+  `watch_keywords` y `watch_hits` intactos. Es solo la capa de presentación.
+- **No verificado en navegador:** no hay Node en el sandbox (ver nota de
+  entorno en "Dashboard Next.js"), así que la revisión fue estática. Falta
+  build de Vercel en preview antes de mergear a master.
+- **Pendiente consciente heredado:** sigue sin poderse EDITAR una keyword ya
+  creada (solo alta/pausa/baja); afinar una query obliga a borrar y recrear, y
+  el `ON DELETE CASCADE` se lleva sus hallazgos.
+
 **2026-08-20 — VIGILANCIA DE TEMAS por keyword ("Google Alerts" propias),
 feature nueva:** pedido del usuario: poder definir keywords y enterarse apenas
 se publique algo sobre ellas en la web ("si hay un nuevo concierto en Lima,
@@ -693,7 +754,7 @@ rpp-seo-agent/
 │   ├── writers/supabase_writer.py  ← escribe todas las tablas
 │   └── db/schema.sql               ← 12 tablas (9 v1 + v2: daily_insights, scoring_weights, onpage_audits)
 ├── dashboard/app/(dashboard)/      ← Next.js: page, recomendaciones, trends, competencia,
-│                                       trafico, busqueda, auditoria, alertas
+│                                       trafico, busqueda, auditoria, alertas, radar
 ├── requirements.txt
 └── .env.example
 ```
@@ -951,8 +1012,8 @@ rpp-seo-agent/
 | `scoring_weights` | morning | radar (lee aprendizajes) |
 | `onpage_audits` | morning | dashboard auditoria |
 | `serp_opportunities` | morning (borra+reinserta, solo si hay `SERPAPI_KEY`) | dashboard busqueda |
-| `watch_keywords` | **dashboard** (anon key: alta/pausa/borrado) | radar (qué vigilar) |
-| `watch_hits` | radar (upsert por `keyword_id,url`) | dashboard alertas (bloque Vigilancia; marca `dismissed`) |
+| `watch_keywords` | **dashboard /radar** (anon key: alta/pausa/borrado) | radar (qué vigilar) |
+| `watch_hits` | radar (upsert por `keyword_id,url`) | dashboard **/radar** (Radar de temas; marca `dismissed`) |
 | `publishing_windows` | (reusable) | dashboard home |
 | `agent_runs` | ambos (con `kind`: "morning"\|"radar") | dashboard home (semáforo) + "última actualización" por pestaña |
 
