@@ -187,6 +187,22 @@ def explain_trends(items):
     return fn(items)
 
 
+def suggest_headlines(items, title_max=70):
+    """
+    Titular y ángulo para las recomendaciones, anclados en los titulares reales
+    del hecho. Devuelve {keyword: {"title", "angle"}} o None si no hay proveedor
+    o no implementa suggest_headlines (OpenAI y OpenRouter sí; Bedrock y Gemini
+    no — sin ella queda la plantilla de analyzers/opportunities.py).
+
+    Una sola llamada por corrida: son 5 temas, no hace falta trocear.
+    """
+    provider = _active_provider()
+    fn = getattr(provider, "suggest_headlines", None) if provider else None
+    if not fn or not items:
+        return None
+    return fn(items, title_max=title_max)
+
+
 def rewrite_onpage_batch(items, **kwargs):
     provider = _active_provider()
     if not provider:

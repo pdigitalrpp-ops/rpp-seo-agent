@@ -106,3 +106,7 @@ def explain_trends(items):
 
 def match_coverage(competitor_titles, own_titles):
     return openai_compat.match_coverage(_client, competitor_titles, own_titles)
+
+
+def suggest_headlines(items, title_max=70):
+    return openai_compat.suggest_headlines(_client, items, title_max=title_max)

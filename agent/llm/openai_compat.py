@@ -513,3 +513,99 @@ def match_coverage(client, competitor_titles, own_titles):
         if 0 <= ci < len(competitor_titles):
             out[ci] = oi if (0 <= oi < len(own_titles)) else -1
     return out or None
+
+
+# ---------------------------------------------------------------------------
+# F) Titular y ángulo para las recomendaciones editoriales
+# ---------------------------------------------------------------------------
+
+def suggest_headlines(client, items, title_max=70):
+    """
+    Propone TITULAR y ÁNGULO para cada tema recomendado, anclados en los
+    titulares reales que el radar ya recolectó de Google News.
+
+    `items` = lista de dicts {keyword, categoria, formato, why_trending,
+    headlines: [str, ...]}. Devuelve {keyword: {"title": str, "angle": str}}
+    o None (rules-first: sin LLM queda la plantilla de opportunities.py).
+
+    POR QUÉ EXISTE: el titular sugerido era una plantilla con DOS salidas
+    posibles — todo terminaba en "lo que debes saber" o "todo lo que necesitas
+    saber" — y el ángulo salía de un diccionario fijo por categoría, así que
+    cada nota de deportes proponía lo mismo. El agente ya tenía los titulares
+    reales del hecho; simplemente no llegaban hasta acá (los descartaba
+    scoring.score_all_topics al rearmar el dict del tema).
+
+    OJO CON EL PROMPT: se le pide explícitamente NO inventar y devolver null
+    antes que rellenar, igual que en explain_trends — ese prompt hubo que
+    afinarlo en producción porque el modelo completaba con contexto general
+    cuando la evidencia no daba. Lo que sale de acá es una SUGERENCIA para el
+    redactor, no algo que se publique solo.
+    """
+    if not client.is_enabled() or not items:
+        return None
+
+    payload = [{
+        "i":         i,
+        "tema":      it.get("keyword") or "",
+        "categoria": it.get("categoria") or "",
+        "formato":   it.get("formato") or "",
+        "por_que":   it.get("why_trending") or "",
+        "titulares": [h for h in (it.get("headlines") or []) if h][:5],
+    } for i, it in enumerate(items)]
+
+    system = (
+        "Eres editor SEO de RPP Noticias (Perú). Propones el titular y el "
+        "ángulo de notas que el equipo aún NO ha escrito, a partir del hecho "
+        "noticioso que ya está ocurriendo. Escribes en español neutro peruano, "
+        "sin clickbait, sin signos de admiración y sin fórmulas de relleno. "
+        "Nunca afirmas nada que no esté en los titulares que te dan. Respondes "
+        "exclusivamente en JSON, sin texto adicional ni markdown."
+    )
+    prompt = (
+        f"Para CADA tema propone:\n"
+        f'- "title": un titular de como máximo {title_max} caracteres que diga '
+        "QUÉ PASÓ concretamente (hecho, protagonista, cifra o fecha si la hay). "
+        "Respeta las mayúsculas de nombres propios, equipos, instituciones y "
+        "países. Si el tema es una pregunta sobre una persona usa 'Quién es…', "
+        "sobre una cosa 'Qué es…'.\n"
+        '- "angle": el ángulo diferencial en una frase corta (máx ~90 '
+        "caracteres): qué puede aportar RPP que no esté ya en los titulares "
+        "dados (contexto local, consecuencia práctica, voz del protagonista).\n"
+        "REGLAS:\n"
+        "- PROHIBIDO terminar el titular en muletillas tipo 'lo que debes "
+        "saber', 'todo lo que necesitas saber', 'esto es lo que se sabe'.\n"
+        "- El ángulo debe ser específico de ESTE tema: nada de frases que "
+        "servirían igual para cualquier nota de la misma categoría.\n"
+        "- Si el formato es 'live blog', el titular puede empezar con 'EN VIVO |'.\n"
+        "- Si los titulares no alcanzan para saber qué pasó, responde null en "
+        "ese ítem. Es preferible a inventar un hecho o rellenar con una "
+        "definición del término.\n\n"
+        f"Temas (JSON):\n{json.dumps(payload, ensure_ascii=False)}\n\n"
+        'Responde SOLO un JSON: {"items": [{"i": <indice>, "title": "<titular o null>", '
+        '"angle": "<angulo o null>"}]}'
+    )
+    data = client.generate_json(prompt, system=system, max_tokens=4000)
+    if not isinstance(data, dict) or not isinstance(data.get("items"), list):
+        if data is not None:
+            logger.warning(f"{client.label}: JSON de titulares con forma inesperada: {str(data)[:200]!r}")
+        return None
+
+    out = {}
+    for entry in data["items"]:
+        try:
+            idx = int(entry["i"])
+        except (KeyError, ValueError, TypeError):
+            continue
+        if not (0 <= idx < len(items)):
+            continue
+        title = entry.get("title")
+        angle = entry.get("angle")
+        sug = {}
+        # "null" como string llega de vez en cuando; se trata como ausencia.
+        if isinstance(title, str) and title.strip() and title.strip().lower() != "null":
+            sug["title"] = title.strip()
+        if isinstance(angle, str) and angle.strip() and angle.strip().lower() != "null":
+            sug["angle"] = angle.strip()
+        if sug:
+            out[items[idx]["keyword"]] = sug
+    return out or None

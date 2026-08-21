@@ -176,6 +176,14 @@ def score_all_topics(trends_data, competitor_data, gsc_data,
             "format":  suggest_format(kw, category),
             "section": assign_section(category, sections),
             "rank":    item.get("rank", 99),
+            # La EVIDENCIA viaja con el tema. `topic_data` se arma de cero, así
+            # que sin estas dos líneas `news` y `why_trending` se perdían acá y
+            # build_recommendations quedaba a ciegas: por eso los titulares
+            # sugeridos eran una plantilla fija ("…lo que necesitas saber")
+            # aunque el radar ya tuviera los titulares reales del hecho.
+            # Cuestan nada: son referencias a lo que ya está en memoria.
+            "news":         item.get("news") or [],
+            "why_trending": item.get("why_trending"),
         })
 
     return sorted(scored, key=lambda x: x["score"], reverse=True)
