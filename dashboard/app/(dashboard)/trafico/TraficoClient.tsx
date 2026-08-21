@@ -155,8 +155,17 @@ export default function TraficoClient({
     }
     return Object.entries(acc)
       .map(([s, set]) => [s, set.size] as const)
-      .sort((a, b) => b[1] - a[1])
-  }, [cleanRows])
+      // Se ordena por lo que se MUESTRA. La fila pinta page views reales, así
+      // que ordenar por número de notas dejaba la lista descolocada respecto a
+      // sus propios números (mundo 53.580 salía sobre economia 54.214). Solo se
+      // cae al conteo de notas en los días sin datos de sección.
+      .sort((a, b) => {
+        const pvA = pvPorSeccion[sectionGroup(a[0])]
+        const pvB = pvPorSeccion[sectionGroup(b[0])]
+        if (pvA !== undefined || pvB !== undefined) return (pvB ?? 0) - (pvA ?? 0)
+        return b[1] - a[1]
+      })
+  }, [cleanRows, pvPorSeccion])
 
   const totalArticles = useMemo(() => new Set(cleanRows.map((r) => r.page_path)).size, [cleanRows])
 
