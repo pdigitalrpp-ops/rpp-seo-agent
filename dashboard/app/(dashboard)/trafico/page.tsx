@@ -85,6 +85,23 @@ async function fetchDayTotals(dataDay: string) {
 }
 
 /**
+ * Trafico EXACTO por seccion, tal como lo agrupa Marfeel (su "folder").
+ *
+ * NO se deriva de la lista de notas: esa lista es un top y trunca la cola, asi
+ * que las secciones con muchas notas pequenas salian sistematicamente peor de
+ * lo que son -- justo el sesgo que arruina la comparacion entre segmentos
+ * tematicos. Agrupando por seccion son ~15 filas y no las trunca ningun tope.
+ */
+async function fetchDaySections(dataDay: string) {
+  const { data } = await supabase
+    .from("own_traffic_sections")
+    .select("section, page_views, unique_users")
+    .eq("date", runDateOf(dataDay))
+    .order("page_views", { ascending: false })
+  return (data ?? []) as { section: string; page_views: number; unique_users: number }[]
+}
+
+/**
  * Trae TODAS las filas por canal de un rango de fechas de corrida, paginando.
  * PostgREST capea cada respuesta a ~1000 filas aunque se pida .limit(15000) —
  * por eso el gráfico salía "incompleto" (solo llegaban los primeros días del
@@ -136,10 +153,11 @@ export default async function TraficoPage({
   const selIdx = availableDataDays.indexOf(selectedDay)
   const previousDay = selIdx > 0 ? availableDataDays[selIdx - 1] : null
 
-  const [{ rows, hasChannelData }, prevSnapshot, dayTotals, lastRun] = await Promise.all([
+  const [{ rows, hasChannelData }, prevSnapshot, dayTotals, daySections, lastRun] = await Promise.all([
     fetchDaySnapshot(selectedDay),
     previousDay ? fetchDaySnapshot(previousDay) : Promise.resolve(null),
     fetchDayTotals(selectedDay),
+    fetchDaySections(selectedDay),
     getLastRunFinishedAt("morning"),
   ])
 
@@ -194,6 +212,7 @@ export default async function TraficoPage({
       prevRows={prevSnapshot?.rows ?? null}
       previousDate={previousDay}
       dayTotals={dayTotals}
+      daySections={daySections}
       trendData={trendData}
       trendChannels={trendChannels}
       lastRun={lastRun}

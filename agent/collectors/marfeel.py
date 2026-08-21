@@ -139,8 +139,18 @@ def _rows_from_response(payload, key_field, value_field=None):
 # Métodos de alto nivel usados por el orquestador
 # ---------------------------------------------------------------------------
 
-def fetch_yesterday_performance(limit=200):
-    """Etapa 1 — rendimiento por URL del día anterior."""
+def fetch_yesterday_performance(limit=MARFEEL_MAX_ROWS):
+    """
+    Etapa 1 — rendimiento por URL del dia anterior.
+
+    El tope subio de 200 a 500 (MARFEEL_MAX_ROWS) el 2026-08-21: con 200, la
+    URL mas floja que sobrevivia tenia 493 page views y todo lo de abajo no
+    llegaba nunca, lo que dejaba el KPI del panel muy corto. 500 ya estaba
+    probado en produccion por fetch_yesterday_by_channel, asi que no es una
+    apuesta. Sigue siendo un TOP, no el catalogo completo: para totales
+    exactos estan fetch_sections_performance y totals_from_sources, que
+    agrupan por dimensiones de pocas filas y por eso no se truncan.
+    """
     payload = query(
         metrics=["pageViewsTotal", "uniqueUsers"],
         group_by=["url", "title"],
@@ -262,6 +272,45 @@ def fetch_realtime_top(limit=100):
         limit=limit,
     )
     return _rows_from_response(payload, key_field="url")
+
+
+def fetch_sections_performance(period_days=1):
+    """
+    Trafico por SECCION (el "folder" de Marfeel) del dia anterior.
+
+    Es el numero EXACTO por seccion, no una suma de la lista de notas: al
+    agrupar por seccion son ~15 filas, muy por debajo de cualquier tope, asi
+    que no lo afecta el truncado que si afecta al detalle por URL (top N).
+
+    OJO: la seccion agrupa TODO lo que cuelga de ella, incluida su portada.
+    No es "la suma de las notas de esa seccion" sino "el trafico de esa
+    seccion", que para comparar segmentos tematicos entre si es justo lo que
+    interesa (y es comparable con lo que muestra Marfeel).
+
+    Hermana de fetch_sections(), que hace la misma consulta pero descarta las
+    metricas y solo devuelve los nombres para la taxonomia.
+    """
+    payload = query(
+        metrics=["pageViewsTotal", "uniqueUsers"],
+        group_by=["section"],
+        dates={"last": {"number": period_days, "dimension": "day"}},
+        granularity="daily",
+        order={"metric": "pageViewsTotal", "sort": "DESC"},
+    )
+    rows = _rows_from_response(payload, key_field="section")
+    out = []
+    for r in rows:
+        seccion = r.get("label")
+        if not seccion:
+            continue
+        out.append({
+            "section":      seccion,
+            "page_views":   r.get("pageViewsTotal") or 0,
+            "unique_users": r.get("uniqueUsers") or 0,
+        })
+    if out:
+        logger.info(f"Marfeel: {len(out)} secciones con trafico, {sum(x['page_views'] for x in out)} page views")
+    return out
 
 
 def fetch_sections(period_days=7):

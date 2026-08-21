@@ -380,3 +380,28 @@ CREATE POLICY "public_read"   ON competitor_sources FOR SELECT USING (true);
 CREATE POLICY "public_insert" ON competitor_sources FOR INSERT WITH CHECK (true);
 CREATE POLICY "public_update" ON competitor_sources FOR UPDATE USING (true);
 CREATE POLICY "public_delete" ON competitor_sources FOR DELETE USING (true);
+
+-- ===========================================================================
+-- own_traffic_sections — tráfico EXACTO por sección (el "folder" de Marfeel).
+-- El desglose por sección del panel se derivaba sumando la lista de notas, que
+-- viene truncada a un top N: las secciones con muchas notas pequeñas salían
+-- sistemáticamente peor de lo que son, justo el sesgo que arruina la
+-- comparación entre segmentos temáticos. Agrupando por sección son ~15 filas y
+-- no las trunca ningún tope.
+-- OJO: la sección agrupa TODO lo que cuelga de ella, portada incluida.
+-- `date` = día de la CORRIDA (el tráfico medido es el del día anterior).
+-- ===========================================================================
+CREATE TABLE IF NOT EXISTS own_traffic_sections (
+  date         date NOT NULL,
+  section      text NOT NULL,
+  page_views   bigint,
+  unique_users bigint,
+  created_at   timestamptz DEFAULT now(),
+  PRIMARY KEY (date, section)
+);
+
+CREATE INDEX IF NOT EXISTS idx_own_traffic_sections_date
+  ON own_traffic_sections(date DESC);
+
+ALTER TABLE own_traffic_sections ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "public_read" ON own_traffic_sections FOR SELECT USING (true);

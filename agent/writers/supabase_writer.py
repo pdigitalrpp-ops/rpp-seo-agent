@@ -142,6 +142,27 @@ def save_traffic(traffic_rows, run_date):
     logger.info(f"Guardadas {len(rows)} filas de tráfico")
 
 
+def save_traffic_sections(section_rows, run_date):
+    """
+    Trafico EXACTO por seccion. Borra+reinserta la fecha (idempotente, mismo
+    criterio que el resto de snapshots: re-correr el benchmark reemplaza el dia
+    en vez de duplicarlo).
+    """
+    sb = _get_client()
+    sb.table("own_traffic_sections").delete().eq("date", str(run_date)).execute()
+    if not section_rows:
+        return
+    rows = [{
+        "date":         str(run_date),
+        "section":      r["section"],
+        "page_views":   r.get("page_views") or 0,
+        "unique_users": r.get("unique_users") or 0,
+    } for r in section_rows if r.get("section")]
+    if rows:
+        sb.table("own_traffic_sections").insert(rows).execute()
+    logger.info(f"Guardadas {len(rows)} secciones con trafico")
+
+
 def save_traffic_totals(totals, run_date):
     """
     Totales del dia (sin agrupar) para los KPI de /trafico. Upsert por fecha.

@@ -24,6 +24,7 @@ from writers.supabase_writer import (
     save_run_log, save_traffic, save_traffic_channels, save_gsc_data,
     save_competitor_articles, save_decay, save_daily_insights,
     save_scoring_weights, save_onpage_audits, save_serp_opportunities, save_traffic_totals,
+    save_traffic_sections,
     get_historical_traffic, get_trends_context, get_competitor_sources,
 )
 
@@ -158,6 +159,9 @@ def run():
     marfeel_perf    = safe_collect("marfeel_yesterday", marfeel.fetch_yesterday_performance, run_data)
     marfeel_channel = safe_collect("marfeel_by_channel", marfeel.fetch_yesterday_by_channel, run_data)
     traffic_sources = safe_collect("marfeel_sources",   marfeel.fetch_traffic_sources,       run_data)
+    # Trafico EXACTO por seccion: al agrupar por seccion son ~15 filas, asi que
+    # no lo trunca ningun tope (a diferencia del detalle por URL, que es un top).
+    marfeel_sections = safe_collect("marfeel_sections", marfeel.fetch_sections_performance,  run_data)
     # Totales del SITIO derivados del desglose por canal: cero peticiones extra
     # (Marfeel da 500 a un query sin agrupar). Ver totals_from_sources.
     marfeel_totals  = marfeel.totals_from_sources(traffic_sources)
@@ -298,6 +302,7 @@ def run():
     safe_save("own_traffic",          save_traffic,             run_data, traffic_rows, today)
     safe_save("own_traffic_channels", save_traffic_channels,    run_data, marfeel_channel or [], today)
     safe_save("own_traffic_totals",   save_traffic_totals,      run_data, marfeel_totals, today)
+    safe_save("own_traffic_sections", save_traffic_sections,    run_data, marfeel_sections or [], today)
     safe_save("gsc_daily",            save_gsc_data,            run_data, gsc_rows_all, today)
     safe_save("competitor_articles",  save_competitor_articles, run_data, competitor_data or [])
     safe_save("content_decay",        save_decay,               run_data, decay_list, today)

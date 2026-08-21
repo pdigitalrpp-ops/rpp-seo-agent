@@ -77,6 +77,7 @@ export default function TraficoClient({
   prevRows,
   previousDate,
   dayTotals,
+  daySections,
   trendData,
   trendChannels,
   lastRun,
@@ -93,6 +94,12 @@ export default function TraficoClient({
    * la migracion del 2026-08-21. Ver fetchDayTotals en page.tsx.
    */
   dayTotals: { pageViews: number; uniqueUsers: number | null } | null
+  /**
+   * Trafico EXACTO por seccion (Marfeel agrupa por su "folder"). Vacio en dias
+   * anteriores a la migracion del 2026-08-21; entonces se cae al conteo de
+   * notas de siempre.
+   */
+  daySections: { section: string; page_views: number; unique_users: number }[]
   trendData: TrendPoint[]
   trendChannels: TrendChannelMeta[]
   lastRun: string | null
@@ -104,6 +111,18 @@ export default function TraficoClient({
 
   // Conteo de artículos por sección (facetado por el canal activo se omite a
   // propósito: la sección es el eje editorial y conviene que sus números sean estables).
+  /** Page views REALES por seccion, indexadas para el panel de filtros. */
+  const pvPorSeccion = useMemo(() => {
+    const m: Record<string, number> = {}
+    for (const r of daySections) m[r.section] = r.page_views ?? 0
+    return m
+  }, [daySections])
+
+  const maxPvSeccion = useMemo(
+    () => Math.max(1, ...daySections.map((r) => r.page_views ?? 0)),
+    [daySections],
+  )
+
   const sectionCounts = useMemo(() => {
     const acc: Record<string, Set<string>> = {}
     for (const r of cleanRows) {
@@ -272,7 +291,7 @@ export default function TraficoClient({
         <div className="space-y-4 self-start">
           <FilterCard
             title="Sección"
-            info="Filtra el tráfico por sección de rpp.pe (deportes, política, etc.), derivada de la URL de cada nota. El número es cuántos artículos tuvo esa sección en el día. Vuelve a hacer clic para quitar el filtro."
+            info="Tráfico por sección, para comparar qué segmento temático funciona mejor. El número son PAGE VIEWS reales de la sección según Marfeel, no la suma de la lista de notas (que es un top y dejaría fuera la cola). Incluye la portada de la sección. Pasa el cursor para ver también cuántas notas suyas hay en la lista."
           >
             <FilterItem
               label="Todas las secciones"
@@ -281,15 +300,28 @@ export default function TraficoClient({
               onClick={() => setSection(TODOS)}
             />
             <div className="max-h-56 overflow-y-auto -mr-1 pr-1">
-              {sectionCounts.map(([s, count]) => (
-                <FilterItem
-                  key={s}
-                  label={s}
-                  count={count}
-                  active={section === s}
-                  onClick={() => setSection(section === s ? TODOS : s)}
-                />
-              ))}
+              {sectionCounts.map(([s, count]) => {
+                const pv = pvPorSeccion[s]
+                return (
+                  <FilterItem
+                    key={s}
+                    label={s}
+                    // Se muestran los PAGE VIEWS reales de la seccion, no el
+                    // numero de notas: la pregunta es que segmento tematico
+                    // rinde mejor, y 30 notas flojas no le ganan a 3 que
+                    // explotaron. El conteo de notas pasa al tooltip.
+                    count={pv !== undefined ? fmt(pv) : count}
+                    title={
+                      pv !== undefined
+                        ? `${s}: ${fmt(pv)} page views · ${count} nota(s) en la lista`
+                        : `${s}: ${count} nota(s)`
+                    }
+                    barPct={pv !== undefined ? (pv / maxPvSeccion) * 100 : undefined}
+                    active={section === s}
+                    onClick={() => setSection(section === s ? TODOS : s)}
+                  />
+                )
+              })}
             </div>
           </FilterCard>
 
