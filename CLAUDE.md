@@ -123,6 +123,54 @@ dashboard".
   workflows ya la referencian. Sin ella el agente sigue cayendo a OpenRouter
   exactamente como hasta ahora (rules-first, nada se rompe).
 
+**2026-08-21 — Dedup de la vigilancia TAMBIÉN por titular, no solo por URL
+(commit de7c209):** el panel /radar mostraba la misma nota dos veces. Causa:
+**Google News entrega la misma nota bajo URLs de redirector distintas**, así
+que la constraint `(keyword_id, url)` la dejaba pasar. Dos pares reales en
+producción (Infobae y Trome, ambos de Aterciopelados).
+- **EL DETALLE QUE IMPORTA:** en el par de Infobae los titulares **solo se
+  diferenciaban en las comillas tipográficas** (`‘La Pipa de la Paz’` vs
+  `La Pipa de la Paz`). Comparar el titular tal cual NO sirve — hay que
+  normalizar agresivamente antes.
+- **`agent/text_keys.py` (NUEVO):** `title_key()` = titular + medio
+  normalizados (minúsculas, sin tildes, **sin puntuación**, espacios
+  colapsados). Módulo aparte y no dentro de `watchlist.py` porque lo usan los
+  dos lados del dedup y **ningún writer importa de collectors** en este
+  proyecto — mismo criterio con el que se extrajo `article_filter.py`. Si
+  cambia la normalización, cambia para ambos a la vez.
+- **El MEDIO entra en la clave A PROPÓSITO:** dos medios distintos titulando
+  igual es cobertura real de dos competidores, y ocultarla sería perder justo
+  la información para la que sirve el panel. Lo que se mata es el mismo medio
+  repetido bajo otra URL.
+- **Dos niveles, porque el duplicado llega de dos formas:** `collect_hits`
+  cubre la MISMA corrida (`seen_titles` junto a `seen_urls`); `save_watch_hits`
+  cruza contra corridas ANTERIORES.
+- **Regla del writer (no simplificar):** si la `(keyword_id, url)` YA existe la
+  fila pasa igual — es un re-fetch y el upsert debe poder corregir el titular
+  si el medio lo cambió. Solo se descarta cuando la URL es NUEVA pero el
+  `(titular, medio)` ya está en la DB. **No se puede hacer con una constraint:
+  la clave es un titular normalizado, no una columna.**
+- El log dice cuántos descartó (misma lógica que el conteo por feed: un filtro
+  invisible es un filtro que nadie audita).
+- **Test offline** (scratchpad `test_dedup_titulo.py`): colapsan los dos pares
+  REALES + tildes/espacios/guiones/emojis; NO colapsan mismo titular de medios
+  distintos, notas distintas del mismo medio, ni titulares que solo difieren en
+  un número. Más los 3 casos de la lógica del writer.
+- **VERIFICADO EN PRODUCCIÓN (corrida #742):**
+  `Vigilancia: 17 hallazgos guardados (2 nuevos), 1 descartados por titular
+  repetido` — cazó uno en la primera corrida.
+- **Limpieza de los 2 duplicados PREEXISTENTES:** se borró la copia más NUEVA
+  de cada par (conservando la más antigua, para no alterar su `created_at` ni
+  el badge NUEVO), por ID explícito y con el usuario aprobando el DELETE. DB
+  después: 35 hallazgos visibles, 0 grupos duplicados; panel confirmado sin
+  repetidos. **Ojo con la caché:** /radar tiene `revalidate = 60`, así que tras
+  tocar la DB hay que forzar la regeneración antes de dar por bueno lo que se
+  ve.
+- **PENDIENTE CONSCIENTE (decisión del usuario: dejarlo por ahora):** entre los
+  hallazgos aparecen posts de `facebook.com` como "medio", con el texto
+  completo del post como titular — Google News indexa esas páginas. Se
+  quitarían excluyendo `site:facebook.com` en la query del collector.
+
 **2026-08-21 — La vigilancia de temas sale de /alertas y pasa a pestaña
 propia "Radar de temas" (`/radar`), con UI rehecha (rama radar-temas):** pedido
 del usuario: "quita ese módulo de la página de Alertas y crea una pestaña nueva
