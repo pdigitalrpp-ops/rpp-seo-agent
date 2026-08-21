@@ -3,6 +3,8 @@ import logging
 from datetime import datetime, date, timedelta, timezone
 from supabase import create_client, Client
 
+from text_keys import title_key
+
 logger = logging.getLogger(__name__)
 _client: Client = None
 
@@ -395,7 +397,7 @@ def save_watch_hits(hits):
     """
     Guarda los hallazgos de la vigilancia y devuelve cuántos eran NUEVOS.
 
-    El dedup real lo hace la constraint (keyword_id, url) de watch_hits: el
+    El dedup por URL lo hace la constraint (keyword_id, url) de watch_hits: el
     radar consulta una ventana de 1 día en cada corrida, así que la mayoría de
     los hallazgos ya se vieron en la corrida anterior. Para saber cuáles son
     nuevos se consultan primero las URLs ya conocidas de esas keywords — hay
@@ -403,22 +405,44 @@ def save_watch_hits(hits):
 
     Se usa upsert (no insert) para que un re-fetch actualice el titular si el
     medio lo cambió, sin romper por clave duplicada.
+
+    DEDUP POR TÍTULO (2026-08-21) — la constraint por URL no alcanza: Google
+    News entrega la misma nota bajo URLs de redirector distintas y el panel la
+    mostraba dos veces. Así que además se cruza por (titular, medio)
+    normalizados — ver agent/text_keys.py. Reglas del cruce:
+      - si la (keyword_id, url) YA existe, la fila pasa igual: es un re-fetch
+        y el upsert debe poder actualizar el titular;
+      - si NO existe pero su (titular, medio) ya está en la DB para esa
+        keyword, se DESCARTA: es la misma nota bajo otra URL.
+    Esto NO puede hacerse con una constraint de DB porque la clave es un
+    titular normalizado, no una columna.
     """
     if not hits:
         return 0
     sb = _get_client()
 
     keyword_ids = {h["keyword_id"] for h in hits if h.get("keyword_id")}
-    known = set()
+    known, known_titles = set(), set()
     if keyword_ids:
-        existing = (sb.table("watch_hits").select("keyword_id, url")
+        existing = (sb.table("watch_hits").select("keyword_id, url, title, source")
                     .in_("keyword_id", list(keyword_ids)).execute())
-        known = {(r["keyword_id"], r["url"]) for r in (existing.data or [])}
+        for r in (existing.data or []):
+            known.add((r["keyword_id"], r["url"]))
+            tkey = title_key(r.get("title"), r.get("source"))
+            if tkey is not None:
+                known_titles.add((r["keyword_id"], tkey))
 
-    rows, new_count = [], 0
+    rows, new_count, dupes = [], 0, 0
     for h in hits:
         key = (h.get("keyword_id"), h.get("url"))
         if key not in known:
+            tkey = title_key(h.get("title"), h.get("source"))
+            if tkey is not None:
+                title_id = (h.get("keyword_id"), tkey)
+                if title_id in known_titles:
+                    dupes += 1
+                    continue
+                known_titles.add(title_id)
             new_count += 1
             known.add(key)
         published = h.get("published_at")
@@ -432,6 +456,13 @@ def save_watch_hits(hits):
             "found_via":    h.get("found_via"),
         })
 
+    if not rows:
+        logger.info(f"Vigilancia: nada que guardar ({dupes} duplicados por titular)")
+        return 0
+
     sb.table("watch_hits").upsert(rows, on_conflict="keyword_id,url").execute()
-    logger.info(f"Vigilancia: {len(rows)} hallazgos guardados ({new_count} nuevos)")
+    logger.info(
+        f"Vigilancia: {len(rows)} hallazgos guardados ({new_count} nuevos)"
+        + (f", {dupes} descartados por titular repetido" if dupes else "")
+    )
     return new_count

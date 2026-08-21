@@ -53,6 +53,7 @@ from config import (
     WATCH_NEWS_WINDOW, WATCH_MAX_HITS_PER_KEYWORD, WATCH_MAX_AGE_HOURS,
     WATCH_PRIMARY_FEEDS,
 )
+from text_keys import title_key
 
 logger = logging.getLogger(__name__)
 
@@ -312,12 +313,22 @@ def collect_hits(keywords, competitor_articles=None, now=None):
         if not kw:
             continue
         parsed = parse_query(kw)
-        found, seen_urls = [], set()
+        found, seen_urls, seen_titles = [], set(), set()
 
         def add(hit):
             url = hit.get("url")
             if not url or url in seen_urls or not _is_fresh(hit, cutoff):
                 return
+            # Dedup por CONTENIDO además de por URL: Google News entrega la
+            # misma nota bajo URLs de redirector distintas, así que el filtro
+            # de arriba la deja pasar dos veces (visto en producción el
+            # 2026-08-21). Ver agent/text_keys.py. El cruce contra corridas
+            # ANTERIORES lo hace el writer; esto solo cubre la corrida actual.
+            tkey = title_key(hit.get("title"), hit.get("source"))
+            if tkey is not None:
+                if tkey in seen_titles:
+                    return
+                seen_titles.add(tkey)
             seen_urls.add(url)
             found.append(dict(hit, keyword_id=row.get("id"), keyword=kw))
 
