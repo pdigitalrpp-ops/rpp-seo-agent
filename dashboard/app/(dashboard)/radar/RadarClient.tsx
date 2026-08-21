@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, type FormEvent, type ReactNode } from "react"
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react"
 import { supabase } from "@/lib/supabase"
 import { InfoTooltip } from "@/components/ui/InfoTooltip"
 import { LastUpdated } from "@/components/ui/LastUpdated"
@@ -74,10 +74,14 @@ function tsOf(h: WatchHit): number {
   return isNaN(t) ? 0 : t
 }
 
-/** "hace 12 min" / "hace 3 h" / "hace 2 d". Relativo: no depende de zona horaria. */
-function hace(iso: string | null): string {
+/**
+ * "hace 12 min" / "hace 3 h" / "hace 2 d". Relativo: no depende de zona horaria.
+ * `now` entra por parametro (no se lee Date.now() aqui) para que el servidor y
+ * el primer render del cliente produzcan EL MISMO texto — ver `serverNow`.
+ */
+function hace(iso: string | null, now: number): string {
   if (!iso) return ""
-  const ms = Date.now() - new Date(iso).getTime()
+  const ms = now - new Date(iso).getTime()
   if (isNaN(ms) || ms < 0) return ""
   const min = Math.floor(ms / 60000)
   if (min < 60) return `hace ${Math.max(min, 1)} min`
@@ -95,9 +99,9 @@ function dayKey(ms: number): string {
   return new Date(ms).toLocaleDateString("en-CA", { timeZone: "America/Lima" })
 }
 
-function dayLabel(key: string): string {
-  const hoy = dayKey(Date.now())
-  const ayer = dayKey(Date.now() - 86400000)
+function dayLabel(key: string, now: number): string {
+  const hoy = dayKey(now)
+  const ayer = dayKey(now - 86400000)
   if (key === hoy) return "Hoy"
   if (key === ayer) return "Ayer"
   // key viene como YYYY-MM-DD; se fija a mediodía UTC para que el formateo a
@@ -181,13 +185,26 @@ export default function RadarClient({
   keywords: initialKeywords,
   hits: initialHits,
   lastRun,
+  serverNow,
 }: {
   keywords: WatchKeyword[]
   hits: WatchHit[]
   lastRun: string | null
+  /** Hora fijada por el servidor; ver el comentario en page.tsx. */
+  serverNow: number
 }) {
   const [keywords, setKeywords] = useState<WatchKeyword[]>(initialKeywords)
   const [hits, setHits] = useState<WatchHit[]>(initialHits)
+
+  // Arranca con la hora del servidor (hidratacion sin desajuste) y recien
+  // montado pasa al reloj del navegador, refrescandose cada minuto para que
+  // los "hace X min" no se congelen con la pestaña abierta.
+  const [now, setNow] = useState(serverNow)
+  useEffect(() => {
+    setNow(Date.now())
+    const id = setInterval(() => setNow(Date.now()), 60000)
+    return () => clearInterval(id)
+  }, [])
 
   const [tema, setTema] = useState<string>(TODOS)
   const [via, setVia] = useState<string>(TODOS)
@@ -231,9 +248,9 @@ export default function RadarClient({
   // Ventana temporal: base de TODO lo demás (KPIs incluidos), para que los
   // indicadores de arriba hablen del mismo período que la lista de abajo.
   const enVentana = useMemo(() => {
-    const cutoff = Date.now() - windowH * 60 * 60 * 1000
+    const cutoff = now - windowH * 60 * 60 * 1000
     return hits.filter((h) => new Date(h.created_at).getTime() >= cutoff)
-  }, [hits, windowH])
+  }, [hits, windowH, now])
 
   // Filtros con conteo cruzado: cada faceta se cuenta bajo las OTRAS activas,
   // así los números del panel lateral nunca prometen resultados vacíos.
@@ -791,7 +808,7 @@ export default function RadarClient({
                         top-0 quedaría por debajo y se vería cortada. */}
                     <div className="mb-1 flex items-center gap-2 px-1">
                       <span className="text-xs font-bold uppercase tracking-wide text-gray-500">
-                        {dayLabel(g.key)}
+                        {dayLabel(g.key, now)}
                       </span>
                       <span className="text-xs text-gray-400">{g.items.length}</span>
                       <span className="h-px flex-1 bg-gray-200" />
@@ -824,7 +841,7 @@ export default function RadarClient({
                               )}
                               {hit.source && <span className="text-gray-500">{hit.source}</span>}
                               {hit.published_at && (
-                                <span className="text-gray-400">{hace(hit.published_at)}</span>
+                                <span className="text-gray-400">{hace(hit.published_at, now)}</span>
                               )}
                               {hit.found_via && (
                                 <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-400">

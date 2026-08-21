@@ -46,6 +46,13 @@ export default async function RadarPage() {
       keywords={(keywords as WatchKeyword[]) ?? []}
       hits={(hits as WatchHit[]) ?? []}
       lastRun={lastRun}
+      // La hora la fija el SERVIDOR y el cliente la reusa en su primer render.
+      // Sin esto hay error de hidratacion (#425/#418/#423, visto en el preview):
+      // esta pestaña deriva de la hora casi todo lo que pinta —la ventana, la
+      // agrupacion por dia, los "hace X min"— asi que el HTML del servidor y el
+      // primer render del cliente salen distintos por los milisegundos que los
+      // separan. Ya montado, RadarClient pasa a su propio reloj.
+      serverNow={Date.now()}
     />
   )
 }
