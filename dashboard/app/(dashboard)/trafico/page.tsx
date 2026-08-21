@@ -136,11 +136,10 @@ export default async function TraficoPage({
   const selIdx = availableDataDays.indexOf(selectedDay)
   const previousDay = selIdx > 0 ? availableDataDays[selIdx - 1] : null
 
-  const [{ rows, hasChannelData }, prevSnapshot, dayTotals, prevTotals, lastRun] = await Promise.all([
+  const [{ rows, hasChannelData }, prevSnapshot, dayTotals, lastRun] = await Promise.all([
     fetchDaySnapshot(selectedDay),
     previousDay ? fetchDaySnapshot(previousDay) : Promise.resolve(null),
     fetchDayTotals(selectedDay),
-    previousDay ? fetchDayTotals(previousDay) : Promise.resolve(null),
     getLastRunFinishedAt("morning"),
   ])
 
@@ -195,7 +194,6 @@ export default async function TraficoPage({
       prevRows={prevSnapshot?.rows ?? null}
       previousDate={previousDay}
       dayTotals={dayTotals}
-      prevDayTotals={prevTotals}
       trendData={trendData}
       trendChannels={trendChannels}
       lastRun={lastRun}

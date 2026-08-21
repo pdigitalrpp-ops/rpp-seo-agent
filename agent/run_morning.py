@@ -157,10 +157,10 @@ def run():
     # --- RECOLECCIÓN ---
     marfeel_perf    = safe_collect("marfeel_yesterday", marfeel.fetch_yesterday_performance, run_data)
     marfeel_channel = safe_collect("marfeel_by_channel", marfeel.fetch_yesterday_by_channel, run_data)
-    # Totales SIN agrupar: es el unico numero honesto para los KPI. Las tablas
-    # por articulo tienen tope de filas, asi que sumarlas subestima el dia.
-    marfeel_totals = safe_collect("marfeel_totals",     marfeel.fetch_yesterday_totals,       run_data)
     traffic_sources = safe_collect("marfeel_sources",   marfeel.fetch_traffic_sources,       run_data)
+    # Totales del SITIO derivados del desglose por canal: cero peticiones extra
+    # (Marfeel da 500 a un query sin agrupar). Ver totals_from_sources.
+    marfeel_totals  = marfeel.totals_from_sources(traffic_sources)
     gsc_search      = safe_collect("gsc_search",        gsc.fetch_search_performance,        run_data)
     gsc_discover    = safe_collect("gsc_discover",      gsc.fetch_discover_performance,      run_data)
     gsc_drops       = safe_collect("gsc_drops",         gsc.find_position_drops,             run_data)

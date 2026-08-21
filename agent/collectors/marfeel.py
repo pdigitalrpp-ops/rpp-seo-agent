@@ -152,88 +152,33 @@ def fetch_yesterday_performance(limit=200):
     return _rows_from_response(payload, key_field="url")
 
 
-def _scalar_from_block(block):
+def totals_from_sources(source_rows):
     """
-    Saca el total de un bloque de respuesta SIN groupBy.
+    Totales del dia derivados del desglose por CANAL, sin ninguna peticion extra.
 
-    Marfeel no documenta esta forma y no se pudo probar en local (las
-    credenciales viven solo en GitHub Secrets), asi que se intentan las
-    variantes plausibles en orden y se devuelve la primera que de un numero:
+    POR QUE ASI Y NO CON UNA CONSULTA SIN groupBy: se intento y **Marfeel
+    devuelve HTTP 500** a un query sin agrupar (corrida #75, 2026-08-21). El
+    desglose por canal ya se recolecta en el benchmark (fetch_traffic_sources)
+    y son pocas filas, asi que no lo afecta ningun tope: su suma es el total.
 
-      1. actualData.total      -> escalar directo
-      2. actualData.values[]   -> una sola entrada con su "total" (mismo
-                                  formato que la respuesta agrupada)
-      3. actualData.data[]     -> serie temporal; se SUMA (con granularity
-                                  daily y ventana de 1 dia deberia traer un
-                                  unico punto, pero sumar es correcto igual)
+    OJO CON LA SEMANTICA:
+      - page_views es EXACTO: las vistas son aditivas entre canales.
+      - unique_users es un LIMITE SUPERIOR: quien llego por dos canales se
+        cuenta dos veces. El unico modo de tener el dato exacto seria el query
+        sin agrupar, que es justo el que falla.
+      - Es el total del SITIO ENTERO, portadas incluidas. NO es comparable con
+        la lista de articulos del panel, que excluye portadas a proposito.
 
-    Devuelve (valor, forma_detectada) o (None, None). El nombre de la forma se
-    loguea a proposito: si Marfeel cambia el contrato, el log dice exactamente
-    cual dejo de funcionar en vez de aparecer un KPI en blanco sin explicacion.
+    Devuelve {"page_views", "unique_users", "unique_users_es_aproximado"} o None.
     """
-    data = block.get("actualData") or {}
-
-    total = data.get("total")
-    if isinstance(total, (int, float)):
-        return total, "actualData.total"
-
-    values = data.get("values") or []
-    if len(values) == 1 and isinstance(values[0].get("total"), (int, float)):
-        return values[0]["total"], "actualData.values[0].total"
-
-    serie = data.get("data") or []
-    numeros = [d.get("value") if isinstance(d, dict) else d for d in serie]
-    numeros = [n for n in numeros if isinstance(n, (int, float))]
-    if numeros:
-        return sum(numeros), "suma de actualData.data"
-
-    return None, None
-
-
-def fetch_yesterday_totals():
-    """
-    Totales del dia anterior para TODO el sitio, sin agrupar por URL.
-
-    Es el unico numero honesto para el KPI de /trafico. Sumar las filas por
-    articulo da "la suma de lo que alcanzamos a traer": con el tope de 200 URLs
-    (y de 500 pares url x canal) se perdia ~24% del trafico del dia. Y los
-    usuarios unicos NO son sumables por articulo: una persona lee varias notas
-    y la suma la cuenta repetida.
-
-    Devuelve {"page_views": int, "unique_users": int} o None (rules-first: el
-    dashboard cae entonces a la suma de siempre, avisando que es parcial).
-    Cuesta una peticion extra, o sea +65s por el rate-limit de Marfeel.
-    """
-    payload = query(
-        metrics=["pageViewsTotal", "uniqueUsers"],
-        dates={"last": {"number": 1, "dimension": "day"}},
-        granularity="daily",
-    )
-
-    out, formas = {}, set()
-    for block in (payload or []):
-        metric = block.get("metric")
-        valor, forma = _scalar_from_block(block)
-        if metric and valor is not None:
-            out[metric] = int(valor)
-            formas.add(forma)
-
-    if not out:
-        # Diagnostico: sin esto, un cambio de contrato deja el KPI en fallback
-        # silencioso y nadie sabe por que. Se loguean solo las CLAVES, no los
-        # datos.
-        claves = [list((b.get("actualData") or {}).keys()) for b in (payload or [])]
-        logger.warning(f"Totales de Marfeel: no se reconocio la respuesta; claves de actualData={claves}")
+    if not source_rows:
         return None
-
-    logger.info(
-        f"Totales de Marfeel (dia cerrado): {out.get('pageViewsTotal')} page views, "
-        f"{out.get('uniqueUsers')} usuarios unicos [forma: {', '.join(sorted(formas))}]"
-    )
-    return {
-        "page_views":   out.get("pageViewsTotal"),
-        "unique_users": out.get("uniqueUsers"),
-    }
+    pv = sum((r.get("pageViewsTotal") or 0) for r in source_rows)
+    uu = sum((r.get("uniqueUsers") or 0) for r in source_rows)
+    if not pv:
+        return None
+    logger.info(f"Totales del sitio (suma por canal): {pv} page views, ~{uu} usuarios")
+    return {"page_views": pv, "unique_users": uu, "unique_users_es_aproximado": True}
 
 
 def fetch_yesterday_by_channel(limit=MARFEEL_MAX_ROWS):
