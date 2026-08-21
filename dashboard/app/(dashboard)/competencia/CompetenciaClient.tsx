@@ -1,9 +1,10 @@
 "use client"
 
-import { useMemo, useState, type ReactNode } from "react"
+import { useMemo, useState, type FormEvent, type ReactNode } from "react"
 import { InfoTooltip } from "@/components/ui/InfoTooltip"
 import { LastUpdated } from "@/components/ui/LastUpdated"
 import { FilterCard, FilterChip, FilterItem } from "@/components/ui/FilterList"
+import { supabase } from "@/lib/supabase"
 
 export type Article = {
   id: string
@@ -15,6 +16,15 @@ export type Article = {
   rpp_has_coverage: boolean | null
   rpp_matched_title: string | null
   rpp_matched_url: string | null
+}
+
+export type CompetitorSource = {
+  id: string
+  /** Debe coincidir EXACTAMENTE con competitor_articles.site: es la clave del cruce. */
+  name: string
+  rss: string
+  domain: string | null
+  active: boolean
 }
 
 const COV_TODAS = "__cov_todas__"
@@ -93,8 +103,10 @@ function isOpinion(a: Article): boolean {
   return u.includes("/opinion/") || u.includes("-opinion-") || isPeru21Opinion(a)
 }
 
-// Orden y metadatos de medios (dominio para el favicon + color de respaldo)
-const SITES = ["El Comercio", "La República", "Gestión", "Peru21", "Infobae Perú"]
+// Metadatos de los medios semilla: dominio para el favicon + color de respaldo.
+// La LISTA ya no vive acá (ahora sale de la tabla competitor_sources, que se
+// administra desde este mismo panel); esto es solo el color de marca de los
+// que ya estaban. Un medio nuevo cae al color hasheado de _colorHash.
 const SITE_META: Record<string, { domain: string; color: string }> = {
   "El Comercio": { domain: "elcomercio.pe", color: "#b8860b" },
   "La República": { domain: "larepublica.pe", color: "#c8102e" },
@@ -112,8 +124,17 @@ function domainOf(site: string, url: string | null): string {
   }
 }
 
+// Paleta de respaldo para medios añadidos desde el panel (sin color de marca).
+const COLORES = ["#0D9488", "#2563EB", "#7C3AED", "#DC2626", "#CA8A04", "#DB2777", "#059669"]
+
 function colorOf(site: string): string {
-  return SITE_META[site]?.color ?? "#6b7280"
+  if (SITE_META[site]) return SITE_META[site].color
+  // Hash estable: el mismo medio conserva su color entre recargas. Antes esto
+  // devolvia gris para todo lo que no fuera uno de los 5 fijos, así que los
+  // medios nuevos se veían todos iguales.
+  let acc = 0
+  for (let i = 0; i < site.length; i++) acc = (acc * 31 + site.charCodeAt(i)) >>> 0
+  return COLORES[acc % COLORES.length]
 }
 
 function catOf(a: Article): string {
@@ -133,9 +154,12 @@ function fmtTime(iso: string | null): string {
 }
 
 /** Logo del medio: favicon con respaldo a un punto de color con la inicial. */
-function MediumLogo({ site, url, size = 18 }: { site: string; url: string | null; size?: number }) {
+function MediumLogo({ site, url, size = 18, domain: known }:
+  { site: string; url: string | null; size?: number; domain?: string | null }) {
   const [failed, setFailed] = useState(false)
-  const domain = domainOf(site, url)
+  // `known` gana: es el dominio que el equipo guardó al dar de alta el medio.
+  // Sin él, un medio que llegue vía Google News mostraría el favicon de Google.
+  const domain = known || domainOf(site, url)
   if (failed || !domain) {
     return (
       <span
@@ -161,13 +185,25 @@ function MediumLogo({ site, url, size = 18 }: { site: string; url: string | null
 
 export default function CompetenciaClient({
   articles,
+  sources: initialSources,
   date,
   lastRun,
 }: {
   articles: Article[]
+  sources: CompetitorSource[]
   date: string
   lastRun: string | null
 }) {
+  // La lista de medios se administra desde este panel con la anon key (RLS
+  // abierto, mismo criterio MVP que watch_keywords). El agente la lee en cada
+  // corrida; los cambios se ven en la SIGUIENTE (no reprocesa lo ya traído).
+  const [sources, setSources] = useState<CompetitorSource[]>(initialSources)
+  const [formOpen, setFormOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [newName, setNewName] = useState("")
+  const [newDomain, setNewDomain] = useState("")
+
   const [site, setSite] = useState<string>(TODOS)
   const [category, setCategory] = useState<string>(TODAS)
   const [coverage, setCoverage] = useState<string>(COV_TODAS)
@@ -228,6 +264,110 @@ export default function CompetenciaClient({
       .sort((a, b) => (b.published_at ?? "").localeCompare(a.published_at ?? ""))
   }, [pool, site, category, coverage])
 
+  /**
+   * Medios presentes en las notas de HOY que ya no estan en la lista.
+   * Pasa cuando alguien quita un medio despues de que el agente recolecto: sus
+   * notas siguen en la tabla hasta que cambie el dia. Sin esto, la suma de los
+   * conteos por medio no cuadraria con el total de "Todos los medios" y
+   * parecerian notas perdidas.
+   */
+  const huerfanos = useMemo(() => {
+    const conocidos = new Set(sources.map((x) => x.name))
+    const vistos = new Set(pool.map((a) => a.site).filter(Boolean))
+    return Array.from(vistos).filter((n) => !conocidos.has(n)).sort()
+  }, [sources, pool])
+
+  // --- Administracion de medios (alta / pausa / baja) --------------------
+
+  /**
+   * Construye el feed a partir de lo que escribe el equipo.
+   * Si pegan una URL de RSS se usa tal cual; si escriben solo el dominio se
+   * arma una busqueda `site:` en Google News, que es como ya funcionan 3 de
+   * los 5 medios semilla (sus RSS propios murieron). Pedir siempre un RSS
+   * seria pedirle al equipo que averigue algo que muchas veces no existe.
+   */
+  function feedDesde(entrada: string): { rss: string; domain: string } {
+    const limpio = entrada.trim().replace(/^https?:\/\//, "").replace(/\/$/, "")
+    if (entrada.trim().indexOf("http") === 0 && /\.(xml|rss)|\/feed|\/rss/i.test(entrada)) {
+      const dominio = limpio.split("/")[0].replace(/^www\./, "")
+      return { rss: entrada.trim(), domain: dominio }
+    }
+    const dominio = limpio.split("/")[0].replace(/^www\./, "")
+    const ruta = limpio.replace(/^www\./, "")
+    return {
+      rss: `https://news.google.com/rss/search?q=when:1d%20site:${ruta}&hl=es-419&gl=PE&ceid=PE:es-419`,
+      domain: dominio,
+    }
+  }
+
+  async function addSource(e: FormEvent) {
+    e.preventDefault()
+    const name = newName.trim()
+    const entrada = newDomain.trim()
+    if (!name || !entrada || saving) return
+    setSaving(true)
+    setError(null)
+
+    const { rss, domain } = feedDesde(entrada)
+    const { data, error: err } = await supabase
+      .from("competitor_sources")
+      .insert({ name, rss, domain })
+      .select()
+      .single()
+
+    setSaving(false)
+    if (err || !data) {
+      // 23505 = unique_violation: ese medio ya esta en la lista.
+      setError(
+        err && err.code === "23505"
+          ? "Ese medio ya está en la lista."
+          : "No se pudo guardar. Revisa la conexión e intenta de nuevo."
+      )
+      return
+    }
+    setSources((l) => l.concat(data as CompetitorSource))
+    setNewName("")
+    setNewDomain("")
+    setFormOpen(false)
+  }
+
+  function toggleSource(src: CompetitorSource) {
+    const next = !src.active
+    setSources((l) => l.map((x) => (x.id === src.id ? { ...x, active: next } : x)))
+    supabase
+      .from("competitor_sources")
+      .update({ active: next })
+      .eq("id", src.id)
+      .then(({ error: err }) => {
+        if (err) {
+          setSources((l) => l.map((x) => (x.id === src.id ? { ...x, active: !next } : x)))
+          setError("No se pudo cambiar el estado del medio.")
+        }
+      })
+  }
+
+  function removeSource(src: CompetitorSource) {
+    if (!window.confirm(
+      `¿Dejar de monitorear «${src.name}»?
+
+Las notas suyas que ya se recolectaron NO se borran: ` +
+      `siguen en el histórico y desaparecerán solas del panel al cambiar el día.`
+    )) return
+    const backup = sources
+    setSources((l) => l.filter((x) => x.id !== src.id))
+    if (site === src.name) setSite(TODOS)
+    supabase
+      .from("competitor_sources")
+      .delete()
+      .eq("id", src.id)
+      .then(({ error: err }) => {
+        if (err) {
+          setSources(backup)
+          setError("No se pudo eliminar el medio.")
+        }
+      })
+  }
+
   const totalCross = pool.filter(matchesCategory).length
   const totalValor = articles.length - seoTotal
 
@@ -285,16 +425,103 @@ export default function CompetenciaClient({
               active={site === TODOS}
               onClick={() => setSite(TODOS)}
             />
-            {SITES.map((s) => (
+            {sources.map((src) => (
               <FilterItem
-                key={s}
-                icon={<MediumLogo site={s} url={null} size={16} />}
-                label={s}
-                count={siteCounts[s] ?? 0}
-                active={site === s}
-                onClick={() => setSite(site === s ? TODOS : s)}
+                key={src.id}
+                icon={<MediumLogo site={src.name} url={null} size={16} domain={src.domain} />}
+                label={src.name}
+                title={src.active ? src.name : `${src.name} (pausado)`}
+                count={siteCounts[src.name] ?? 0}
+                active={site === src.name}
+                muted={!src.active}
+                onClick={() => setSite(site === src.name ? TODOS : src.name)}
+                action={
+                  <>
+                    <button
+                      onClick={() => toggleSource(src)}
+                      aria-label={src.active ? "Pausar medio" : "Reanudar medio"}
+                      title={src.active ? "Pausar: dejar de recolectarlo" : "Reanudar"}
+                      className="inline-flex h-5 w-5 items-center justify-center rounded text-xs leading-none text-gray-400 transition hover:bg-gray-100"
+                    >
+                      {src.active ? "⏸" : "▶"}
+                    </button>
+                    <button
+                      onClick={() => removeSource(src)}
+                      aria-label="Dejar de monitorear"
+                      title="Quitar de la lista"
+                      className="inline-flex h-5 w-5 items-center justify-center rounded text-xs leading-none text-gray-400 transition hover:bg-gray-100 hover:text-red-500"
+                    >
+                      ×
+                    </button>
+                  </>
+                }
               />
             ))}
+
+            {/* Medios que aparecen en las notas de hoy pero ya no estan en la
+                lista (se quitaron despues de recolectar). Se muestran para que
+                los conteos por medio sigan sumando el total de arriba. */}
+            {huerfanos.map((nombre) => (
+              <FilterItem
+                key={`huerfano-${nombre}`}
+                icon={<MediumLogo site={nombre} url={null} size={16} />}
+                label={nombre}
+                title={`${nombre} — ya no se monitorea; son notas ya recolectadas`}
+                count={siteCounts[nombre] ?? 0}
+                active={site === nombre}
+                muted
+                onClick={() => setSite(site === nombre ? TODOS : nombre)}
+              />
+            ))}
+
+            <li className="pt-1">
+              <button
+                onClick={() => { setFormOpen(!formOpen); setError(null) }}
+                className="w-full rounded-lg px-2 py-1.5 text-left text-sm font-medium text-rpp-teal transition hover:bg-teal-50"
+              >
+                {formOpen ? "Cancelar" : "+ Añadir medio"}
+              </button>
+            </li>
+
+            {formOpen && (
+              <li className="pt-1">
+                <form onSubmit={addSource} className="space-y-2 rounded-lg bg-gray-50 p-2">
+                  <input
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    placeholder="Nombre (ej. Trome)"
+                    autoFocus
+                    className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-rpp-teal/40"
+                  />
+                  <input
+                    value={newDomain}
+                    onChange={(e) => setNewDomain(e.target.value)}
+                    placeholder="trome.pe"
+                    className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-rpp-teal/40"
+                  />
+                  <p className="text-[11px] leading-snug text-gray-500">
+                    Basta el dominio: se busca en Google News, igual que 3 de los medios
+                    actuales. Si el medio tiene RSS propio, pega su URL completa.
+                  </p>
+                  <button
+                    type="submit"
+                    disabled={!newName.trim() || !newDomain.trim() || saving}
+                    className="w-full rounded-lg bg-rpp-teal px-2 py-1.5 text-xs font-medium text-white transition hover:opacity-90 disabled:opacity-40"
+                  >
+                    {saving ? "Guardando…" : "Añadir"}
+                  </button>
+                  <p className="text-[11px] leading-snug text-gray-400">
+                    Sus notas aparecen desde la próxima corrida (~10 min).
+                  </p>
+                </form>
+              </li>
+            )}
+
+            {error && (
+              <li className="pt-1">
+                <p className="rounded-lg bg-red-50 px-2 py-1.5 text-[11px] text-red-700">{error}</p>
+              </li>
+            )}
           </FilterCard>
 
           <FilterCard

@@ -24,7 +24,7 @@ from writers.supabase_writer import (
     save_run_log, save_traffic, save_traffic_channels, save_gsc_data,
     save_competitor_articles, save_decay, save_daily_insights,
     save_scoring_weights, save_onpage_audits, save_serp_opportunities, save_traffic_totals,
-    get_historical_traffic, get_trends_context,
+    get_historical_traffic, get_trends_context, get_competitor_sources,
 )
 
 logging.basicConfig(
@@ -164,7 +164,12 @@ def run():
     gsc_search      = safe_collect("gsc_search",        gsc.fetch_search_performance,        run_data)
     gsc_discover    = safe_collect("gsc_discover",      gsc.fetch_discover_performance,      run_data)
     gsc_drops       = safe_collect("gsc_drops",         gsc.find_position_drops,             run_data)
-    competitor_data = safe_collect("competitors",       competitors.fetch_all_competitors,   run_data)
+    # La lista de medios la administra el equipo desde /competencia
+    # (tabla competitor_sources). Si viene vacía — tabla sin filas o
+    # consulta caída — el collector cae a COMPETITOR_SITES de config.py.
+    comp_sources = get_competitor_sources()
+    competitor_data = safe_collect("competitors",       competitors.fetch_all_competitors,   run_data,
+                                   sites=comp_sources)
 
     # LLM: re-categoriza los titulares de competencia (las reglas por keyword
     # fallan seguido: "Canal 5..." → política, Haaland → política, etc.).

@@ -430,6 +430,31 @@ def get_watch_keywords(limit=25):
     return result.data or []
 
 
+def get_competitor_sources():
+    """
+    Medios de competencia ACTIVOS (tabla competitor_sources, que el equipo
+    administra desde /competencia). Devuelve [{name, rss}] en el formato que
+    espera collectors/competitors.py, o **[] si la tabla está vacía o la
+    consulta falla**.
+
+    Ese [] es deliberado y el llamador debe tratarlo como "sin lista": los
+    orquestadores caen entonces a COMPETITOR_SITES de config.py. Así, un
+    problema de red o alguien vaciando la tabla por error NO deja al agente sin
+    competencia que mirar — mismo criterio rules-first que el resto.
+    """
+    try:
+        sb = _get_client()
+        result = (sb.table("competitor_sources")
+                  .select("name, rss")
+                  .eq("active", True)
+                  .order("created_at", desc=False)
+                  .execute())
+        return [r for r in (result.data or []) if r.get("name") and r.get("rss")]
+    except Exception as e:
+        logger.warning(f"No se pudieron leer los medios de competencia ({e}); se usa la lista de config.py")
+        return []
+
+
 def save_watch_hits(hits):
     """
     Guarda los hallazgos de la vigilancia y devuelve cuántos eran NUEVOS.

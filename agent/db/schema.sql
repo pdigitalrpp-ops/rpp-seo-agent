@@ -352,3 +352,31 @@ CREATE TABLE IF NOT EXISTS own_traffic_totals (
 
 ALTER TABLE own_traffic_totals ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "public_read" ON own_traffic_totals FOR SELECT USING (true);
+-- competitor_sources — los medios de competencia que se monitorean.
+-- La administra el DASHBOARD (/competencia) con la anon key: RLS
+-- insert/update/delete abiertos, mismo criterio MVP que watch_keywords y
+-- audit_check_state. El agente solo LEE (get_competitor_sources).
+-- Antes esta lista vivía hardcodeada en agent/config.py (COMPETITOR_SITES) y
+-- duplicada en el cliente; añadir un medio obligaba a tocar código y desplegar.
+-- COMPETITOR_SITES sigue existiendo como RESPALDO si la tabla está vacía o la
+-- consulta falla.
+-- ===========================================================================
+CREATE TABLE IF NOT EXISTS competitor_sources (
+  id         uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  -- Debe coincidir EXACTAMENTE con competitor_articles.site: es la clave por la
+  -- que el panel cruza notas con medios. Renombrarlo desliga el histórico.
+  name       text NOT NULL,
+  -- RSS nativo del medio, o búsqueda `site:` en Google News (lo que se usa
+  -- cuando el feed propio murió — 3 de los 5 medios semilla están así).
+  rss        text NOT NULL,
+  domain     text,                      -- solo para el favicon del panel
+  active     boolean NOT NULL DEFAULT true,
+  created_at timestamptz DEFAULT now(),
+  CONSTRAINT competitor_sources_name_key UNIQUE (name)
+);
+
+ALTER TABLE competitor_sources ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "public_read"   ON competitor_sources FOR SELECT USING (true);
+CREATE POLICY "public_insert" ON competitor_sources FOR INSERT WITH CHECK (true);
+CREATE POLICY "public_update" ON competitor_sources FOR UPDATE USING (true);
+CREATE POLICY "public_delete" ON competitor_sources FOR DELETE USING (true);
