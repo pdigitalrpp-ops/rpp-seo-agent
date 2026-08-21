@@ -26,7 +26,7 @@ from writers.supabase_writer import (
     save_run_log, save_recommendations, save_alerts, save_trends,
     save_competitor_articles, get_scoring_weights, count_recent_alerts,
     get_recent_alert_titles, get_trends_context,
-    get_watch_keywords, save_watch_hits,
+    get_watch_keywords, save_watch_hits, get_competitor_sources,
 )
 
 logging.basicConfig(
@@ -64,8 +64,12 @@ def run():
     # --- RECOLECCIÓN (ligera) ---
     realtime       = safe_collect("marfeel_realtime", marfeel.fetch_realtime_top,        run_data)
     trends_data    = safe_collect("trends",           trends.fetch_all_trends,           run_data)
+    # La lista de medios la administra el equipo desde /competencia
+    # (tabla competitor_sources). Si viene vacía — tabla sin filas o
+    # consulta caída — el collector cae a COMPETITOR_SITES de config.py.
+    comp_sources = get_competitor_sources()
     competitor_data = safe_collect("competitors",     competitors.fetch_all_competitors, run_data,
-                                   hours_back=6)
+                                   hours_back=6, sites=comp_sources)
 
     # LLM: re-categoriza los titulares de competencia (las reglas por keyword
     # fallan seguido: "Canal 5..." → política, Haaland → política, etc.).

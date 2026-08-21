@@ -77,11 +77,21 @@ def _parse_date(entry):
     return datetime.now(timezone.utc)
 
 
-def fetch_all_competitors(hours_back=24):
+def fetch_all_competitors(hours_back=24, sites=None):
+    """
+    Notas recientes de los medios de competencia.
+
+    `sites` = [{name, rss}]. Lo pasan los orquestadores leyendo la tabla
+    `competitor_sources`, que el equipo administra desde /competencia. Si no
+    viene nada (tabla vacía, consulta caída, o un llamador antiguo) se usa
+    COMPETITOR_SITES de config.py: la lista hardcodeada pasa a ser el RESPALDO,
+    no la fuente. Así nadie se queda sin competencia por un problema de DB.
+    """
     cutoff = datetime.now(timezone.utc) - timedelta(hours=hours_back)
     all_articles = []
 
-    for site in COMPETITOR_SITES:
+    sites = sites or COMPETITOR_SITES
+    for site in sites:
         try:
             entries = _parse_rss(site)
             for entry in entries:
