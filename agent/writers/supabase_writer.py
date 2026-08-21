@@ -39,16 +39,31 @@ def save_trends(trends_list, run_date):
     # El radar corre cada ~10 min: cada corrida REEMPLAZA el snapshot del día
     # con las tendencias vigentes (no histórico intradía acumulado).
     sb.table("daily_trends").delete().eq("date", str(run_date)).execute()
-    rows = [{
-        "date":         str(run_date),
-        "keyword":      t["keyword"],
-        "growth_score": t.get("growth_score"),
-        "category":     t.get("category"),
-        "geo":          t.get("geo", "PE"),
-        "rank":         t.get("rank"),
-        "why_trending": t.get("why_trending"),
-        "news":         t.get("news"),
-    } for t in trends_list]
+    # approx_traffic requiere la migracion 2026-08-21. Pre-flight, mismo
+    # criterio que save_gsc_data: si la columna no existe se guarda sin ella en
+    # vez de reventar el insert (el delete de arriba ya vacio la fecha).
+    has_traffic = True
+    try:
+        sb.table("daily_trends").select("approx_traffic").limit(1).execute()
+    except Exception:
+        has_traffic = False
+        logger.warning("daily_trends.approx_traffic no existe aun (falta migracion); se guarda sin volumen")
+
+    rows = []
+    for t in trends_list:
+        row = {
+            "date":         str(run_date),
+            "keyword":      t["keyword"],
+            "growth_score": t.get("growth_score"),
+            "category":     t.get("category"),
+            "geo":          t.get("geo", "PE"),
+            "rank":         t.get("rank"),
+            "why_trending": t.get("why_trending"),
+            "news":         t.get("news"),
+        }
+        if has_traffic:
+            row["approx_traffic"] = t.get("approx_traffic")
+        rows.append(row)
     sb.table("daily_trends").insert(rows).execute()
     logger.info(f"Guardadas {len(rows)} tendencias")
 

@@ -19,6 +19,8 @@ export type Trend = {
   keyword: string
   category: string | null
   growth_score: number | null
+  /** Busquedas aproximadas del feed de Trends. NULL antes del 2026-08-21. */
+  approx_traffic: number | null
   why_trending: string | null
   news: TrendNewsItem[] | null
 }
@@ -27,6 +29,22 @@ export type TrendHistoryRow = {
   date: string
   keyword: string
   growth_score: number | null
+}
+
+/**
+ * Umbral por debajo del cual una tendencia es real pero anecdotica.
+ * Google publica el volumen como piso ("100+", "20.000+"): en un mercado del
+ * tamano de Peru la cola del top rising son literalmente cien busquedas, y sin
+ * verlas al lado de un 20.000+ parecen ruido de otro pais (fue exactamente lo
+ * que reporto el usuario con "al qadisiya" y "al ittihad" el 2026-08-21).
+ */
+const VOLUMEN_BAJO = 1000
+
+/** 20000 -> "20 mil+" · 500 -> "500+". El "+" es de Google, no un redondeo nuestro. */
+function fmtVolumen(n: number | null): string | null {
+  if (!n) return null
+  if (n >= 1000) return `${(n / 1000).toLocaleString("es-PE", { maximumFractionDigits: 0 })} mil+`
+  return `${n.toLocaleString("es-PE")}+`
 }
 
 const CATEGORY_COLOR: Record<string, string> = {
@@ -198,7 +216,27 @@ export default function TrendsClient({
                             style={{ width: `${Math.min(100, score * 10)}%`, backgroundColor: color }}
                           />
                         </div>
-                        <span className="text-[10px] text-gray-400">{score.toFixed(1)}/10</span>
+                        {/* El volumen manda sobre el score: "1.5/10" no dice nada,
+                            "100+ busquedas" si. El score queda de respaldo para
+                            las filas anteriores a la migracion. */}
+                        {fmtVolumen(t.approx_traffic) ? (
+                          <span
+                            className={`text-[10px] ${
+                              (t.approx_traffic ?? 0) < VOLUMEN_BAJO
+                                ? "text-amber-600 font-medium"
+                                : "text-gray-500"
+                            }`}
+                            title={
+                              (t.approx_traffic ?? 0) < VOLUMEN_BAJO
+                                ? "Volumen muy bajo: es tendencia real en Peru, pero la buscaron muy pocas personas"
+                                : "Busquedas aproximadas en Peru hoy"
+                            }
+                          >
+                            {fmtVolumen(t.approx_traffic)}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-gray-400">{score.toFixed(1)}/10</span>
+                        )}
                       </div>
                     </div>
                     <span aria-hidden className={`shrink-0 text-sm font-bold ${active ? "text-rpp-teal" : "text-gray-300"}`}>
@@ -227,10 +265,20 @@ export default function TrendsClient({
                         <TagBadge color={CATEGORY_COLOR[catOf(current)] ?? "#6B7280"}>
                           {catOf(current)}
                         </TagBadge>
+                        {fmtVolumen(current.approx_traffic) && (
+                          <span className="text-xs text-gray-500">
+                            <strong className="text-gray-700">{fmtVolumen(current.approx_traffic)}</strong> búsquedas
+                          </span>
+                        )}
                         <span className="text-xs text-gray-500">
                           score <strong className="text-gray-700">{(current.growth_score ?? 0).toFixed(1)}/10</strong>
                         </span>
                         <span className="text-xs text-gray-400">· #{current.rank} en Google Trends Perú</span>
+                        {(current.approx_traffic ?? 0) > 0 && (current.approx_traffic ?? 0) < VOLUMEN_BAJO && (
+                          <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 border border-amber-200">
+                            volumen muy bajo
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
