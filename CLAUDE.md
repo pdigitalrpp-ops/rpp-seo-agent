@@ -123,6 +123,114 @@ dashboard".
   workflows ya la referencian. Sin ella el agente sigue cayendo a OpenRouter
   exactamente como hasta ahora (rules-first, nada se rompe).
 
+**2026-08-21 — TRÁFICO: totales exactos por sección, tope de filas y el
+misterio de los 4 números distintos:** el usuario comparó /trafico contra
+Marfeel: 706.823 page views en el panel vs 933.233 en la plataforma.
+- **DIAGNÓSTICO (medido contra la DB, no supuesto). Cuatro números del MISMO
+  día, midiendo cuatro cosas distintas:**
+  ```
+  1.976.912  todo el sitio (suma por canal, portadas incluidas)
+    933.233  Marfeel filtrando Web+AMP y quitando 13 portadas  <- lo del usuario
+    779.284  own_traffic          (top 200 URLs, solo notas)
+    706.823  own_traffic_channels (top 500 pares url x canal)  <- lo del panel
+  ```
+  El KPI se calculaba sobre el conjunto MÁS recortado. Y **el 933.233 tampoco
+  era el total del sitio**: al excluir 13 portadas dejaba fuera más de la mitad.
+- **EL AGENTE NO LE MANDA NINGÚN FILTRO A MARFEEL** (ni tecnología de página ni
+  exclusión de URLs). Lo único que filtra es DESPUÉS, en Python:
+  `is_real_article` deja solo `-noticia-<id>` / `-live-<id>` de rpp.pe. Para
+  reproducirlo a mano en Explore: Yesterday + Daily, métrica Pageviews total,
+  Group by URL, **sin filtros**, top 500 filas, y quedarse con las que llevan
+  `-noticia-` o `-live-`.
+- **GOTCHA CARO: Marfeel devuelve HTTP 500 a un query SIN `groupBy`.** Se
+  intentó pedir así el total del día (corrida #75) y falla siempre. La forma que
+  SÍ funciona es agrupar por una dimensión de POCAS filas: ahí no hay truncado y
+  la suma es exacta. De ahí salen las dos piezas nuevas.
+- **`totals_from_sources()`** deriva el total del sitio del desglose por canal
+  que el benchmark YA recolecta — cero peticiones extra (cada consulta cuesta
+  65s por el rate-limit). `page_views` es exacto (aditivo entre canales);
+  `unique_users` es LÍMITE SUPERIOR (quien llega por dos canales se cuenta dos
+  veces) y así se etiqueta.
+- **`fetch_sections_performance()` + tabla `own_traffic_sections`:** tráfico
+  EXACTO por sección. Es la misma consulta que `fetch_sections()` (que ya
+  existía y funcionaba) pero **conservando las métricas, que aquella
+  descartaba**. ~230 secciones, ninguna truncada.
+- **`fetch_yesterday_performance` sube de 200 a 500 filas.** Con 200, la URL más
+  floja que sobrevivía tenía 493 page views. 500 no es una apuesta:
+  `fetch_yesterday_by_channel` ya lo usaba en producción.
+- **EL KPI SIGUE SIENDO DE NOTAS, a propósito.** No se sustituyó por el total
+  del sitio: saltaría a 1,98M contando portadas, que es justo lo que este panel
+  excluye. Se le añadió subtítulo "N% del tráfico del sitio" para leerlo en
+  contexto.
+- **"Unknown" = 1.048.264 page views, el 53% del sitio.** Es el cajón de Marfeel
+  para lo que no atribuye a una sección (portada, homes). No cruza con ninguna
+  sección del panel y es CORRECTO que no lo haga. **Ojo al escalar barras: con
+  él dentro aplasta todas las demás** — el máximo se toma de las que sí cruzan.
+- **GOTCHA del cruce: Marfeel acentúa y capitaliza, la URL no.** Devuelve
+  "Perú", "Fútbol", "Economía" mientras el dashboard deriva "peru", "futbol",
+  "economia" del primer segmento. Sin normalizar **no cruzaba NINGUNA** y el
+  panel caía en silencio al conteo de notas. `sectionKey()` normaliza ambos.
+- **FUSIÓN DE DEPORTES (`sectionGroup`, pedido del usuario):** en rpp.pe los
+  deportes NO cuelgan de /deportes/ — esa es una landing repositorio; fútbol,
+  vóley, tenis y multideportes son secciones HERMANAS de primer nivel. Marfeel
+  las desglosa aún más (Copa Sudamericana, Descentralizado, WWE...). Se fusionan
+  18 etiquetas bajo `deportes`: pasa de 3º disperso (fútbol 167.691) a 2º con
+  **246.200**, por encima de Lima. La lista es AMPLIABLE a mano a propósito
+  (criterio editorial, no inferible de la URL) y aplica al histórico sin tocar
+  la DB. `sectionOf()` no se tocó: la agrupación va encima.
+
+**2026-08-21 — /trends muestra el VOLUMEN de búsquedas, no solo el score:** el
+usuario dudó de que "al qadisiya" y "al ittihad" fueran tendencias peruanas.
+- **VALIDADO CONTRA EL FEED EN VIVO: el geo está bien.** Ambas aparecen en
+  `geo=PE` y **NO** en `geo=SA`; el feed saudí de ese momento era otro
+  completamente. No hay mezcla de países.
+- **El problema real era la ESCALA:** son tendencias reales pero minúsculas.
+  100+ búsquedas frente a las 20.000+ de "alianza atlético - sporting cristal".
+  En un mercado del tamaño de Perú la cola del top rising son literalmente cien
+  búsquedas.
+- El collector YA calculaba `approx_traffic` pero **el writer lo descartaba**,
+  así que lo único visible era `growth_score`, un 0-10 donde 100 y 900 búsquedas
+  caen ambas en 1.5. Migración `daily_trends.approx_traffic` aplicada; el panel
+  muestra "20 mil+"/"100+" y marca en ámbar por debajo de 1.000. El "+" es de
+  Google (publica pisos), no un redondeo propio.
+- **NO se filtró ni eliminó ninguna tendencia**, a pedido explícito: se hacen
+  legibles para que el criterio editorial sea del equipo.
+
+**2026-08-21 — Los medios de competencia se administran desde el panel:** la
+lista vivía hardcodeada en DOS sitios (`COMPETITOR_SITES` en config.py y la
+constante `SITES` del cliente), así que añadir un medio obligaba a tocar código.
+Tabla nueva `competitor_sources` (aplicada, en schema.sql), mismo patrón MVP que
+`watch_keywords`. `fetch_all_competitors(sites=...)` con COMPETITOR_SITES como
+**respaldo** si la tabla está vacía o la consulta falla.
+- **Para dar de alta basta el DOMINIO:** se arma la búsqueda `site:` en Google
+  News, que es como ya funcionan 3 de los 5 medios (sus RSS propios murieron).
+  Si el medio tiene feed, se pega la URL y se usa tal cual.
+- `name` debe coincidir EXACTO con `competitor_articles.site`: es la clave del
+  cruce, renombrarlo desliga el histórico.
+- Verificado en preview con alta y baja reales, y la DB restaurada después.
+
+**2026-08-21 — Los titulares de /recomendaciones los escribe el LLM:** el
+usuario reportó que TODOS terminaban en "lo que necesitas saber". No era el
+modelo escribiendo mal: `_generate_title` era una plantilla con DOS salidas y
+`_suggest_angle` un diccionario fijo por categoría. **El LLM nunca se enteraba
+de que había titulares que escribir.**
+- **El agente tenía la evidencia y la tiraba:** `scoring.score_all_topics`
+  rearmaba el dict del tema y descartaba `news` y `why_trending`, así que
+  `build_recommendations` quedaba a ciegas pese a que el radar ya tenía los
+  titulares reales de Google News.
+- **`capitalize()` destrozaba nombres propios:** pone la primera letra en
+  mayúscula Y EL RESTO EN MINÚSCULA — de ahí "sporting cristal" y "del perú".
+  Reemplazado por `_smart_case` (respeta siglas, mayúscula interna tipo iPhone,
+  y no baja las funcionales al final: "serie a" → "Serie A").
+- `openai_compat.suggest_headlines` (compartida por los dos proveedores) recibe
+  el tema con sus titulares reales. Una llamada por corrida, SOLO con los temas
+  que traen evidencia: sin titulares el modelo no puede saber qué pasó y
+  pedírselo igual es invitarlo a inventar. Rules-first en tres capas.
+- Verificado en producción (#744): "Sporting Cristal visita a Alianza Atlético
+  por la fecha 6", "Gobierno ratifica a Julio Velarde al frente del BCR".
+  **OJO: ahora el titular AFIRMA hechos** — es una sugerencia para el redactor,
+  hay que verificarla antes de publicar.
+
 **2026-08-21 — Dedup de la vigilancia TAMBIÉN por titular, no solo por URL
 (commit de7c209):** el panel /radar mostraba la misma nota dos veces. Causa:
 **Google News entrega la misma nota bajo URLs de redirector distintas**, así
@@ -1100,6 +1208,9 @@ rpp-seo-agent/
 | `scoring_weights` | morning | radar (lee aprendizajes) |
 | `onpage_audits` | morning | dashboard auditoria |
 | `serp_opportunities` | morning (borra+reinserta, solo si hay `SERPAPI_KEY`) | dashboard busqueda |
+| `own_traffic_totals` | morning (upsert por fecha) | dashboard trafico (contexto "% del sitio") |
+| `own_traffic_sections` | morning (borra+reinserta por fecha) | dashboard trafico (ranking por seccion) |
+| `competitor_sources` | **dashboard /competencia** (anon key: alta/pausa/borrado) | radar y morning (que medios leer) |
 | `watch_keywords` | **dashboard /radar** (anon key: alta/pausa/borrado) | radar (qué vigilar) |
 | `watch_hits` | radar (upsert por `keyword_id,url`) | dashboard **/radar** (Radar de temas; marca `dismissed`) |
 | `publishing_windows` | (reusable) | dashboard home |
