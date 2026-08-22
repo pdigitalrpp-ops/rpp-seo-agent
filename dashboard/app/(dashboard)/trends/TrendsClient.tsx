@@ -11,7 +11,46 @@ export type TrendNewsItem = {
   source_url?: string
   url: string
   published_at?: string
+  /**
+   * Origen de la noticia, puesto por el agente (analyzers/evidence.py):
+   * "pe" medio peruano · "es" en español pero no peruano · "xx" prensa
+   * extranjera. Ausente en las tendencias guardadas antes del 2026-08-22.
+   */
+  origin?: "pe" | "es" | "xx"
 }
+
+/**
+ * Origen de la TENDENCIA a partir de su evidencia. `null` cuando las noticias
+ * son anteriores al etiquetado — sin dato no se advierte nada, que es
+ * preferible a advertir en falso.
+ */
+function trendOrigin(news: TrendNewsItem[] | null): "pe" | "es" | "xx" | null {
+  const marcadas = (news ?? []).filter((n) => n.origin)
+  if (!marcadas.length) return null
+  if (marcadas.some((n) => n.origin === "pe")) return "pe"
+  if (marcadas.some((n) => n.origin === "es")) return "es"
+  return "xx"
+}
+
+/**
+ * Solo se avisa cuando NO hay medios peruanos detrás. El caso "pe" es el 63%
+ * de las tendencias: un chip que sale en dos de cada tres no informa (misma
+ * lección que la etiqueta "volumen muy bajo" que se quitó el 2026-08-22).
+ */
+const AVISO_ORIGEN = {
+  es: {
+    texto: "sin medios peruanos",
+    detalle: "Hay cobertura en español, pero ningún medio peruano la ha publicado todavía.",
+    clase: "bg-gray-50 text-gray-600 border-gray-200",
+  },
+  xx: {
+    texto: "solo prensa extranjera",
+    detalle:
+      "Ninguna nota en español detrás de esta tendencia: probablemente sea un rebote global. " +
+      "Google la lista para Perú, pero la historia se está contando fuera.",
+    clase: "bg-amber-50 text-amber-700 border-amber-200",
+  },
+} as const
 
 export type Trend = {
   id: string
@@ -316,6 +355,19 @@ export default function TrendsClient({
                           score <strong className="text-gray-700">{(current.growth_score ?? 0).toFixed(1)}/10</strong>
                         </span>
                         <span className="text-xs text-gray-400">· #{current.rank} en Google Trends Perú</span>
+                        {(() => {
+                          const o = trendOrigin(current.news)
+                          if (o !== "es" && o !== "xx") return null
+                          const a = AVISO_ORIGEN[o]
+                          return (
+                            <span
+                              className={`rounded px-1.5 py-0.5 text-[10px] font-medium border ${a.clase}`}
+                              title={a.detalle}
+                            >
+                              {a.texto}
+                            </span>
+                          )
+                        })()}
                         {destaca(current) && (
                           <span
                             className="rounded bg-teal-50 px-1.5 py-0.5 text-[10px] font-medium text-teal-700 border border-teal-200"

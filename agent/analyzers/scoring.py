@@ -9,10 +9,8 @@ notas de cierta categoría/Discover funcionaron, su dimensión pesa más hoy.
 
 import logging
 from datetime import datetime, timezone
-from config import (
-    SCORE_WEIGHTS, URGENCY_THRESHOLDS, CATEGORY_KEYWORDS, PERUVIAN_SOURCES,
-    OWN_SOURCE_MARKERS,
-)
+from config import SCORE_WEIGHTS, URGENCY_THRESHOLDS, CATEGORY_KEYWORDS
+from analyzers import evidence
 
 logger = logging.getLogger(__name__)
 
@@ -62,14 +60,18 @@ def _local_evidence(topic_data):
         return 0.0
     fuentes = set()
     for n in news:
-        src = (n.get("source") or "").lower().strip()
-        if not src or not any(p in src for p in PERUVIAN_SOURCES):
+        # Identificacion por DOMINIO (analyzers/evidence.py). La primera version
+        # comparaba el NOMBRE de la fuente y fallaba por los dos lados: perdia
+        # 8 de cada 19 medios peruanos por las tildes y contaba "ESPN Deportes"
+        # como peruano porque "depor" es subcadena de "Deportes". Ver el bloque
+        # de config.py con la medicion.
+        if not evidence.is_peruvian_source(n):
             continue
-        # RPP NO cuenta como evidencia de si mismo: ver OWN_SOURCE_MARKERS en
-        # config.py (bucle autoalimentado + doble computo con own_momentum).
-        if any(m in src for m in OWN_SOURCE_MARKERS):
+        # RPP NO cuenta como evidencia de si mismo: bucle autoalimentado +
+        # doble computo con own_momentum.
+        if evidence.is_own_source(n):
             continue
-        fuentes.add(src)
+        fuentes.add(evidence.domain_of(n))
     fuerza = min(len(fuentes) / 3.0, 1.0)
 
     # SIN hecho noticioso claro (why_trending null) se penaliza a la mitad,

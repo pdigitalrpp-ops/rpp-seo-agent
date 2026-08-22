@@ -19,7 +19,7 @@ from config import (
     CATEGORY_KEYWORDS, WATCH_MAX_ACTIVE_KEYWORDS,
 )
 from collectors import marfeel, trends, competitors, rpp_own_feed, trend_news, watchlist
-from analyzers import scoring, opportunities, coverage, alerting
+from analyzers import scoring, opportunities, coverage, alerting, evidence
 from llm import provider as llm
 from notifiers import notify
 from writers.supabase_writer import (
@@ -154,7 +154,12 @@ def run():
     # solo se reusa contexto de la MISMA versión. Subirla fuerza a regenerar
     # noticias y explicaciones en la siguiente corrida (p.ej. al cambiar el
     # prompt o las fuentes) sin parchar datos a mano.
-    TREND_CONTEXT_VERSION = 2
+    # v3 (2026-08-22): la evidencia se ORDENA por cercania a Peru en vez de
+    # concatenarse, y cada noticia se etiqueta con su origen (analyzers/
+    # evidence.py). Subir la version obliga a regenerar el contexto de todas
+    # las tendencias en la siguiente corrida, que es justo lo que se quiere:
+    # las guardadas con v2 traen los titulares en ingles arriba.
+    TREND_CONTEXT_VERSION = 3
     to_explain = []
     for item in trends_data:
         prev = existing.get(item["keyword"]) or {}
@@ -163,16 +168,17 @@ def run():
             item["news"] = prev_news
             item["why_trending"] = prev.get("why_trending")
         else:
-            # Primero las noticias que Google Trends asocia a la tendencia,
-            # luego Google News; dedupe por titular, máx 5.
-            merged, seen = [], set()
-            for n in list(item.get("trends_news") or []) + trend_news.fetch_news_for_keyword(item["keyword"]):
-                key = (n.get("title") or "").lower().strip()
-                if not key or key in seen:
-                    continue
-                seen.add(key)
-                merged.append(dict(n, v=TREND_CONTEXT_VERSION))
-            item["news"] = merged[:5]
+            # Las dos fuentes de evidencia juntas, ORDENADAS por cercanía a la
+            # audiencia peruana — no concatenadas. Antes iban primero los
+            # ht:news_item de Google Trends, que NO están localizados: para
+            # "kick" adjuntaban Ligue 1 en inglés y empujaban fuera a ATV Perú
+            # y América TV, que sí habían encontrado la historia real (la
+            # streamer Zully en Kick.com). De ahí salían el titular del panel,
+            # el resumen del LLM y la cuenta de medios peruanos del score.
+            crudo = (list(item.get("trends_news") or [])
+                     + trend_news.fetch_news_for_keyword(item["keyword"]))
+            item["news"] = [dict(n, v=TREND_CONTEXT_VERSION)
+                            for n in evidence.rank_news(crudo, limit=5)]
         if not item.get("why_trending") and item["news"]:
             to_explain.append(item)
 

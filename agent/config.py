@@ -67,20 +67,47 @@ COMPETITOR_SITES = [
 # Se matchea por SUBCADENA en minusculas contra el nombre de la fuente. Lista
 # AMPLIABLE a mano a proposito: es criterio editorial. Al anadir uno, revisar
 # que no colisione (p.ej. "correo" tambien matchearia "Correo Braziliense").
-PERUVIAN_SOURCES = [
-    "rpp", "depor", "la republica", "el comercio peru", "trome", "gestion",
-    "peru21", "agencia andina", "latina", "america tv", "willax", "exitosa",
-    "libero", "futbolperuano", "espn.com.pe", "apnoticias", "caretas",
-    "el buho", "canal n", "panamericana", "infobae peru", "universitario de deportes",
+# ---------------------------------------------------------------------------
+# Identificacion de medios peruanos (analyzers/evidence.py)
+#
+# Se identifica por DOMINIO, no por el nombre que muestra Google. La primera
+# version (2026-08-21) comparaba el nombre y fallaba por los dos lados —
+# medido el 2026-08-22 contra las fuentes reales de daily_trends:
+#   - se PERDIA 8 de 19 medios peruanos porque los patrones iban sin tilde y
+#     el nombre de la fuente si la lleva: "El Comercio Perú" en minusculas es
+#     "el comercio perú", que NO contiene el patron "el comercio peru". Lo
+#     mismo con La República, América TV, Gestión, Perú21 y Líbero.
+#   - y colaba FALSOS POSITIVOS: el patron "depor" es subcadena de "Deportes",
+#     asi que "ESPN Deportes" (panregional) contaba como medio peruano. En un
+#     pais donde la mayoria de tendencias son de futbol, eso inflaba la cuenta
+#     casi siempre.
+# El dominio no tiene tildes, no admite subcadenas accidentales y se mantiene
+# solo: cualquier medio peruano nuevo con dominio .pe entra sin tocar codigo.
+# ---------------------------------------------------------------------------
+PERUVIAN_TLDS = (".pe",)          # cubre .pe y .com.pe
+
+# Medios peruanos que NO usan dominio .pe (si lo usaran, sobrarian aqui).
+PERUVIAN_DOMAINS = [
+    "depor.com",        # Grupo El Comercio
+    "trome.com",        # Grupo El Comercio
+    "futbolperuano.com",
 ]
 
-# RPP se excluye de su PROPIA evidencia (ver scoring._local_evidence). Sigue en
-# PERUVIAN_SOURCES porque obviamente es un medio peruano, pero contarse a si
-# mismo cerraria un bucle: el score recomienda un tema -> RPP publica -> ese
-# articulo vuelve como "cobertura peruana" -> sube el score del mismo tema.
+# Dominios que aparecen como "fuente" pero NO son cobertura editorial: marcadores
+# en vivo, casas de pronosticos, plataformas. Algunos tienen edicion .pe
+# (flashscore.pe), asi que sin esta lista pasarian por medio peruano.
+NON_EDITORIAL_DOMAINS = [
+    "flashscore.", "365scores.", "sofascore.", "fotmob.", "sportytrader.",
+    "sportsbettingdime.", "dimers.", "bleachernation.",
+    "disneyplus.", "facebook.", "reutersconnect.", "gettyimages.", "shutterstock.",
+]
+
+# RPP se excluye de su PROPIA evidencia (ver scoring._local_evidence): contarse
+# a si mismo cerraria un bucle — el score recomienda un tema, RPP publica, ese
+# articulo vuelve como "cobertura peruana" y sube el score del mismo tema.
 # Ademas seria doble computo: la traccion propia YA pesa 10 puntos aparte, en
 # own_momentum (run_radar.py la calcula con los titulares en vivo de Marfeel).
-OWN_SOURCE_MARKERS = ["rpp"]
+OWN_SOURCE_MARKERS = ["rpp.pe", "rpp noticias"]
 
 # ---------------------------------------------------------------------------
 # Secciones de rpp.pe
