@@ -32,13 +32,33 @@ export type TrendHistoryRow = {
 }
 
 /**
- * Umbral por debajo del cual una tendencia es real pero anecdotica.
- * Google publica el volumen como piso ("100+", "20.000+"): en un mercado del
- * tamano de Peru la cola del top rising son literalmente cien busquedas, y sin
- * verlas al lado de un 20.000+ parecen ruido de otro pais (fue exactamente lo
- * que reporto el usuario con "al qadisiya" y "al ittihad" el 2026-08-21).
+ * Estadistica del dia para comparar los volumenes ENTRE SI.
+ *
+ * ANTES habia un umbral absoluto (VOLUMEN_BAJO = 1000) que pintaba en ambar
+ * "volumen muy bajo" a todo lo que quedara debajo. Fallaba por diseno: en un
+ * mercado del tamano de Peru la mayoria del top rising esta por debajo de mil
+ * busquedas, asi que la advertencia saltaba en 6 de cada 10 tendencias (y en
+ * ~9 de cada 10 mirando el growth_score). Una alarma que suena casi siempre no
+ * informa: solo ensucia. Lo reporto el usuario — "en todos los tooltips dice
+ * que lo buscaron pocas personas, entonces que sentido tiene mostrarlos".
+ *
+ * La correccion es dejar de senalar hacia ABAJO y pasar a comparar: el numero
+ * crudo no le dice nada a nadie sin una referencia, asi que la barra lo mide
+ * contra la tendencia mas buscada del dia y solo se destaca lo que sobresale.
  */
-const VOLUMEN_BAJO = 1000
+function volumeStats(trends: Trend[]) {
+  const vols = trends
+    .map((t) => t.approx_traffic ?? 0)
+    .filter((v) => v > 0)
+    .sort((a, b) => a - b)
+  if (!vols.length) return null
+  return {
+    max:    vols[vols.length - 1],
+    median: vols[Math.floor(vols.length / 2)],
+    /** Un dia plano (todo en el mismo escalon) no tiene nada que destacar. */
+    spread: vols[vols.length - 1] > vols[0],
+  }
+}
 
 /** 20000 -> "20 mil+" · 500 -> "500+". El "+" es de Google, no un redondeo nuestro. */
 function fmtVolumen(n: number | null): string | null {
@@ -108,6 +128,20 @@ export default function TrendsClient({
     [trends, category]
   )
 
+  // Se calcula sobre TODAS las tendencias del dia, no sobre `list`: filtrar por
+  // categoria no debe cambiar contra que se compara un volumen.
+  const vol = useMemo(() => volumeStats(trends), [trends])
+
+  /** Sobresale del dia: al menos el doble de la mediana. */
+  const destaca = (t: Trend) =>
+    !!vol && vol.spread && (t.approx_traffic ?? 0) >= vol.median * 2
+
+  /** Ancho de la barra: cuota sobre la tendencia mas buscada del dia. */
+  const barra = (t: Trend, score: number) => {
+    if (!vol || !t.approx_traffic) return Math.min(100, score * 10)   // filas pre-migracion
+    return Math.max(6, Math.round((t.approx_traffic / vol.max) * 100))
+  }
+
   // Si el filtro deja fuera a la seleccionada, pasar a la primera visible
   useEffect(() => {
     if (!list.some((t) => t.keyword === selected)) {
@@ -169,9 +203,12 @@ export default function TrendsClient({
                 <span className="truncate">Top tendencias de hoy</span>
                 <InfoTooltip align="left">
                   Las tendencias del día según Google Trends Perú, ordenadas por
-                  relevancia, con su score de crecimiento (0–10) por volumen de
-                  búsquedas. Usa el desplegable para filtrar por categoría y haz clic
-                  en una tendencia para ver su explicación a la derecha.
+                  relevancia. El número son las búsquedas aproximadas: Google las
+                  publica como piso y en escalones («100+», «2 mil+»), así que suelto
+                  no dice mucho — la barra lo compara con la tendencia más buscada de
+                  hoy, y se resalta lo que llega al doble de la mediana del día. Usa el
+                  desplegable para filtrar por categoría y haz clic en una tendencia
+                  para ver su explicación a la derecha.
                 </InfoTooltip>
               </h2>
               <select
@@ -210,10 +247,17 @@ export default function TrendsClient({
                         <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color }}>
                           {catOf(t)}
                         </span>
-                        <div className="h-1 w-16 rounded-full bg-gray-100">
+                        <div
+                          className="h-1 w-16 rounded-full bg-gray-100"
+                          title={
+                            t.approx_traffic && vol
+                              ? `${fmtVolumen(t.approx_traffic)} búsquedas · la más buscada de hoy tiene ${fmtVolumen(vol.max)}`
+                              : "Score de crecimiento (0–10)"
+                          }
+                        >
                           <div
                             className="h-1 rounded-full"
-                            style={{ width: `${Math.min(100, score * 10)}%`, backgroundColor: color }}
+                            style={{ width: `${barra(t, score)}%`, backgroundColor: color }}
                           />
                         </div>
                         {/* El volumen manda sobre el score: "1.5/10" no dice nada,
@@ -222,14 +266,12 @@ export default function TrendsClient({
                         {fmtVolumen(t.approx_traffic) ? (
                           <span
                             className={`text-[10px] ${
-                              (t.approx_traffic ?? 0) < VOLUMEN_BAJO
-                                ? "text-amber-600 font-medium"
-                                : "text-gray-500"
+                              destaca(t) ? "text-gray-800 font-semibold" : "text-gray-500"
                             }`}
                             title={
-                              (t.approx_traffic ?? 0) < VOLUMEN_BAJO
-                                ? "Volumen muy bajo: es tendencia real en Peru, pero la buscaron muy pocas personas"
-                                : "Busquedas aproximadas en Peru hoy"
+                              destaca(t)
+                                ? "Sobresale: al menos el doble de la mediana de hoy"
+                                : "Búsquedas aproximadas en Perú hoy"
                             }
                           >
                             {fmtVolumen(t.approx_traffic)}
@@ -274,9 +316,12 @@ export default function TrendsClient({
                           score <strong className="text-gray-700">{(current.growth_score ?? 0).toFixed(1)}/10</strong>
                         </span>
                         <span className="text-xs text-gray-400">· #{current.rank} en Google Trends Perú</span>
-                        {(current.approx_traffic ?? 0) > 0 && (current.approx_traffic ?? 0) < VOLUMEN_BAJO && (
-                          <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 border border-amber-200">
-                            volumen muy bajo
+                        {destaca(current) && (
+                          <span
+                            className="rounded bg-teal-50 px-1.5 py-0.5 text-[10px] font-medium text-teal-700 border border-teal-200"
+                            title={`Al menos el doble de la mediana de hoy (${fmtVolumen(vol?.median ?? null)})`}
+                          >
+                            alta demanda hoy
                           </span>
                         )}
                       </div>
