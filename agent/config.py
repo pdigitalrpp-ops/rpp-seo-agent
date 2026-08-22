@@ -74,6 +74,14 @@ PERUVIAN_SOURCES = [
     "el buho", "canal n", "panamericana", "infobae peru", "universitario de deportes",
 ]
 
+# RPP se excluye de su PROPIA evidencia (ver scoring._local_evidence). Sigue en
+# PERUVIAN_SOURCES porque obviamente es un medio peruano, pero contarse a si
+# mismo cerraria un bucle: el score recomienda un tema -> RPP publica -> ese
+# articulo vuelve como "cobertura peruana" -> sube el score del mismo tema.
+# Ademas seria doble computo: la traccion propia YA pesa 10 puntos aparte, en
+# own_momentum (run_radar.py la calcula con los titulares en vivo de Marfeel).
+OWN_SOURCE_MARKERS = ["rpp"]
+
 # ---------------------------------------------------------------------------
 # Secciones de rpp.pe
 # La taxonomía REAL se deriva en runtime de la dimensión `section` de Marfeel
@@ -116,7 +124,16 @@ GOOGLE_TRENDS_CATEGORIES = {
 # ---------------------------------------------------------------------------
 SCORE_WEIGHTS = {
     "market_trend":        30,   # fuerza de la tendencia (Google Trends)
-    "competition_gap":     20,   # cuántos competidores lo cubren / gap
+    # RENOMBRADA 2026-08-22 (antes "competition_gap"). El nombre mentia: la
+    # fórmula premia que MÁS competidores lo cubran, no que haya hueco. Eso es
+    # una decisión de estrategia, tomada explícitamente — subirse a la ola
+    # (competir por velocidad y autoridad en lo que ya está caliente) en vez de
+    # buscar el hueco (escribir lo que nadie cubre). Para Discover y Top
+    # Stories rinde más lo primero. Si algún día se quiere lo segundo, hay que
+    # INVERTIR la fórmula en scoring.py, no solo cambiar el nombre.
+    # Renombrar es seguro: `scoring_weights` nunca ha guardado otra dimensión
+    # que discover_potential, así que ningún multiplicador queda huérfano.
+    "market_validation":   20,   # cuántos competidores peruanos ya lo cubren
     "rpp_relevance":       15,   # afinidad con secciones core de rpp.pe
     "discover_potential":  15,   # potencial en Google Discover
     "time_sensitivity":    10,   # urgencia temporal del tema

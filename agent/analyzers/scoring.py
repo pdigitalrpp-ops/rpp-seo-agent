@@ -11,6 +11,7 @@ import logging
 from datetime import datetime, timezone
 from config import (
     SCORE_WEIGHTS, URGENCY_THRESHOLDS, CATEGORY_KEYWORDS, PERUVIAN_SOURCES,
+    OWN_SOURCE_MARKERS,
 )
 
 logger = logging.getLogger(__name__)
@@ -62,8 +63,13 @@ def _local_evidence(topic_data):
     fuentes = set()
     for n in news:
         src = (n.get("source") or "").lower().strip()
-        if src and any(p in src for p in PERUVIAN_SOURCES):
-            fuentes.add(src)
+        if not src or not any(p in src for p in PERUVIAN_SOURCES):
+            continue
+        # RPP NO cuenta como evidencia de si mismo: ver OWN_SOURCE_MARKERS en
+        # config.py (bucle autoalimentado + doble computo con own_momentum).
+        if any(m in src for m in OWN_SOURCE_MARKERS):
+            continue
+        fuentes.add(src)
     fuerza = min(len(fuentes) / 3.0, 1.0)
 
     # SIN hecho noticioso claro (why_trending null) se penaliza a la mitad,
@@ -104,7 +110,11 @@ def score_topic(topic_data, weights=None, learning=None):
         # Quedarse solo con local_n habria matado el primer caso, que es
         # justamente el mas valioso para un medio.
         "market_trend": max(growth_n, local_n),
-        "competition_gap": min(topic_data.get("competition_coverage", 0) / 3.0, 1.0),
+        # OJO: mas competidores cubriendolo = MAS puntos. Es deliberado
+        # (estrategia "subirse a la ola", ver SCORE_WEIGHTS en config.py), y por
+        # eso se renombro: antes se llamaba `competition_gap`, que prometia lo
+        # contrario de lo que hace la formula.
+        "market_validation": min(topic_data.get("competition_coverage", 0) / 3.0, 1.0),
         "rpp_relevance": (
             1.0 if category in CORE_CATEGORIES
             else 0.6 if category in SECONDARY_CATEGORIES
