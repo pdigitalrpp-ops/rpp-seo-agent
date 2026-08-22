@@ -8,8 +8,10 @@ notas de cierta categoría/Discover funcionaron, su dimensión pesa más hoy.
 """
 
 import logging
+from datetime import datetime, timezone
 from config import (
-    SCORE_WEIGHTS, URGENCY_THRESHOLDS, CATEGORY_KEYWORDS,
+    SCORE_WEIGHTS, URGENCY_THRESHOLDS, CATEGORY_KEYWORDS, PERUVIAN_SOURCES,
+    OWN_SOURCE_MARKERS,
 )
 
 logger = logging.getLogger(__name__)
@@ -35,6 +37,51 @@ def _norm_growth(growth):
     return min(growth / 500.0, 1.0)
 
 
+def _local_evidence(topic_data):
+    """
+    0-1 segun cuantos MEDIOS PERUANOS distintos cubren el tema.
+
+    POR QUE PERUANOS Y NO "cuantas fuentes cubren el tema" (que fue el primer
+    intento, descartado en calibracion): Google Trends solo lista temas que YA
+    tienen cobertura, asi que "tiene noticias" satura en ~1.0 para casi todos y
+    NO discrimina — el mismo defecto del approx_traffic con otra cara. Medido
+    sobre 30 tendencias reales de 3 dias, la version generica subia los 30
+    temas (+18.9 pts de media) sin reordenar nada, y hasta premiaba queries sin
+    hecho noticioso ("libre", "flashscore").
+
+    Contar solo medios PERUANOS si separa: el 40% de las tendencias no tiene
+    NINGUNO (ariana grande, the strongest, sara bejlek — rebote global) y el
+    resto se reparte 1-4. Y es la pregunta editorialmente correcta para RPP:
+    no "esto es noticia en algun sitio" sino "esto le importa a mi audiencia".
+
+    Satura en 3 medios peruanos = 1.0. Devuelve 0.0 sin noticias (rules-first:
+    `market_trend` cae entonces a growth_n, el comportamiento anterior).
+    """
+    news = topic_data.get("news")
+    if not news:
+        return 0.0
+    fuentes = set()
+    for n in news:
+        src = (n.get("source") or "").lower().strip()
+        if not src or not any(p in src for p in PERUVIAN_SOURCES):
+            continue
+        # RPP NO cuenta como evidencia de si mismo: ver OWN_SOURCE_MARKERS en
+        # config.py (bucle autoalimentado + doble computo con own_momentum).
+        if any(m in src for m in OWN_SOURCE_MARKERS):
+            continue
+        fuentes.add(src)
+    fuerza = min(len(fuentes) / 3.0, 1.0)
+
+    # SIN hecho noticioso claro (why_trending null) se penaliza a la mitad,
+    # igual que hace alerting.py. Lo detecto la calibracion: queries genericas
+    # como "libre" o "montevideo city torque" no tienen historia detras pero SI
+    # aparecen en medios peruanos (por coincidencia de palabras), y sin esta
+    # guarda subian +30 puntos y se colaban entre las recomendaciones.
+    if not topic_data.get("why_trending"):
+        fuerza *= 0.5
+    return fuerza
+
+
 def score_topic(topic_data, weights=None, learning=None):
     """Devuelve un score 0-100 para un tema."""
     weights = weights or SCORE_WEIGHTS
@@ -43,18 +90,48 @@ def score_topic(topic_data, weights=None, learning=None):
     category = topic_data.get("category", "otros")
     growth_n = _norm_growth(topic_data.get("growth_score", 0))
 
+    # EVIDENCIA DE NOTICIAS (2026-08-21): cuantas FUENTES distintas cubren el
+    # tema y que tan frescas estan. Se reusa el calculo ya calibrado de
+    # medios PERUANOS que lo cubren (ver _local_evidence: la version generica
+    # se descarto en calibracion porque no discriminaba).
+    local_n = _local_evidence(topic_data)
+
     dims = {
-        "market_trend": growth_n,
-        "competition_gap": min(topic_data.get("competition_coverage", 0) / 3.0, 1.0),
+        # ANTES era solo `growth_n` (el approx_traffic de Google Trends). Medido
+        # sobre 7 dias: el 90% de las tendencias caia en growth_score 1.5, o sea
+        # que la dimension de MAYOR peso (30 pts) le daba lo mismo a casi todos y
+        # no ordenaba nada. alerting.py ya habia llegado a esa conclusion en
+        # julio y dejo de usarlo como driver.
+        # Se toma el MAXIMO de las dos senales en vez de sustituir una por otra:
+        #  - pico de busqueda sin cobertura peruana aun -> puntua por growth_n
+        #    (es una oportunidad: nadie local lo ha escrito todavia);
+        #  - tema que los medios peruanos ya cubren aunque se busque poco ->
+        #    puntua por local_n (le importa a esta audiencia).
+        # Quedarse solo con local_n habria matado el primer caso, que es
+        # justamente el mas valioso para un medio.
+        "market_trend": max(growth_n, local_n),
+        # OJO: mas competidores cubriendolo = MAS puntos. Es deliberado
+        # (estrategia "subirse a la ola", ver SCORE_WEIGHTS en config.py), y por
+        # eso se renombro: antes se llamaba `competition_gap`, que prometia lo
+        # contrario de lo que hace la formula.
+        "market_validation": min(topic_data.get("competition_coverage", 0) / 3.0, 1.0),
         "rpp_relevance": (
             1.0 if category in CORE_CATEGORIES
             else 0.6 if category in SECONDARY_CATEGORIES
             else 0.3
         ),
-        "discover_potential": (
+        # ANTES era una lista blanca de categorias, y por eso un sismo de
+        # magnitud 7.2 ("actualidad") se llevaba 0.2 mientras CUALQUIER partido
+        # ("deportes") se llevaba 1.0 -- el sismo puntuaba POR DEBAJO de un
+        # Tigres-Atlante pese a ser la nota mas leida del dia (139.361 page
+        # views). La categoria sigue contando, pero ya no manda sola: una
+        # historia con cobertura real y fresca rinde en Discover venga de donde
+        # venga, que es como funciona Discover de verdad.
+        "discover_potential": max(
             1.0 if topic_data.get("has_discover_potential")
             else 0.5 if category in {"entretenimiento", "deportes"}
-            else 0.2
+            else 0.2,
+            0.8 * local_n,
         ),
         "time_sensitivity": (
             1.0 if topic_data.get("is_time_sensitive")
@@ -162,6 +239,12 @@ def score_all_topics(trends_data, competitor_data, gsc_data,
             "has_discover_potential": category in discover_categories,
             "is_time_sensitive":      _is_time_sensitive(kw),
             "own_momentum":           item.get("own_momentum", 0.0),
+            # La evidencia de noticias entra al SCORE, no solo al dict final:
+            # `market_trend` y `discover_potential` la miran (ver score_topic).
+            "news":                   item.get("news") or [],
+            # Necesario para la guarda de _local_evidence: sin hecho noticioso
+            # la cobertura peruana puede ser casualidad de palabras.
+            "why_trending":           item.get("why_trending"),
         }
 
         final_score = score_topic(topic_data, learning=learning)
