@@ -11,18 +11,20 @@ tráfico de Google Trends) y nunca para sismos, muertes o renuncias de alto
 interés — el score de recomendación de esos temas se ahogaba porque el
 `approx_traffic` de Trends casi siempre viene en 1.5/10.
 
-Este módulo NO mira el approx_traffic como driver principal. Usa la evidencia
-que el radar ya recolecta por cada tendencia:
+Usa la evidencia que el radar ya recolecta por cada tendencia:
 
-- **Evidencia de noticias** (driver principal, item["news"]): nº de fuentes
-  distintas y su frescura. Un tema con 3-4 titulares frescos de medios reales
-  es, por definición, una noticia que está rompiendo.
+- **Términos de urgencia** (uno de los dos drivers): muerte, sismo, renuncia,
+  captura… Es lo que distingue "está rompiendo" de "hay mucha demanda".
+- **Volumen relativo al día** (el otro driver): cuántas veces la mediana del
+  día se busca el tema. Deja entrar el evento programado que de verdad es
+  grande, y deja fuera el partido de trámite.
+- **Evidencia de noticias** (necesaria, no suficiente): nº de fuentes distintas
+  y su frescura. Sin cobertura no hay alerta, pero tenerla no basta: el radar
+  garantiza noticias para todas las tendencias, así que no discrimina.
 - **why_trending**: si el LLM no pudo anclar el tema a un hecho noticioso
   (null), casi nunca es un evento alertable ("te", "23 de julio feriado",
   queries genéricas) → penalización fuerte.
-- **Prominencia en Trends**: el RANK del feed de Perú (1 = lo más buscado),
-  señal más confiable que el tráfico aproximado.
-- **Términos de urgencia**: muerte, sismo, resultado, renuncia, oficial…
+- **Prominencia en Trends**: el RANK del feed de Perú (1 = lo más buscado).
 
 Además CONSOLIDA tendencias del mismo evento que comparten URLs de noticias:
 "temblor hoy" + "ultimo sismo en peru" + "igp ultimo sismo" + "indeci" son un
@@ -48,13 +50,11 @@ from config import (
 logger = logging.getLogger(__name__)
 
 # Pesos de la "alertabilidad" 0-100 (suman 100 antes del multiplicador de
-# why_trending). La evidencia de noticias domina (reemplaza al approx_traffic
-# roto), pero el término de URGENCIA pesa fuerte a propósito: una alerta es
-# "noticia rompiendo AHORA", no un explicador de alto tráfico. Calibrado con
-# datos reales del 2026-07-22 para que sismos/muertes/renuncias/partidos en
-# vivo disparen (alta), y explicadores de servicio (feriado, gratificaciones)
-# NO — tienen mucha cobertura pero cero señal de urgencia.
-# RECALIBRADO 2026-08-22. Medido sobre 30 tendencias reales, la versión
+# why_trending). Dos señales deciden —el hecho rompiendo y el volumen relativo
+# al día—; la evidencia de noticias y el rank son condición NECESARIA pero ya
+# no alcanzan solas para cruzar el umbral.
+#
+# RECALIBRADO 2026-08-22 (antes: 40/15/30/15, con la evidencia como driver). Medido sobre 30 tendencias reales, la versión
 # anterior alertaba el 50% de todo lo que veía, y 23 de las 31 alertas de un
 # día eran deportes. Causa: `noticias` (40) y `rank` (15) están saturadas por
 # construcción — el radar garantiza 5 noticias por tendencia y solo trae el
