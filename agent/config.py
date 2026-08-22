@@ -52,6 +52,29 @@ COMPETITOR_SITES = [
 ]
 
 # ---------------------------------------------------------------------------
+# Medios PERUANOS — para medir si una tendencia le importa a esta audiencia
+# ---------------------------------------------------------------------------
+# Google Trends Peru lista lo que SUBE en el pais, pero mucho de eso es rebote
+# global: "ariana grande", "the strongest" (Bolivia) o "sara bejlek" (tenis
+# checo) son tendencia sin que ningun medio peruano las cubra.
+#
+# Medido sobre 30 tendencias reales de 3 dias (2026-08-19 al 21): el 40% no
+# tiene NINGUN medio peruano entre sus fuentes, y el resto se reparte 1-4. Eso
+# discrimina de verdad, a diferencia de approx_traffic (90% en el mismo tramo)
+# y de "tiene noticias" (satura en casi todos, porque Trends solo lista temas
+# que YA tienen cobertura).
+#
+# Se matchea por SUBCADENA en minusculas contra el nombre de la fuente. Lista
+# AMPLIABLE a mano a proposito: es criterio editorial. Al anadir uno, revisar
+# que no colisione (p.ej. "correo" tambien matchearia "Correo Braziliense").
+PERUVIAN_SOURCES = [
+    "rpp", "depor", "la republica", "el comercio peru", "trome", "gestion",
+    "peru21", "agencia andina", "latina", "america tv", "willax", "exitosa",
+    "libero", "futbolperuano", "espn.com.pe", "apnoticias", "caretas",
+    "el buho", "canal n", "panamericana", "infobae peru", "universitario de deportes",
+]
+
+# ---------------------------------------------------------------------------
 # Secciones de rpp.pe
 # La taxonomía REAL se deriva en runtime de la dimensión `section` de Marfeel
 # (collectors/marfeel.py -> fetch_sections). Esta lista es solo fallback.
