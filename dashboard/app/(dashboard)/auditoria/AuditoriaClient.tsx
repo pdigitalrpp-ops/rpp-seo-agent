@@ -17,6 +17,27 @@ const PLATFORM_CHECKS = new Set(["structured_data", "indexability", "canonical",
 const issueClass = (it: any) =>
   it.class ?? (PLATFORM_CHECKS.has(it.check) ? "platform" : "editorial")
 
+/**
+ * ¿El <title> promete una PREVIA mientras el H1/meta ya cuentan el RESULTADO?
+ *
+ * Es el patrón concreto que apareció en producción el 2026-08-21: la redacción
+ * actualiza el cuerpo, el H1 y la meta cuando termina el partido, pero deja el
+ * <title> con "a qué hora empieza". En Google esa nota sigue vendiendo una
+ * previa de algo que ya pasó.
+ *
+ * Se detecta por marcadores explícitos y no por parecido de palabras: los dos
+ * textos comparten siempre los equipos y el torneo, así que cualquier umbral de
+ * solapamiento o no avisa nunca o avisa siempre.
+ */
+const PREVIA = /(a qu[eé] hora|d[oó]nde ver|cu[aá]ndo juega|previa|alineaciones probables|en vivo|en directo|minuto a minuto)/i
+const RESULTADO = /(venci[oó]|gan[oó]|perdi[oó]|empat[oó]|gole[oó]|derrot[oó]|resultado|resumen|termin[oó]|conquist[oó]|\d+\s*-\s*\d+)/i
+
+function titleDesactualizado(title?: string | null, h1?: string | null, meta?: string | null): boolean {
+  if (!title || !(h1 || meta)) return false
+  const cuerpo = `${h1 ?? ""} ${meta ?? ""}`
+  return PREVIA.test(title) && !RESULTADO.test(title) && RESULTADO.test(cuerpo)
+}
+
 // Claves del checklist: por URL (no por id de auditoría) para que lo marcado
 // persista cuando el morning re-audita la misma nota otro día. El `check` se
 // repite dentro de una nota (p.ej. 3 issues distintos con check='title'), así
@@ -259,6 +280,36 @@ export default function AuditoriaClient({
                      className="text-xs text-gray-400 font-mono truncate hover:text-rpp-teal block">{a.url}</a>
                   {a.target_keyword && (
                     <p className="text-xs text-gray-500 mt-0.5">keyword: <strong>{a.target_keyword}</strong></p>
+                  )}
+
+                  {/* CÓMO SE VE LA NOTA HOY. Sin esto la tarjeta mostraba solo
+                      el <title>, y una sugerencia correcta parecía inventada:
+                      caso real del 21-ago, el <title> seguía siendo la previa
+                      ("a qué hora empieza") mientras el H1 y la meta ya decían
+                      el resultado. Verlos juntos convierte una desconfianza en
+                      un hallazgo: el título es el que quedó desactualizado. */}
+                  {(a.h1 || a.meta_description) && (
+                    <div className="mt-2 rounded-lg bg-gray-50 border border-gray-200 p-2.5 space-y-1.5">
+                      <p className="text-[10px] uppercase text-gray-400 font-medium">Cómo se ve hoy</p>
+                      {a.h1 && (
+                        <p className="text-xs text-gray-700">
+                          <span className="text-gray-400 font-mono">H1</span> {a.h1}
+                        </p>
+                      )}
+                      {a.meta_description && (
+                        <p className="text-xs text-gray-700">
+                          <span className="text-gray-400 font-mono">meta</span> {a.meta_description}
+                          <span className="text-gray-400"> ({a.meta_description.length}c)</span>
+                        </p>
+                      )}
+                      {titleDesactualizado(a.title, a.h1, a.meta_description) && (
+                        <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-1">
+                          El &lt;title&gt; sigue anunciando la previa, pero el H1 y la
+                          meta ya cuentan el resultado. En Google esta nota se
+                          muestra como si el evento no hubiera ocurrido.
+                        </p>
+                      )}
+                    </div>
                   )}
 
                   {editorial.length > 0 ? (

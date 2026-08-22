@@ -9,10 +9,12 @@ alt de imágenes, structured data, indexabilidad y readiness para Discover.
 """
 
 import logging
+import re
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 from config import ONPAGE
+from text_keys import normalize_text
 
 logger = logging.getLogger(__name__)
 
@@ -34,12 +36,82 @@ _CHECK_CLASS = {
     "internal_links":   "editorial",
     "image_alt":        "editorial",
     "freshness":        "editorial",
+    "title_desfasado":  "editorial",
     "structured_data":  "platform",
     "indexability":     "platform",
     "canonical":        "platform",
     "discover":         "platform",
     "social":           "platform",
 }
+
+
+# Palabras que no aportan a la intención de búsqueda: exigirlas produce ruido.
+_KW_VACIAS = {
+    "vs", "de", "del", "la", "el", "los", "las", "contra", "con", "por", "y",
+    "en", "que", "para", "una", "uno", "sus", "al",
+}
+
+
+def _keyword_terms(keyword):
+    """Términos significativos de la keyword, normalizados (sin tildes ni puntuación)."""
+    return [w for w in normalize_text(keyword).split()
+            if len(w) > 2 and w not in _KW_VACIAS]
+
+
+def _keyword_missing(keyword, texto):
+    """
+    Términos de la keyword que NO aparecen en el texto. Lista vacía = está cubierta.
+
+    ANTES esto era `kw not in texto.lower()`, una subcadena literal, y fallaba
+    por dos motivos que no tienen nada que ver con SEO:
+      - PUNTUACIÓN: la keyword `barcelona vs. al-ahly` (con punto y guion) no
+        está dentro de "Barcelona vs Al Ahly", aunque el titular la cubra entera.
+      - ORDEN: `basel vs. barcelona` no está dentro de "Barcelona goleó 5-2 al
+        Basel", aunque las dos entidades estén ahí.
+    Medido sobre las 84 notas con keyword del 2026-08: el aviso saltaba 61 veces
+    y **26 de esas eran falsas** por estos dos motivos. Comparando términos
+    normalizados quedan 35, que son los reales — la brecha entre cómo busca la
+    gente y cómo titula la redacción ("clima" en una nota que solo dice
+    "pronóstico", "temblor hoy" en una que solo dice "sismo").
+
+    La comparación es por SUBCADENA de cada término contra el texto normalizado,
+    a propósito: así "sismo" cubre "sismos" y "gol" cubre "goleó", sin necesidad
+    de un stemmer.
+    """
+    terms = _keyword_terms(keyword)
+    if not terms:
+        return []
+    objetivo = normalize_text(texto)
+    return [t for t in terms if t not in objetivo]
+
+
+def _falta_kw(keyword, faltantes, donde):
+    """Mensaje que DICE QUÉ FALTA, en vez de un 'no está' que obliga a adivinar."""
+    detalle = ", ".join(f"«{t}»" for t in faltantes)
+    return f"A '{keyword}' le falta {detalle} en {donde}"
+
+
+# El <title> vende una PREVIA mientras el H1/meta ya cuentan el RESULTADO.
+# Patrón real visto en producción el 2026-08-21: la redacción actualiza cuerpo,
+# H1 y meta cuando termina el partido y deja el <title> con "a qué hora empieza".
+# En Google esa nota sigue anunciando algo que ya ocurrió — y como el resto de
+# la nota está bien, sin este check saca un score alto y nadie la revisa.
+# Se detecta con marcadores explícitos y NO por parecido de palabras: title y H1
+# comparten siempre los equipos y el torneo, así que cualquier umbral de
+# solapamiento o no avisa nunca o avisa siempre.
+_PREVIA = re.compile(
+    r"(a qu[eé] hora|d[oó]nde ver|cu[aá]ndo juega|previa|alineaciones probables"
+    r"|en vivo|en directo|minuto a minuto)", re.I)
+_RESULTADO = re.compile(
+    r"(venci[oó]|gan[oó]|perdi[oó]|empat[oó]|gole[oó]|derrot[oó]|resultado"
+    r"|resumen|termin[oó]|conquist[oó]|\d+\s*-\s*\d+)", re.I)
+
+
+def _title_desfasado(title, h1, meta):
+    if not title or not (h1 or meta):
+        return False
+    cuerpo = f"{h1 or ''} {meta or ''}"
+    return bool(_PREVIA.search(title)) and not _RESULTADO.search(title)         and bool(_RESULTADO.search(cuerpo))
 
 
 def _issue(check, severity, message):
@@ -95,14 +167,19 @@ def audit_article(parsed, target_keyword=None):
     if not title:
         issues.append(_issue("title", "high", "Sin <title>"))
     else:
-        if len(title) > ONPAGE["title_max_len"]:
-            issues.append(_issue("title", "medium",
-                f"Title muy largo ({len(title)}c); se corta en Google (máx {ONPAGE['title_max_len']})"))
-        elif len(title) < ONPAGE["title_min_len"]:
+        # NO se revisa que el title sea "muy largo". Decisión editorial explícita
+        # del equipo (2026-08-22): los títulos largos de RPP son deliberados
+        # ("EN VIVO", "dónde ver", "a qué hora", "Partidos de hoy"). El aviso
+        # saltaba en el 75% de las notas auditadas — 159 de 211 —, o sea que no
+        # era un hallazgo sino un desacuerdo con la política de titulación
+        # repetido en cada tarjeta. Si algún día se cambia la política, el
+        # umbral sigue en ONPAGE["title_max_len"] y basta con reponer el check.
+        if len(title) < ONPAGE["title_min_len"]:
             issues.append(_issue("title", "low",
                 f"Title corto ({len(title)}c); aprovechar más para keywords"))
-        if kw and kw not in title.lower():
-            issues.append(_issue("title", "medium", f"La keyword '{target_keyword}' no está en el title"))
+        faltan = _keyword_missing(target_keyword, title) if kw else []
+        if faltan:
+            issues.append(_issue("title", "medium", _falta_kw(target_keyword, faltan, "el title")))
 
     # --- Meta description ---
     md = parsed.get("meta_description")
@@ -116,9 +193,10 @@ def audit_article(parsed, target_keyword=None):
         elif len(md) > ONPAGE["meta_desc_max_len"]:
             issues.append(_issue("meta_description", "low",
                 f"Meta description larga ({len(md)}c); se truncará"))
-        if kw and kw not in md.lower():
+        faltan_md = _keyword_missing(target_keyword, md) if kw else []
+        if faltan_md:
             issues.append(_issue("meta_description", "low",
-                f"La keyword '{target_keyword}' no está en la meta description"))
+                _falta_kw(target_keyword, faltan_md, "la meta description")))
 
     # --- H1 ---
     h1s = parsed.get("h1s") or []
@@ -126,8 +204,16 @@ def audit_article(parsed, target_keyword=None):
         issues.append(_issue("h1", "high", "Sin H1"))
     elif len(h1s) > 1:
         issues.append(_issue("h1", "medium", f"{len(h1s)} H1 (debe haber uno solo)"))
-    elif kw and kw not in h1s[0].lower():
-        issues.append(_issue("h1", "medium", f"La keyword '{target_keyword}' no está en el H1"))
+    elif kw:
+        faltan_h1 = _keyword_missing(target_keyword, h1s[0])
+        if faltan_h1:
+            issues.append(_issue("h1", "medium", _falta_kw(target_keyword, faltan_h1, "el H1")))
+
+    # --- ¿El title quedó desactualizado respecto al cuerpo? ---
+    if _title_desfasado(title, h1s[0] if h1s else None, md):
+        issues.append(_issue("title_desfasado", "high",
+            "El <title> anuncia la previa pero el H1/meta ya dan el resultado; "
+            "en Google la nota se muestra como si el evento no hubiera ocurrido"))
 
     # --- Estructura de subtítulos ---
     h2_count = parsed.get("h2_count", 0)
@@ -148,9 +234,10 @@ def audit_article(parsed, target_keyword=None):
 
     # --- Keyword en primer párrafo ---
     if kw and parsed.get("first_paragraph"):
-        if kw not in parsed["first_paragraph"].lower():
+        faltan_p = _keyword_missing(target_keyword, parsed["first_paragraph"])
+        if faltan_p:
             issues.append(_issue("keyword_intro", "low",
-                f"La keyword '{target_keyword}' no aparece en el primer párrafo"))
+                _falta_kw(target_keyword, faltan_p, "el primer párrafo")))
 
     # --- Enlazado interno ---
     if parsed.get("internal_links", 0) < ONPAGE["min_internal_links"]:

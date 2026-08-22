@@ -425,12 +425,29 @@ def save_onpage_audits(audits, run_date):
         "audited_date":   str(run_date),
         "url":            a["url"],
         "title":          a.get("title"),
+        # H1 y meta REALES de la nota (no la sugerencia): sin ellos el panel
+        # muestra solo el <title> y no se puede distinguir "la IA se equivocó"
+        # de "el <title> quedó desactualizado". Migración del 2026-08-22.
+        "h1":             a.get("h1"),
+        "meta_description": a.get("meta_description"),
         "target_keyword": a.get("target_keyword"),
         "score":          a.get("score"),
         "issues":         a.get("issues"),
         "suggestions":    a.get("suggestions"),   # reescritura LLM (título/meta/H2)
     } for a in audits]
-    sb.table("onpage_audits").insert(rows).execute()
+    try:
+        sb.table("onpage_audits").insert(rows).execute()
+    except Exception as e:
+        # Pre-flight igual que save_trends/save_gsc_data: si las columnas nuevas
+        # no existen todavía en un entorno sin migrar, se guarda sin ellas en vez
+        # de perder la auditoría entera.
+        if "h1" not in str(e) and "meta_description" not in str(e):
+            raise
+        logger.warning("onpage_audits sin columnas h1/meta_description; se guarda sin ellas")
+        for r in rows:
+            r.pop("h1", None)
+            r.pop("meta_description", None)
+        sb.table("onpage_audits").insert(rows).execute()
     logger.info(f"Guardadas {len(rows)} auditorías on-page")
 
 

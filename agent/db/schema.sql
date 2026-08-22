@@ -195,7 +195,9 @@ CREATE TABLE IF NOT EXISTS onpage_audits (
   id             uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   audited_date   date NOT NULL,
   url            text NOT NULL,
-  title          text,
+  title          text,            -- <title> real de la nota
+  h1             text,            -- H1 real (puede contradecir al title: eso ES el hallazgo)
+  meta_description text,          -- meta real
   target_keyword text,
   score          integer,
   issues         jsonb,
@@ -203,6 +205,11 @@ CREATE TABLE IF NOT EXISTS onpage_audits (
   created_at     timestamptz DEFAULT now()
 );
 ALTER TABLE onpage_audits ADD COLUMN IF NOT EXISTS suggestions jsonb;
+-- 2026-08-22: el panel mostraba solo el <title>, asi que una sugerencia correcta
+-- parecia inventada cuando el <title> era el desactualizado (nota con la previa
+-- en el title y el resultado ya en el H1 y la meta). APLICADAS en produccion.
+ALTER TABLE onpage_audits ADD COLUMN IF NOT EXISTS h1 text;
+ALTER TABLE onpage_audits ADD COLUMN IF NOT EXISTS meta_description text;
 
 CREATE INDEX IF NOT EXISTS idx_daily_insights_date  ON daily_insights(date DESC);
 CREATE INDEX IF NOT EXISTS idx_scoring_weights_date ON scoring_weights(date DESC);

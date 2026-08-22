@@ -68,17 +68,28 @@ def find_low_ctr_opportunities(gsc_data):
     for row in gsc_data:
         page = row["page"]
         if page not in by_page:
-            by_page[page] = {"impressions": 0, "clicks": 0}
+            by_page[page] = {"impressions": 0, "clicks": 0, "freshness": set()}
         by_page[page]["impressions"] += row.get("impressions", 0)
         by_page[page]["clicks"]      += row.get("clicks", 0)
+        if row.get("query_freshness"):
+            by_page[page]["freshness"].add(row["query_freshness"])
 
     opps = []
     for page, data in by_page.items():
         if data["impressions"] >= 500:
             ctr = data["clicks"] / data["impressions"] * 100 if data["impressions"] > 0 else 0
             if ctr <= 2.0:
+                # Vigencia de la PÁGINA: la mejor de sus queries. Una página con
+                # una sola query viva sigue mereciendo trabajo, aunque el resto
+                # de sus queries ya se hayan apagado. Se usa en run_morning para
+                # no auditar notas cuya demanda ya pasó.
+                f = data["freshness"]
+                vigencia = ("hot" if "hot" in f else
+                            "evergreen" if "evergreen" in f else
+                            "past" if f == {"past"} else None)
                 opps.append({"page": page, "impressions": data["impressions"],
-                             "clicks": data["clicks"], "ctr": round(ctr, 2)})
+                             "clicks": data["clicks"], "ctr": round(ctr, 2),
+                             "query_freshness": vigencia})
 
     return sorted(opps, key=lambda x: x["impressions"], reverse=True)[:20]
 

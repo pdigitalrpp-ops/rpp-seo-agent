@@ -249,26 +249,66 @@ def run():
 
     # Auditoría on-page: quick wins (con su keyword) + CTR bajo (title/meta a
     # reescribir) + top notas de ayer. Son las notas donde más rinde optimizar.
+    #
+    # DOS FILTROS que antes no estaban (2026-08-22):
+    #  1. `is_real_article`: sin él se auditaban LISTADOS. Visto en producción
+    #     el 21-ago: https://rpp.pe/ultimas-noticias entró con score 85 y hasta
+    #     recibió sugerencia de la IA. El filtro ya existía y se importa arriba,
+    #     simplemente no se aplicaba aquí.
+    #  2. VIGENCIA de la demanda (`query_freshness`, que ya calcula la Etapa 1
+    #     unas líneas más arriba): reescribir el título de un partido de hace
+    #     tres días no recupera nada — el tráfico ya pasó. Donde sí paga es en
+    #     lo que SIGUE ganando: "clima", "temblor hoy", "feriados", "dólar BCV".
+    #     Se descartan las `past`; las no clasificadas se conservan (rules-first:
+    #     no saber no es razón para tirar).
     low_ctr = opportunities.find_low_ctr_opportunities(gsc_search or [])
     audits = []
     audit_targets = []
-    for qw in quick_wins[:5]:
-        audit_targets.append((qw["page"], qw.get("query")))
-    for lc in low_ctr[:5]:
-        audit_targets.append((lc["page"], None))
-    for r in (marfeel_perf or [])[:3]:
-        if r.get("label"):
-            audit_targets.append((r["label"], None))
+    descartados = {"listado": 0, "demanda_apagada": 0}
+
+    def _agregar_objetivo(url, kw, vigencia=None):
+        if not url:
+            return
+        if not is_real_article(url):
+            descartados["listado"] += 1
+            return
+        if vigencia == "past":
+            descartados["demanda_apagada"] += 1
+            return
+        audit_targets.append((url, kw))
+
+    for qw in quick_wins[:8]:
+        _agregar_objetivo(qw["page"], qw.get("query"), qw.get("query_freshness"))
+    for lc in low_ctr[:8]:
+        _agregar_objetivo(lc["page"], None, lc.get("query_freshness"))
+    for r in (marfeel_perf or [])[:5]:
+        _agregar_objetivo(r.get("label"), None)
+    # Se piden 8/8/5 y no 5/5/3 porque ahora se descarta parte: sin holgura, un
+    # día con muchas queries `past` dejaría el panel casi vacío.
+    audit_targets = audit_targets[:12]
+    if descartados["listado"] or descartados["demanda_apagada"]:
+        logger.info(
+            f"Auditoría: descartados {descartados['listado']} listados y "
+            f"{descartados['demanda_apagada']} URLs con demanda apagada")
+
     seen = set()
     rewrite_items = []   # notas con problemas editoriales → reescritura LLM en batch
     for url, kw in audit_targets:
-        if not url or url in seen:
+        if url in seen:
             continue
         seen.add(url)
         parsed = parse_article(url)
         result = onpage_audit.audit_article(parsed, target_keyword=kw)
         result["target_keyword"] = kw
         result["title"] = parsed.get("title_tag")
+        # H1 y meta VIAJAN CON LA AUDITORÍA. Sin ellos el panel muestra solo el
+        # <title> y una sugerencia correcta parece inventada: caso real del
+        # 21-ago, una nota cuyo <title> seguía siendo la previa ("a qué hora
+        # empieza") mientras el H1 y la meta ya decían "Barcelona venció 2-1".
+        # El hallazgo era bueno — el título estaba desactualizado — pero sin ver
+        # el H1 no había forma de saberlo desde el panel.
+        result["h1"] = (parsed.get("h1s") or [None])[0]
+        result["meta_description"] = parsed.get("meta_description")
         editorial = [i for i in result.get("issues", []) if i.get("class") == "editorial"]
         if editorial and not parsed.get("error"):
             rewrite_items.append((result, {
