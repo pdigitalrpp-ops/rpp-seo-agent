@@ -35,6 +35,8 @@ no alerta.
 """
 
 import logging
+import math
+import re
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
@@ -52,10 +54,19 @@ logger = logging.getLogger(__name__)
 # datos reales del 2026-07-22 para que sismos/muertes/renuncias/partidos en
 # vivo disparen (alta), y explicadores de servicio (feriado, gratificaciones)
 # NO — tienen mucha cobertura pero cero señal de urgencia.
-W_NEWS     = 40   # nº de fuentes distintas × frescura
-W_RANK     = 15   # posición en el feed de Google Trends Perú
-W_URGENCY  = 30   # términos de "hecho rompiendo" en keyword/noticias/why
-W_MOMENTUM = 15   # tamaño del evento: max(growth de Trends, tracción en Marfeel)
+# RECALIBRADO 2026-08-22. Medido sobre 30 tendencias reales, la versión
+# anterior alertaba el 50% de todo lo que veía, y 23 de las 31 alertas de un
+# día eran deportes. Causa: `noticias` (40) y `rank` (15) están saturadas por
+# construcción — el radar garantiza 5 noticias por tendencia y solo trae el
+# top 10 —, así que repartían ~45 puntos a TODOS con el umbral en 55. Con solo
+# 10 puntos de margen real, la alerta la decidía un binario de 30.
+# Ahora la evidencia baja de peso (es NECESARIA, no suficiente) y los 65 puntos
+# que deciden son los dos que de verdad varían: el hecho rompiendo y el volumen
+# relativo al día.
+W_NEWS     = 25   # nº de fuentes distintas × frescura — evidencia, no urgencia
+W_RANK     = 10   # posición en el feed de Google Trends Perú
+W_URGENCY  = 35   # términos de "hecho rompiendo" en keyword/noticias/why
+W_VOLUME   = 30   # cuánto SOBRESALE su volumen respecto a la mediana del día
 
 # Términos que marcan un hecho noticioso rompiendo (no una demanda evergreen).
 # Se buscan sobre keyword + why_trending + titulares de noticias, en minúsculas
@@ -63,11 +74,22 @@ W_MOMENTUM = 15   # tamaño del evento: max(growth de Trends, tracción en Marfe
 URGENCY_TERMS = [
     "muere", "muerte", "fallece", "falleci", "murio", "murió", "luto",
     "sismo", "temblor", "terremoto", "huaico", "aluvion", "aluvión", "incendio",
-    "emergencia", "alerta", "tragedia", "accidente", "explosion", "explosión",
+    "emergencia", "tragedia", "accidente", "explosion", "explosión",
     "renuncia", "destituy", "vacancia", "captura", "detien", "allanamiento",
-    "gana", "ganó", "gano", "campeon", "campeón", "clasific", "eliminado",
-    "resultado", "en vivo", "en directo", "minuto a minuto",
-    "oficial", "confirma", "anuncia", "declara", "paro", "huelga", "golpe",
+    "campeon", "campeón", "eliminado", "paro", "huelga", "golpe",
+]
+
+# RETIRADAS de URGENCY_TERMS el 2026-08-22, y por qué. Eran vocabulario RUTINARIO
+# de la cobertura futbolística, no señal de que algo esté rompiendo: cualquier
+# partido genera notas de "resultados EN VIVO" y "tabla de posiciones". Medido
+# sobre 30 tendencias reales, disparaban 10 de los 14 aciertos de urgencia
+# ('resultado' 5 veces, 'en vivo' 3, 'en directo' 2, 'confirma' 2), y por eso
+# 23 de las 31 alertas de un día eran deportes. La lista existe para que
+# disparen sismos, muertes y renuncias — estaba haciendo lo contrario.
+# Se dejan anotadas para que nadie las reponga sin medirlo antes.
+URGENCY_TERMS_RETIRADOS = [
+    "gana", "ganó", "gano", "clasific", "resultado", "en vivo", "en directo",
+    "minuto a minuto", "oficial", "confirma", "anuncia", "declara", "alerta",
 ]
 
 
@@ -118,8 +140,16 @@ def _recency_weight(published_at, now):
 
 
 def _news_strength(news, now):
-    """0-1 según cuántas FUENTES distintas cubren el tema y qué tan frescas
-    están. Satura ~3 fuentes frescas = 1.0. Es el driver principal."""
+    """
+    0-1 según cuántas FUENTES distintas cubren el tema y qué tan frescas están.
+    Satura en 2 fuentes frescas.
+
+    Saturaba en 3 cuando era el driver principal (peso 40). Bajado a 2 el
+    2026-08-22 junto con el peso (25) por un caso concreto: una renuncia
+    ministerial cubierta por UN medio en los primeros minutos daba 0.33 y no
+    alertaba. Para un hecho rompiendo, esperar a que lo publiquen tres medios
+    es llegar tarde — que es justo lo contrario de para qué existe esta etapa.
+    """
     if not news:
         return 0.0
     by_source = {}
@@ -131,20 +161,61 @@ def _news_strength(news, now):
         by_source[src] = max(by_source.get(src, 0.0), w)
     if not by_source:
         return 0.0
-    return min(sum(by_source.values()) / 3.0, 1.0)
+    return min(sum(by_source.values()) / 2.0, 1.0)
 
 
 def _rank_strength(rank):
-    """Prominencia por posición en el feed de Trends (1 = lo más buscado)."""
+    """
+    Prominencia por posición en el feed de Trends (1 = lo más buscado).
+
+    REESCALADO 2026-08-22 al rango que de verdad llega: el radar pide el top 10,
+    así que los tramos viejos (<=5 -> 1.0, <=10 -> 0.7, <=15 -> 0.4) dejaban a
+    TODOS los candidatos entre 0.7 y 1.0 — media 0.85 sobre 30 tendencias. Una
+    dimensión que le da casi lo mismo a todos no ordena nada.
+    """
     if not rank or rank <= 0:
-        return 0.4
-    if rank <= 5:
+        return 0.3
+    if rank <= 2:
         return 1.0
+    if rank <= 5:
+        return 0.6
     if rank <= 10:
-        return 0.7
-    if rank <= 15:
-        return 0.4
-    return 0.2
+        return 0.3
+    return 0.1
+
+
+def volume_reference(trends):
+    """
+    Mediana de `approx_traffic` del día, para medir cuánto sobresale un tema.
+    None si ninguna tendencia trae volumen (filas anteriores a la migración del
+    2026-08-21) — en ese caso se cae al comportamiento anterior.
+    """
+    vols = sorted(v for v in ((t.get("approx_traffic") or 0) for t in (trends or [])) if v > 0)
+    return vols[len(vols) // 2] if vols else None
+
+
+def _volume_strength(approx_traffic, mediana):
+    """
+    0-1 según cuántas VECES la mediana del día se busca este tema.
+
+    Reemplaza al viejo `momentum`, que era `growth_score` — el 0-10 comprimido
+    donde 100 y 900 búsquedas caen ambas en 1.5. Medido: media 0.20 y CERO
+    tendencias en el máximo, o sea 15 puntos que le daban ~3 a todos.
+    El volumen real sí varía (100 a 5.000 en un mismo día, factor 50).
+
+    Escala logarítmica porque Google publica el volumen en escalones que
+    también lo son (100, 200, 500, 1.000, 2.000, 5.000…): x1 la mediana = 0,
+    x2 = 0.5, x4 o más = 1.0. Saturar en x4 y no en x8 sale de calibrar: x4 son
+    DOS escalones completos por encima de lo normal del día (500 -> 2.000), que
+    ya es un pico de verdad; exigir x8 dejaba el techo tan bajo que ni el tema
+    más buscado del día llegaba al umbral.
+    """
+    if not mediana or not approx_traffic:
+        return 0.0
+    veces = approx_traffic / float(mediana)
+    if veces <= 1.0:
+        return 0.0
+    return min(math.log(veces, 2) / 2.0, 1.0)
 
 
 def _urgency_strength(text):
@@ -203,6 +274,10 @@ def _merge_cluster(cluster_items):
         "category":     rep.get("category", "otros"),
         "rank":         min((it.get("rank", 99) for it in cluster_items), default=99),
         "growth_score": max((it.get("growth_score") or 0 for it in cluster_items), default=0),
+        # El volumen del evento es el del tema MAS buscado del cluster: si un
+        # sismo aparece como 'temblor hoy' y 'igp', el evento vale lo que la
+        # suma de atencion que despierta, no lo que valga su fragmento menor.
+        "approx_traffic": max((it.get("approx_traffic") or 0 for it in cluster_items), default=0),
         "own_momentum": max((it.get("own_momentum") or 0.0 for it in cluster_items), default=0.0),
         "why_trending": next((it.get("why_trending") for it in cluster_items if it.get("why_trending")), None),
         "news":         merged_news[:8],
@@ -210,8 +285,19 @@ def _merge_cluster(cluster_items):
     }
 
 
-def alert_worthiness(event, now):
-    """Alertabilidad 0-100 de un evento ya consolidado."""
+def alert_worthiness(event, now, volumen_mediana=None):
+    """
+    Alertabilidad 0-100 de un evento ya consolidado.
+
+    Dos caminos para alertar, que es la decision editorial tomada el
+    2026-08-22 ("rompiendo + eventos grandes con volumen real"):
+      - un HECHO ROMPIENDO (sismo, muerte, renuncia...) -> W_URGENCY;
+      - un evento programado que DESPIERTA MUCHA MAS BUSQUEDA de lo normal
+        (un Alianza Atletico-Sporting Cristal, no un Queretaro-Toluca)
+        -> W_VOLUME.
+    La evidencia de noticias y el rank siguen contando, pero ya no alcanzan
+    solos para cruzar el umbral: son condicion necesaria, no suficiente.
+    """
     news_n = _news_strength(event.get("news"), now)
     rank_n = _rank_strength(event.get("rank"))
     urgency_text = " ".join([
@@ -220,13 +306,19 @@ def alert_worthiness(event, now):
         " ".join(n.get("title") or "" for n in (event.get("news") or [])),
     ]).lower()
     urgency_n = _urgency_strength(urgency_text)
-    momentum_n = max(
-        scoring._norm_growth(event.get("growth_score", 0)),
-        min(max(event.get("own_momentum", 0.0), 0.0), 1.0),
-    )
+
+    if volumen_mediana:
+        volume_n = _volume_strength(event.get("approx_traffic"), volumen_mediana)
+    else:
+        # Sin volumen en la base (filas previas a la migracion) se cae al
+        # comportamiento anterior en vez de regalar 0: rules-first.
+        volume_n = max(
+            scoring._norm_growth(event.get("growth_score", 0)),
+            min(max(event.get("own_momentum", 0.0), 0.0), 1.0),
+        )
 
     total = (W_NEWS * news_n + W_RANK * rank_n
-             + W_URGENCY * urgency_n + W_MOMENTUM * momentum_n)
+             + W_URGENCY * urgency_n + W_VOLUME * volume_n)
 
     # Sin hecho noticioso claro (why_trending null) casi nunca es alertable:
     # penaliza fuerte para dejar fuera queries genéricas/evergreen.
@@ -234,6 +326,48 @@ def alert_worthiness(event, now):
         total *= 0.5
 
     return round(min(total, 100.0), 1)
+
+
+# Palabras que no identifican un evento: unen titulares que no tienen relacion.
+_TOKENS_VACIOS = {
+    "vs", "contra", "hoy", "ayer", "del", "los", "las", "por", "con", "para",
+    "posiciones", "tabla", "resultado", "resultados", "partido", "fecha",
+    "que", "una", "uno", "sus", "the", "and",
+}
+
+
+def event_tokens(title):
+    """Palabras significativas de un titulo, en minusculas y sin tildes."""
+    txt = (title or "").lower()
+    for a, b in (("á","a"),("é","e"),("í","i"),("ó","o"),("ú","u"),("ñ","n")):
+        txt = txt.replace(a, b)
+    return {w for w in re.findall(r"[a-z0-9]+", txt)
+            if len(w) > 3 and w not in _TOKENS_VACIOS}
+
+
+def same_event(titulo_a, titulo_b):
+    """
+    ¿Dos alertas son el MISMO evento aunque el titulo cambie entre corridas?
+
+    `cluster_events` ya funde fragmentos DENTRO de una corrida por URL de
+    noticia compartida, pero entre corridas solo se comparaba el titulo exacto
+    — y Google Trends renombra el mismo evento cada pocas horas. El 2026-08-21
+    eso produjo TRES alertas del mismo partido ("alianza atletico - sporting
+    cristal", "posiciones de alianza atletico contra sporting cristal",
+    "posiciones de sporting cristal") y DOS de otro ("tigres - atlante",
+    "tigres vs").
+
+    Se consideran el mismo evento si comparten >=2 palabras significativas, o
+    si las de uno estan contenidas en las del otro y comparten una palabra
+    larga (el caso "tigres vs" dentro de "tigres - atlante").
+    """
+    a, b = event_tokens(titulo_a), event_tokens(titulo_b)
+    if not a or not b:
+        return False
+    comunes = a & b
+    if len(comunes) >= 2:
+        return True
+    return (a <= b or b <= a) and any(len(w) >= 5 for w in comunes)
 
 
 def build_alerts(enriched_trends, sections=None, now=None):
@@ -248,11 +382,14 @@ def build_alerts(enriched_trends, sections=None, now=None):
     if not enriched_trends:
         return []
     now = now or datetime.now(timezone.utc)
+    # Referencia del dia: contra que se compara "mucho volumen". Se calcula
+    # sobre las tendencias de ESTA corrida, que son el top del dia.
+    mediana = volume_reference(enriched_trends)
 
     alerts = []
     for cluster in cluster_events(enriched_trends):
         event = _merge_cluster(cluster)
-        worth = alert_worthiness(event, now)
+        worth = alert_worthiness(event, now, volumen_mediana=mediana)
         if worth < ALERT_WORTHINESS_THRESHOLD:
             continue
 

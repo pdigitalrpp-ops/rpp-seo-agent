@@ -66,10 +66,13 @@ export default function AlertasClient({
   alerts,
   decayList,
   lastRun,
+  totalAlerts = null,
 }: {
   alerts: Alert[]
   decayList: DecayItem[]
   lastRun: string | null
+  /** Total real de alertas activas. `alerts` viene capado a 30 por la consulta. */
+  totalAlerts?: number | null
 }) {
   const [severity, setSeverity] = useState<string>(TODAS)
   const [type, setType] = useState<string>(TODAS)
@@ -124,7 +127,10 @@ export default function AlertasClient({
               !alerts.length ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
             }`}
           >
-            {alerts.length} activa(s)
+            {totalAlerts ?? alerts.length} activa(s)
+            {totalAlerts != null && totalAlerts > alerts.length && (
+              <span className="font-normal"> · se muestran {alerts.length}</span>
+            )}
           </span>
           <LastUpdated kind="radar" finishedAt={lastRun} />
         </div>

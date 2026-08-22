@@ -25,7 +25,7 @@ from notifiers import notify
 from writers.supabase_writer import (
     save_run_log, save_recommendations, save_alerts, save_trends,
     save_competitor_articles, get_scoring_weights, count_recent_alerts,
-    get_recent_alert_titles, get_trends_context,
+    get_recent_alerts, refresh_alert, get_trends_context,
     get_watch_keywords, save_watch_hits, get_competitor_sources,
 )
 
@@ -218,17 +218,36 @@ def run():
         trends_data, sections=KNOWN_SECTIONS_FALLBACK,
     )
     try:
-        already_alerted = get_recent_alert_titles(hours=ALERT_DEDUP_HOURS)
+        already_alerted = get_recent_alerts(hours=ALERT_DEDUP_HOURS)
     except Exception:
-        already_alerted = set()
+        already_alerted = []
 
     sent_alerts = []
     for alert in candidate_alerts:
         section = alert["section"]
         title_key = (alert.get("title") or "").lower().strip()
-        # Dedup por evento: el radar corre cada ~10 min; no re-alertar lo mismo.
-        if title_key in already_alerted:
-            logger.info(f"Dedup: '{title_key}' ya alertado en las últimas {ALERT_DEDUP_HOURS}h; se omite")
+        # Dedup por EVENTO, no por título exacto: Google Trends renombra el
+        # mismo hecho entre corridas y así se colaban tres alertas del mismo
+        # partido en un día (ver alerting.same_event).
+        previa = next((a for a in already_alerted
+                       if alerting.same_event(title_key, a.get("title"))), None)
+        if previa:
+            # La alerta guarda una foto fija: si la descripción cambió (p.ej.
+            # porque se regeneró el contexto de la tendencia) se REFRESCA en
+            # vez de dejar el texto viejo colgado, que era lo que pasaba antes.
+            nueva_desc = alert.get("description")
+            if nueva_desc and nueva_desc != previa.get("description"):
+                try:
+                    refresh_alert(previa["id"], description=nueva_desc,
+                                  url=alert.get("url"), score=alert.get("score"))
+                    previa["description"] = nueva_desc
+                    logger.info(f"Dedup: '{title_key}' ya alertado como "
+                                f"'{previa.get('title')}'; se refrescó su descripción")
+                    continue
+                except Exception as e:
+                    logger.warning(f"No se pudo refrescar la alerta '{title_key}': {e}")
+            logger.info(f"Dedup: '{title_key}' es el mismo evento que "
+                        f"'{previa.get('title')}' (últimas {ALERT_DEDUP_HOURS}h); se omite")
             continue
         try:
             recent = count_recent_alerts(section, minutes=60)
@@ -239,7 +258,8 @@ def run():
             continue
         notify.dispatch_alert(alert)   # a Teams/WhatsApp si hay responsable
         sent_alerts.append(alert)
-        already_alerted.add(title_key)
+        already_alerted.append({"id": None, "title": title_key,
+                                "description": alert.get("description")})
         logger.info(
             f"🚨 Alerta [{alert['severity']}] {alert['score']}/100 · "
             f"'{title_key}' → {section} ({alert.get('_n_sources', 0)} fuentes)"

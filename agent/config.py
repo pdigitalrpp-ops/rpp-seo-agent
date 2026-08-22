@@ -182,8 +182,21 @@ URGENCY_THRESHOLDS = {
 # approx_traffic. El viejo ALERT_SCORE_THRESHOLD=75 sobre el score de
 # recomendación dejaba la sección vacía días enteros (solo cruzaban deportes
 # grandes); se reemplazó por estos umbrales, calibrados con datos reales.
-ALERT_WORTHINESS_THRESHOLD     = 55   # alerta si la alertabilidad >= esto
-ALERT_SEVERITY_HIGH            = 78   # >= esto → severidad "alta", si no "media"
+# BAJADO de 55 a 50 el 2026-08-22 al recalibrar los pesos. No es aflojar: con
+# los pesos nuevos el techo total bajó (la evidencia dejó de repartir 40 puntos
+# a todos), así que 55 dejaba fuera el caso que MÁS importa — un hecho rompiendo
+# cubierto todavía por un solo medio, que daba 53.5. Contra las tendencias
+# reales del 21-ago, bajar a 50 no deja entrar ninguna de más.
+ALERT_WORTHINESS_THRESHOLD     = 50   # alerta si la alertabilidad >= esto
+# RECALIBRADO 2026-08-22 con la aritmética de los pesos nuevos, no a ojo:
+# sin término de urgencia el techo es W_NEWS + W_RANK + W_VOLUME = 25+10+30 = 65,
+# y con término de urgencia y evidencia completa el piso es 25+10+35 = 70. Poner
+# el corte en 68 hace que la etiqueta signifique algo concreto y sin casos
+# especiales en el código: **ALTA = hay un hecho rompiendo** (sismo, muerte,
+# renuncia); **media = evento grande que conviene atender** por volumen, que
+# nunca puede llegar a 68. Antes estaba en 78 y el 78% de las alertas salía
+# "alta" — una etiqueta que sale casi siempre no distingue nada.
+ALERT_SEVERITY_HIGH            = 68   # >= esto → severidad "alta", si no "media"
 ALERT_MAX_PER_SECTION_PER_HOUR = 3    # anti-spam por sección/hora
 ALERT_DEDUP_HOURS              = 12   # no re-alertar el mismo evento en esta ventana
 

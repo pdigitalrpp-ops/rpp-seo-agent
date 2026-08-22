@@ -377,18 +377,41 @@ def count_recent_alerts(section, minutes=60):
     return result.count or 0
 
 
-def get_recent_alert_titles(hours=12):
+def get_recent_alerts(hours=12):
     """
-    Títulos (normalizados a minúsculas) de las alertas emitidas en las últimas
-    N horas. Sirve para no re-alertar el MISMO evento en cada corrida del radar
-    (que corre cada ~10 min): sin esto, un sismo generaría una alerta nueva
-    cada ciclo hasta toparse con el anti-spam por sección.
+    Alertas emitidas en las últimas N horas, con lo necesario para decidir si
+    una candidata es el MISMO evento (y entonces refrescarla en vez de crear
+    otra). El radar corre cada ~10 min: sin esto un sismo generaría una alerta
+    nueva cada ciclo hasta toparse con el anti-spam por sección.
+
+    Devuelve dicts {id, title, description, url, score}. Antes esto devolvía
+    solo el set de títulos, y comparar el título EXACTO no bastaba: Google
+    Trends renombra el mismo evento entre corridas (ver alerting.same_event).
     """
     sb = _get_client()
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
-    result = (sb.table("alerts").select("title")
+    result = (sb.table("alerts").select("id,title,description,url,score")
               .gte("created_at", cutoff).execute())
-    return {(r.get("title") or "").lower().strip() for r in (result.data or [])}
+    return list(result.data or [])
+
+
+def refresh_alert(alert_id, description=None, url=None, score=None):
+    """
+    Actualiza una alerta ya emitida. Existe porque la alerta guarda una FOTO
+    FIJA de la descripción y la URL: cuando el contexto de la tendencia se
+    regenera (p.ej. al reordenar la evidencia el 2026-08-22), la alerta seguía
+    mostrando el texto viejo y el dedup impedía corregirla. Caso real: la
+    alerta de "kick" siguió diciendo que era por unas fotos en Times Square
+    horas después de que /trends ya mostrara la explicación correcta.
+    """
+    campos = {k: v for k, v in
+              (("description", description), ("url", url), ("score", score))
+              if v is not None}
+    if not campos:
+        return False
+    sb = _get_client()
+    sb.table("alerts").update(campos).eq("id", alert_id).execute()
+    return True
 
 
 def save_onpage_audits(audits, run_date):

@@ -13,10 +13,13 @@ const ALERT_WINDOW_HOURS = 24
 export default async function AlertasPage() {
   const cutoff = new Date(Date.now() - ALERT_WINDOW_HOURS * 60 * 60 * 1000).toISOString()
 
-  const [{ data: activeAlerts }, { data: decayList }, lastRun] = await Promise.all([
+  const [{ data: activeAlerts, count: totalAlerts }, { data: decayList }, lastRun] = await Promise.all([
     supabase
       .from("alerts")
-      .select("id, severity, type, section, score, date, title, description, url")
+      // `count: exact` porque el badge decía "30 activa(s)" cuando 30 era el
+      // LÍMITE de la consulta, no el número real (el 21-ago había 31).
+      .select("id, severity, type, section, score, date, title, description, url",
+              { count: "exact" })
       .eq("resolved", false)
       .gte("created_at", cutoff)
       .order("created_at", { ascending: false })
@@ -35,6 +38,7 @@ export default async function AlertasPage() {
   return (
     <AlertasClient
       alerts={(activeAlerts as Alert[]) ?? []}
+      totalAlerts={totalAlerts ?? null}
       decayList={(decayList as DecayItem[]) ?? []}
       lastRun={lastRun}
     />
