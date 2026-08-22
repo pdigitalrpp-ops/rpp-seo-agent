@@ -6,6 +6,7 @@ import { TagBadge } from "@/components/ui/Pill"
 import { InfoTooltip } from "@/components/ui/InfoTooltip"
 import { LastUpdated } from "@/components/ui/LastUpdated"
 import { RunAgentButton } from "@/components/RunAgentButton"
+import { todayInLima } from "@/lib/dates"
 
 export const revalidate = 60
 
@@ -43,7 +44,10 @@ function SectionHeader({
 }
 
 export default async function DashboardHome() {
-  const today = new Date().toISOString().split("T")[0]
+  // Día de LIMA, no de UTC: el agente escribe sus fechas bajo TZ=America/Lima
+  // y el runtime de Vercel corre en UTC, así que de 19:00 a 23:59 hora de
+  // Lima esto pedía el día siguiente y la página salía vacía. Ver lib/dates.ts.
+  const today = todayInLima()
 
   const [{ data: runs }, { data: recs }, { data: alerts }, { data: trends }, { data: insights }] = await Promise.all([
     supabase.from("agent_runs").select("*").order("finished_at", { ascending: false }).limit(1),

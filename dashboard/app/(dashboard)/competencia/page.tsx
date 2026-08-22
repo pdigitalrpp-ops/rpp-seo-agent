@@ -1,11 +1,15 @@
 import { supabase } from "@/lib/supabase"
 import { getLastRunFinishedAt } from "@/lib/lastRun"
 import CompetenciaClient, { Article, CompetitorSource } from "./CompetenciaClient"
+import { todayInLima } from "@/lib/dates"
 
 export const revalidate = 60
 
 export default async function CompetenciaPage() {
-  const today = new Date().toISOString().split("T")[0]
+  // Día de LIMA, no de UTC: el agente escribe sus fechas bajo TZ=America/Lima
+  // y el runtime de Vercel corre en UTC, así que de 19:00 a 23:59 hora de
+  // Lima esto pedía el día siguiente y la página salía vacía. Ver lib/dates.ts.
+  const today = todayInLima()
 
   const [{ data }, { data: sourcesData }, lastRun] = await Promise.all([
     supabase
@@ -28,22 +32,10 @@ export default async function CompetenciaPage() {
   const articles = (data as Article[]) ?? []
   const sources = (sourcesData as CompetitorSource[]) ?? []
 
-  if (!articles.length) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-gray-900">Competencia</h1>
-          <span className="text-sm text-gray-500">{today}</span>
-        </div>
-        <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center text-gray-500 text-sm">
-          Sin datos de competencia para hoy.
-          {sources.length === 0 && " No hay ningún medio configurado."}
-          {sources.length > 0 && !sources.some((s) => s.active) &&
-            " Todos los medios están pausados."}
-        </div>
-      </div>
-    )
-  }
-
+  // NO hay early return por falta de notas: la administracion de medios vive
+  // dentro de CompetenciaClient, asi que cortar aqui la dejaba inalcanzable
+  // justo cuando mas falta hace (sin medios configurados, o con todos
+  // pausados, no habria forma de arreglarlo desde el panel). El cliente ya
+  // sabe pintar su propio estado vacio.
   return <CompetenciaClient articles={articles} sources={sources} date={today} lastRun={lastRun} />
 }

@@ -647,7 +647,36 @@ Las notas suyas que ya se recolectaron NO se borran: ` +
               </div>
             ))}
             {list.length === 0 && (
-              <p className="px-4 py-8 text-sm text-gray-500 text-center">Sin notas para este filtro.</p>
+              // Se distingue "el filtro no devuelve nada" de "todavia no hay
+              // nada recolectado hoy": decirle "sin notas para este filtro" a
+              // alguien que no ha tocado ningun filtro no explica nada.
+              <div className="px-4 py-8 text-center">
+                {articles.length === 0 ? (
+                  <>
+                    <p className="text-sm font-medium text-gray-700">
+                      Aún no hay notas recolectadas hoy
+                    </p>
+                    <p className="mx-auto mt-1 max-w-md text-xs text-gray-500">
+                      El agente revisa a la competencia cada ~10 minutos entre las 5 a.m. y
+                      las 11 p.m. La primera recolección del día llega poco después de las
+                      5 a.m.; mientras tanto puedes administrar los medios desde el panel
+                      de la izquierda.
+                    </p>
+                    {!sources.some((x) => x.active) && sources.length > 0 && (
+                      <p className="mt-2 text-xs font-medium text-amber-700">
+                        Ojo: todos los medios están pausados, así que no se recolectará nada.
+                      </p>
+                    )}
+                    {sources.length === 0 && (
+                      <p className="mt-2 text-xs font-medium text-amber-700">
+                        No hay ningún medio configurado. Añade uno para empezar.
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-sm text-gray-500">Sin notas para este filtro.</p>
+                )}
+              </div>
             )}
           </div>
         </div>
