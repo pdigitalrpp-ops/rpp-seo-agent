@@ -188,7 +188,12 @@ def trend_origin(news):
     un rebote global, y el panel debe decirlo en vez de mostrar titulares en
     ingles como si fueran la noticia local.
     """
-    origenes = {n.get("origin") for n in (news or [])}
+    origenes = {n.get("origin") for n in (news or []) if n.get("origin")}
+    # Sin evidencia no se afirma nada: devolver ORIGEN_FUERA aqui haria que una
+    # tendencia sin noticias apareciera como "solo prensa extranjera", que es
+    # una afirmacion que el dato no sostiene.
+    if not origenes:
+        return None
     if ORIGEN_PERU in origenes:
         return ORIGEN_PERU
     if ORIGEN_ES in origenes:
