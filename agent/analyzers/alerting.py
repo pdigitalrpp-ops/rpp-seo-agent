@@ -42,7 +42,8 @@ import re
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
-from analyzers import scoring
+from analyzers import scoring, evidence
+from text_keys import normalize_text
 from config import (
     ALERT_WORTHINESS_THRESHOLD, ALERT_SEVERITY_HIGH,
 )
@@ -76,8 +77,11 @@ URGENCY_TERMS = [
     "sismo", "temblor", "terremoto", "huaico", "aluvion", "aluvión", "incendio",
     "emergencia", "tragedia", "accidente", "explosion", "explosión",
     "renuncia", "destituy", "vacancia", "captura", "detien", "allanamiento",
-    "campeon", "campeón", "eliminado", "paro", "huelga", "golpe",
+    "campeon", "campeón", "eliminado", "paro", "huelga", "golpe de estado",
 ]
+# "golpe" a secas se cambió por "golpe de estado" (2026-08-22): estaba puesto
+# para el golpe de Estado, pero como palabra suelta es vocabulario futbolístico
+# corriente ("golpe de cabeza", "duro golpe para el equipo").
 
 # RETIRADAS de URGENCY_TERMS el 2026-08-22, y por qué. Eran vocabulario RUTINARIO
 # de la cobertura futbolística, no señal de que algo esté rompiendo: cualquier
@@ -91,6 +95,19 @@ URGENCY_TERMS_RETIRADOS = [
     "gana", "ganó", "gano", "clasific", "resultado", "en vivo", "en directo",
     "minuto a minuto", "oficial", "confirma", "anuncia", "declara", "alerta",
 ]
+
+
+def _normaliza(texto):
+    """Minusculas, sin tildes, sin puntuacion. Reusa la del dedup de titulares."""
+    return normalize_text(texto)
+
+
+# Se compila una sola vez.  no sirve con tildes en los limites, asi que la
+# comparacion se hace sobre texto YA normalizado (sin tildes ni puntuacion).
+_URGENCY_RE = re.compile(
+    r"(?:^|\s)(?:" + "|".join(
+        re.escape(normalize_text(t)).replace(r"\ ", r"\s+") for t in URGENCY_TERMS
+    ) + r")(?:\s|$)")
 
 
 def _domain(url):
@@ -141,8 +158,18 @@ def _recency_weight(published_at, now):
 
 def _news_strength(news, now):
     """
-    0-1 según cuántas FUENTES distintas cubren el tema y qué tan frescas están.
-    Satura en 2 fuentes frescas.
+    0-1 según cuántas FUENTES PERUANAS distintas cubren el tema y qué tan
+    frescas están. Satura en 2 fuentes frescas.
+
+    PONDERADO POR ORIGEN desde el 2026-08-22, tras medir un día completo: el
+    panel seguía sacando ~40 alertas diarias y **31 de 40 eran deportes**, casi
+    todas fútbol europeo (Hull City-Manchester United, Wehen Wiesbaden-
+    Leverkusen, Everton-Crystal Palace...). Son tendencias reales con volumen
+    real, pero NO son "eventos grandes" para una audiencia peruana — y contar
+    cualquier fuente las hacía indistinguibles de un Alianza Atlético-Sporting
+    Cristal. La señal que sí los separa ya existía en el proyecto
+    (`analyzers/evidence.is_peruvian_source`, por dominio) y alerting no la
+    usaba.
 
     Saturaba en 3 cuando era el driver principal (peso 40). Bajado a 2 el
     2026-08-22 junto con el peso (25) por un caso concreto: una renuncia
@@ -152,16 +179,24 @@ def _news_strength(news, now):
     """
     if not news:
         return 0.0
-    by_source = {}
+    peruanas, extranjeras = {}, {}
     for n in news:
         src = (n.get("source") or _domain(n.get("source_url") or n.get("url")) or "").lower().strip()
         if not src:
             continue
         w = _recency_weight(n.get("published_at"), now)
-        by_source[src] = max(by_source.get(src, 0.0), w)
-    if not by_source:
-        return 0.0
-    return min(sum(by_source.values()) / 2.0, 1.0)
+        destino = peruanas if evidence.is_peruvian_source(n) else extranjeras
+        destino[src] = max(destino.get(src, 0.0), w)
+
+    fuerza_pe = min(sum(peruanas.values()) / 2.0, 1.0)
+    if fuerza_pe > 0:
+        return fuerza_pe
+    # Sin NINGUN medio peruano la evidencia vale poco, pero no cero: un hecho
+    # global que acaba de romper puede tener solo teletipos extranjeros en sus
+    # primeros minutos, y esa es justo la alerta que no se quiere perder. Con
+    # 0.3 de techo, un tema sin cobertura peruana solo alerta si ADEMAS trae
+    # termino de urgencia — nunca por volumen solo.
+    return min(min(sum(extranjeras.values()) / 2.0, 1.0), 0.3)
 
 
 def _rank_strength(rank):
@@ -219,7 +254,19 @@ def _volume_strength(approx_traffic, mediana):
 
 
 def _urgency_strength(text):
-    return 1.0 if any(term in text for term in URGENCY_TERMS) else 0.0
+    """
+    ¿Hay un hecho rompiendo? Se busca por PALABRA, no por subcadena.
+
+    Con `term in text` los terminos cortos entraban donde no debian y en
+    cobertura futbolistica eso es constante: "paro" esta dentro de *disparo*,
+    *reparo* y *amparo*; "golpe" dentro de *golpeo*. Medido el 2026-08-22, por
+    ahi se colaba un Ipswich-Sunderland como severidad ALTA. Es el mismo error
+    de subcadena que ya habia aparecido con los medios peruanos ("depor" dentro
+    de "Deportes") y con las keywords de la auditoria.
+    """
+    if not text:
+        return 0.0
+    return 1.0 if _URGENCY_RE.search(text) else 0.0
 
 
 def _news_key_urls(item):
@@ -361,6 +408,16 @@ def same_event(titulo_a, titulo_b):
     si las de uno estan contenidas en las del otro y comparten una palabra
     larga (el caso "tigres vs" dentro de "tigres - atlante").
     """
+    # Igualdad literal PRIMERO. Sin esto, dos alertas con el MISMO titulo corto
+    # no se reconocian: `event_tokens("kick")` = {"kick"}, un solo token de 4
+    # letras, y la regla de subconjunto exige uno de >=5. Resultado medido el
+    # 2026-08-22: "kick" alerto a las 00:06 y otra vez a las 00:16, y "la liga"
+    # dos veces la misma manana. Era una REGRESION respecto al dedup viejo por
+    # titulo exacto, que esto justamente venia a mejorar.
+    na, nb = _normaliza(titulo_a), _normaliza(titulo_b)
+    if na and na == nb:
+        return True
+
     a, b = event_tokens(titulo_a), event_tokens(titulo_b)
     if not a or not b:
         return False
