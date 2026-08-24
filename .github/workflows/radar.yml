@@ -1,12 +1,25 @@
 name: SEO Agent — Radar en tiempo real
 
-# Corre cada ~10 min en horario diurno de Lima (05:00–23:59).
-# Nota: el cron de GitHub Actions puede retrasarse bajo carga; ~10 min es el
-# piso viable sin infra dedicada. El límite real lo marca Marfeel (1 req/min).
+# EL RELOJ PRINCIPAL YA NO VIVE AQUÍ (2026-08-24).
+#
+# El `schedule` de GitHub Actions es best-effort y se desprioriza: pedía */10 y
+# entregaba 27 min de mediana, **con el 7% de los huecos por encima de una hora**
+# (peor caso medido: 1h51 en pleno día, sobre 242 intervalos de 7 días). Un
+# `workflow_dispatch`, en cambio, arranca en 9 segundos.
+#
+# Ahora dispara un cron externo (cron-job.org) cada 15 min contra
+# `/api/run-agent` del dashboard, que hace el dispatch con el token guardado del
+# lado servidor. Ese endpoint defiende además la pausa de madrugada, para que un
+# cron mal configurado no despierte al agente a las 3 a.m.
+#
+# ESTOS CRON SE QUEDAN COMO RED DE SEGURIDAD, cada 2 horas: si el servicio
+# externo se cae o alguien borra el job, el agente sigue corriendo con la
+# cadencia vieja en vez de apagarse en silencio. Cuestan ~10 corridas/día
+# (~$0,10/día) y evitan un punto único de fallo en un tercero gratuito.
 on:
   schedule:
-    - cron: '*/10 10-23 * * *'   # 10:00–23:59 UTC = 05:00–18:59 Lima
-    - cron: '*/10 0-4 * * *'     # 00:00–04:59 UTC = 19:00–23:59 Lima
+    - cron: '0 10,12,14,16,18,20,22 * * *'   # UTC = 05,07,09,11,13,15,17 Lima
+    - cron: '0 0,2,4 * * *'                  # UTC = 19,21,23 Lima
   workflow_dispatch:
 
 concurrency:

@@ -32,3 +32,28 @@ export function todayInLima(): string {
 export function limaDayOf(when: Date | number): string {
   return new Date(when).toLocaleDateString("en-CA", { timeZone: TZ_LIMA })
 }
+
+/**
+ * Hora de Lima (0-23) de un instante. Se usa para la ventana activa del radar:
+ * el agente descansa de madrugada y esa pausa debe respetarse aunque el cron
+ * que lo dispara viva fuera (cron-job.org), que puede quedar mal configurado.
+ */
+export function limaHour(when: Date | number = new Date()): number {
+  const h = Number(
+    new Date(when).toLocaleString("en-US", {
+      timeZone: TZ_LIMA, hour: "2-digit", hour12: false,
+    })
+  )
+  // `hour12: false` en en-US devuelve "24" a medianoche en varias versiones de
+  // Node en vez de "00". Sin esta línea, la medianoche de Lima quedaba fuera de
+  // cualquier comparación por rango.
+  return h === 24 ? 0 : h
+}
+
+/** Ventana activa del radar: 05:00–23:59 hora de Lima. */
+export const RADAR_HOUR_FROM = 5
+export const RADAR_HOUR_TO = 24
+export function dentroDeVentanaRadar(when: Date | number = new Date()): boolean {
+  const h = limaHour(when)
+  return h >= RADAR_HOUR_FROM && h < RADAR_HOUR_TO
+}
