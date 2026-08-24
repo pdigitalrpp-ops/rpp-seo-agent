@@ -412,3 +412,46 @@ CREATE INDEX IF NOT EXISTS idx_own_traffic_sections_date
 
 ALTER TABLE own_traffic_sections ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "public_read" ON own_traffic_sections FOR SELECT USING (true);
+
+
+-- ===========================================================================
+-- RELOJ DEL RADAR — pg_cron dentro de la propia base (2026-08-24)
+-- APLICADO en produccion. Se documenta aqui para que el schema siga siendo el
+-- registro completo de lo que existe en Supabase.
+--
+-- POR QUE. El `schedule` de GitHub Actions es best-effort: pedia */10 y
+-- entregaba 27 min de mediana. Medido sobre 242 intervalos de 7 dias en ventana
+-- activa, el 41% de los huecos pasaba de media hora y el 7% de UNA hora, con un
+-- peor caso de 1h51 en pleno dia. Un workflow_dispatch arranca en 9 segundos.
+-- O sea: lo que GitHub desprioriza es el disparador, no la ejecucion.
+--
+-- QUE NO CAMBIO. El agente sigue corriendo en GitHub Actions y el token de
+-- GitHub sigue en Vercel. Lo unico que se movio es quien mira el reloj.
+--
+--   pg_cron (cada 15 min) -> pg_net POST -> /api/run-agent -> workflow_dispatch
+--
+-- Los cron de radar.yml se conservan cada 2 HORAS como red de seguridad: si
+-- pg_cron se cae o alguien borra los jobs, el agente sigue corriendo en vez de
+-- apagarse en silencio (~10 corridas/dia, ~$0,10).
+-- ===========================================================================
+-- create extension if not exists pg_cron;
+-- create extension if not exists pg_net;
+--
+-- El secreto se genera DENTRO de la base y se guarda en Vault, para que su
+-- valor no pase por ningun chat ni log. Debe coincidir con CRON_SECRET en las
+-- variables de entorno de Vercel. Para leerlo (unico sitio donde se expone):
+--   select decrypted_secret from vault.decrypted_secrets
+--    where name = 'radar_cron_secret';
+--
+-- Funciones (security definer, revocadas a anon/authenticated):
+--   public.radar_cron_disparar()      -> hace el POST, devuelve el id de pg_net
+--   public.radar_cron_diagnostico(n)  -> ultimas n respuestas de net._http_response
+--
+-- pg_net es ASINCRONO y no lanza excepcion si el endpoint falla. Sin mirar el
+-- diagnostico, un 401 por secreto desincronizado se veria igual que todo bien.
+--
+-- Jobs (pg_cron programa en UTC; Lima es UTC-5 sin horario de verano):
+--   radar-dia    */15 10-23 * * *   -> 05:00-18:59 Lima
+--   radar-noche  */15 0-4  * * *    -> 19:00-23:59 Lima
+-- La pausa de madrugada esta protegida dos veces: no hay job fuera de esas
+-- horas, y el endpoint responde `skipped` si le llega algo fuera de ventana.
