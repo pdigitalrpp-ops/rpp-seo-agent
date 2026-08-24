@@ -43,15 +43,32 @@ function titleDesactualizado(title?: string | null, h1?: string | null, meta?: s
 // repite dentro de una nota (p.ej. 3 issues distintos con check='title'), así
 // que se agrega un slot por ocurrencia: '<url>|<check>|<n>'.
 const platformKey = (check: string, message: string) => `platform|${check}|${message}`
+
+/**
+ * Checks RETIRADOS que siguen guardados en auditorías viejas.
+ *
+ * "Title muy largo" se retiró el 2026-08-22 — los títulos largos de RPP son
+ * deliberados. Pero el panel muestra 7 días, así que las auditorías anteriores
+ * lo seguirían mostrando durante una semana. Se filtra al PINTAR en vez de
+ * reescribir el histórico en la base: el registro de lo que se auditó ese día
+ * queda intacto y el panel deja de pedir algo que ya se decidió que no se hace.
+ */
+const RETIRADOS = [/title muy largo/i]
+const estaRetirado = (it: any) => RETIRADOS.some((re) => re.test(it.message ?? ""))
+
 function editorialWithIds(a: any): { it: any; id: string }[] {
   const counts: Record<string, number> = {}
   return (a.issues ?? [])
     .filter((it: any) => issueClass(it) === "editorial")
     .map((it: any) => {
+      // El slot se calcula ANTES de descartar los retirados: es la posición de
+      // la ocurrencia dentro de su check y es la clave del checklist. Filtrar
+      // antes correría la numeración y dejaría huérfanas las marcas ya hechas.
       const slot = counts[it.check] ?? 0
       counts[it.check] = slot + 1
       return { it, id: `${a.url}|${it.check}|${slot}` }
     })
+    .filter(({ it }: { it: any }) => !estaRetirado(it))
 }
 
 function CheckBox({ done, onToggle }: { done: boolean; onToggle: () => void }) {
