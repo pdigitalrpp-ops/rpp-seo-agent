@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase"
 import { getLastRunFinishedAt } from "@/lib/lastRun"
+import { todayInLima } from "@/lib/dates"
 import AlertasClient, { Alert, DecayItem } from "./AlertasClient"
 
 export const revalidate = 60
@@ -8,10 +9,15 @@ export const revalidate = 60
 // jugó/pasó y seguir mostrándolas como activas es engañoso (ver CLAUDE.md,
 // mismo patrón que la vigencia de demanda en /busqueda y la ventana de
 // /auditoria). No se auto-resuelven en la DB — se ocultan por antigüedad acá.
-const ALERT_WINDOW_HOURS = 24
-
+//
+// Filtro por DÍA CALENDARIO de Lima (2026-08-25, a pedido del usuario), no por
+// una ventana rolling de 24h: con `created_at >= ahora-24h` el panel mezclaba
+// alertas de ayer con las de hoy (a las 10 de la mañana, todavía quedaban 14h
+// de ayer dentro de la ventana). Mismo criterio que ya usan Recomendaciones,
+// Tendencias y Competencia (ver lib/dates.ts) — se filtra por la columna
+// `date`, no por `created_at`.
 export default async function AlertasPage() {
-  const cutoff = new Date(Date.now() - ALERT_WINDOW_HOURS * 60 * 60 * 1000).toISOString()
+  const today = todayInLima()
 
   const [{ data: activeAlerts, count: totalAlerts }, { data: decayList }, lastRun] = await Promise.all([
     supabase
@@ -21,7 +27,7 @@ export default async function AlertasPage() {
       .select("id, severity, type, section, score, date, title, description, url",
               { count: "exact" })
       .eq("resolved", false)
-      .gte("created_at", cutoff)
+      .eq("date", today)
       .order("created_at", { ascending: false })
       .limit(30),
 
