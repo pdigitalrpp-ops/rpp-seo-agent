@@ -110,6 +110,25 @@ NON_EDITORIAL_DOMAINS = [
 OWN_SOURCE_MARKERS = ["rpp.pe", "rpp noticias"]
 
 # ---------------------------------------------------------------------------
+# Terminos EXCLUIDOS permanentemente del feed de Trends
+# ---------------------------------------------------------------------------
+# "radio exitosa en vivo" (rank #2, 100+ busquedas, 2026-08-25) disparo una
+# alerta de severidad media (57.5/100) cuya evidencia era autorreferencial:
+# Google matcheaba el keyword contra los titulares MAS RECIENTES de Exitosa
+# Noticias (un paro, un accidente, el Papa...), no contra hechos que expliquen
+# por que se busca "radio exitosa" — la gente sintoniza esa radio en vivo, no
+# esta reaccionando a esas notas. Decision del usuario (2026-08-25): descartar
+# permanentemente cualquier tendencia de este competidor, no solo bajarle el
+# score. Se matchea por SUBCADENA sobre el keyword normalizado (sin
+# tildes/puntuacion, ver text_keys.normalize_text) — "radio exitosa" son 2
+# palabras, sin riesgo de falso positivo por subcadena corta (a diferencia de
+# "paro" dentro de "disparo" en alerting.py). Lista AMPLIABLE a mano si algun
+# dia aparece otro competidor con el mismo problema.
+TRENDS_EXCLUDED_TERMS = [
+    "radio exitosa",
+]
+
+# ---------------------------------------------------------------------------
 # Secciones de rpp.pe
 # La taxonomía REAL se deriva en runtime de la dimensión `section` de Marfeel
 # (collectors/marfeel.py -> fetch_sections). Esta lista es solo fallback.

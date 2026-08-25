@@ -8,11 +8,18 @@ import feedparser
 import requests
 from pytrends.request import TrendReq
 from tenacity import retry, stop_after_attempt, wait_exponential
-from config import GOOGLE_TRENDS_CATEGORIES
+from config import GOOGLE_TRENDS_CATEGORIES, TRENDS_EXCLUDED_TERMS
+from text_keys import normalize_text
 
 logger = logging.getLogger(__name__)
 
 TRENDS_RSS_URL = "https://trends.google.com/trending/rss?geo={geo}"
+
+
+def _is_excluded(keyword):
+    """Terminos bloqueados permanentemente (ver TRENDS_EXCLUDED_TERMS)."""
+    kw = normalize_text(keyword)
+    return any(term in kw for term in TRENDS_EXCLUDED_TERMS)
 
 
 def _get_pytrends():
@@ -58,6 +65,7 @@ def _parse_trends_xml(xml_text, geo, limit):
     root = ET.fromstring(xml_text)
     channel = root.find("channel")
     results = []
+    n_excluded = 0
     for item in channel.findall("item"):
         kw, traffic, news = "", 0, []
         for child in item:
@@ -84,6 +92,9 @@ def _parse_trends_xml(xml_text, geo, limit):
                     news.append(n)
         if not kw:
             continue
+        if _is_excluded(kw):
+            n_excluded += 1
+            continue
         results.append({
             "keyword":        kw,
             "rank":           len(results) + 1,
@@ -94,6 +105,8 @@ def _parse_trends_xml(xml_text, geo, limit):
         })
         if len(results) >= limit:
             break
+    if n_excluded:
+        logger.info(f"Trends: {n_excluded} tendencia(s) descartada(s) por termino excluido (TRENDS_EXCLUDED_TERMS)")
     return results
 
 
@@ -116,14 +129,14 @@ def fetch_trends_rss(geo="PE", limit=20):
 
     feed = feedparser.parse(url)
     results = []
-    for i, entry in enumerate(feed.entries[:limit]):
+    for entry in feed.entries[:limit]:
         traffic = _parse_traffic(entry.get("ht_approx_traffic", ""))
         kw = (entry.get("title") or "").strip()
-        if not kw:
+        if not kw or _is_excluded(kw):
             continue
         results.append({
             "keyword":        kw,
-            "rank":           i + 1,
+            "rank":           len(results) + 1,
             "geo":            geo,
             "approx_traffic": traffic,
             "growth_score":   _traffic_to_score(traffic),
