@@ -143,42 +143,48 @@ def run():
 
     # "Por qué es tendencia": noticias asociadas por Google Trends (ht:news_item,
     # la evidencia directa) + Google News por keyword como complemento + resumen
-    # LLM. Se reusa lo ya generado hoy (las tendencias se repiten entre corridas
-    # del radar) — solo las keywords nuevas consultan Google News y gastan LLM.
+    # LLM. El resumen del LLM SÍ se reusa dentro del día (cuesta cuota) — las
+    # noticias NO (son gratis, solo RSS) desde el 2026-08-25.
     try:
         existing = get_trends_context(today)
     except Exception as e:
         logger.warning(f"No se pudo leer el contexto previo de tendencias: {e}")
         existing = {}
-    # Versión del pipeline de contexto: se guarda en cada noticia (news[].v) y
-    # solo se reusa contexto de la MISMA versión. Subirla fuerza a regenerar
-    # noticias y explicaciones en la siguiente corrida (p.ej. al cambiar el
-    # prompt o las fuentes) sin parchar datos a mano.
-    # v3 (2026-08-22): la evidencia se ORDENA por cercania a Peru en vez de
-    # concatenarse, y cada noticia se etiqueta con su origen (analyzers/
-    # evidence.py). Subir la version obliga a regenerar el contexto de todas
-    # las tendencias en la siguiente corrida, que es justo lo que se quiere:
-    # las guardadas con v2 traen los titulares en ingles arriba.
+    # Versión del pipeline de contexto: viaja en cada noticia (news[].v).
+    # Subirla sirve para invalidar el `why_trending` cacheado de un dia a otro
+    # (p.ej. al cambiar el prompt o las fuentes) sin parchar datos a mano.
     TREND_CONTEXT_VERSION = 3
+    now = datetime.now(timezone.utc)
     to_explain = []
     for item in trends_data:
         prev = existing.get(item["keyword"]) or {}
+        # REFRESCADO SIEMPRE, no solo la primera vez que se ve la keyword hoy
+        # (fix 2026-08-25). Antes, si una keyword ya habia aparecido hoy, se
+        # reusaba la foto de noticias congelada de esa primera corrida durante
+        # el resto del dia — "Alianza Lima pierde la punta tras fecha 6" seguia
+        # apareciendo como recomendacion INMEDIATO horas despues de que los
+        # medios ya cubrian la fecha 7, porque el radar nunca volvia a mirar.
+        # Las dos fuentes de evidencia juntas, ORDENADAS por cercanía a la
+        # audiencia peruana y luego por frescura — no concatenadas. Antes iban
+        # primero los ht:news_item de Google Trends, que NO están localizados:
+        # para "kick" adjuntaban Ligue 1 en inglés y empujaban fuera a ATV Perú
+        # y América TV, que sí habían encontrado la historia real (la
+        # streamer Zully en Kick.com). De ahí salían el titular del panel,
+        # el resumen del LLM y la cuenta de medios peruanos del score.
+        crudo = (list(item.get("trends_news") or [])
+                 + trend_news.fetch_news_for_keyword(item["keyword"]))
+        item["news"] = [dict(n, v=TREND_CONTEXT_VERSION)
+                        for n in evidence.rank_news(crudo, limit=5, now=now)]
+        # El resumen del LLM SI se reusa (es lo caro): si ya existe para esta
+        # keyword hoy, se conserva aunque las noticias se hayan refrescado.
+        # Se sigue respetando la version — un resumen guardado con el
+        # algoritmo de evidencia viejo (news[].v distinto) no se reusa, igual
+        # que antes, para poder invalidar el dia entero subiendo el numero.
         prev_news = prev.get("news") or []
         if prev_news and prev_news[0].get("v") == TREND_CONTEXT_VERSION:
-            item["news"] = prev_news
             item["why_trending"] = prev.get("why_trending")
         else:
-            # Las dos fuentes de evidencia juntas, ORDENADAS por cercanía a la
-            # audiencia peruana — no concatenadas. Antes iban primero los
-            # ht:news_item de Google Trends, que NO están localizados: para
-            # "kick" adjuntaban Ligue 1 en inglés y empujaban fuera a ATV Perú
-            # y América TV, que sí habían encontrado la historia real (la
-            # streamer Zully en Kick.com). De ahí salían el titular del panel,
-            # el resumen del LLM y la cuenta de medios peruanos del score.
-            crudo = (list(item.get("trends_news") or [])
-                     + trend_news.fetch_news_for_keyword(item["keyword"]))
-            item["news"] = [dict(n, v=TREND_CONTEXT_VERSION)
-                            for n in evidence.rank_news(crudo, limit=5)]
+            item["why_trending"] = None
         if not item.get("why_trending") and item["news"]:
             to_explain.append(item)
 

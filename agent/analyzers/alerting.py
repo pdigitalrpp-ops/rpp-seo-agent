@@ -118,44 +118,6 @@ def _domain(url):
         return ""
 
 
-def _parse_dt(s):
-    """Parsea un published_at ISO/RFC a datetime UTC aware, o None."""
-    if not s:
-        return None
-    txt = str(s).strip()
-    try:
-        dt = datetime.fromisoformat(txt.replace("Z", "+00:00"))
-        return (dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)).astimezone(timezone.utc)
-    except ValueError:
-        pass
-    try:
-        from email.utils import parsedate_to_datetime
-        dt = parsedate_to_datetime(txt)
-        if not dt:
-            return None
-        return (dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)).astimezone(timezone.utc)
-    except (TypeError, ValueError):
-        return None
-
-
-def _recency_weight(published_at, now):
-    """Frescura 0.1-1.0 de una noticia. Desconocida = 0.5: el feed ya es de
-    ≤2 días (Google News when:2d), así que 'sin fecha' no es 'viejo'."""
-    dt = _parse_dt(published_at)
-    if not dt:
-        return 0.5
-    hours = (now - dt).total_seconds() / 3600.0
-    if hours <= 6:
-        return 1.0
-    if hours <= 12:
-        return 0.8
-    if hours <= 24:
-        return 0.5
-    if hours <= 48:
-        return 0.3
-    return 0.1
-
-
 def _news_strength(news, now):
     """
     0-1 según cuántas FUENTES PERUANAS distintas cubren el tema y qué tan
@@ -184,7 +146,7 @@ def _news_strength(news, now):
         src = (n.get("source") or _domain(n.get("source_url") or n.get("url")) or "").lower().strip()
         if not src:
             continue
-        w = _recency_weight(n.get("published_at"), now)
+        w = evidence.recency_weight(n.get("published_at"), now)
         destino = peruanas if evidence.is_peruvian_source(n) else extranjeras
         destino[src] = max(destino.get(src, 0.0), w)
 

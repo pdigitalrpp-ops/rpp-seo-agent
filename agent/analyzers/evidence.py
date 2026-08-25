@@ -40,6 +40,7 @@ audiencia peruana, y ademas ETIQUETAR el origen para poder decir en el panel
 """
 
 import re
+from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 from config import (
@@ -149,23 +150,35 @@ def tag_origin(item):
     return item
 
 
-def _relevancia(item):
+def _relevancia(item, now):
     """
-    Mayor = mas cerca de la audiencia peruana. El orden importa mas que los
-    numeros exactos: medio peruano > cobertura en espanol > extranjero, y a
-    igualdad gana la busqueda localizada sobre lo que adjunta Google Trends.
+    Tupla de orden: mayor = mas cerca de la audiencia peruana Y mas reciente.
+    Primero manda el origen (medio peruano > cobertura en espanol >
+    extranjero) y la localizacion (busqueda localizada > lo que adjunta
+    Google Trends, que no lo esta) — eso no se toca. La FRESCURA entra como
+    tercer criterio (2026-08-25): antes, dentro de un mismo origen, dos
+    noticias empataban y ganaba quien llegara primero al array (orden mas o
+    menos arbitrario de la busqueda), asi que un resultado de partido ya
+    jugado podia seguir apareciendo primero que la nota de la fecha
+    siguiente, ambas de medios peruanos. Con frescura como desempate, la nota
+    mas nueva del mismo origen gana — que es la que de verdad conviene
+    mostrarle al LLM que escribe el titular.
     """
     origen = item.get("origin")
     base = {ORIGEN_PERU: 4, ORIGEN_ES: 2}.get(origen, 0)
     # `from_trends` marca los ht:news_item, que no estan localizados.
-    return base + (0 if item.get("from_trends") else 1)
+    localizada = 0 if item.get("from_trends") else 1
+    frescura = recency_weight(item.get("published_at"), now)
+    return (base, localizada, frescura)
 
 
-def rank_news(items, limit=5):
+def rank_news(items, limit=5, now=None):
     """
-    Ordena la evidencia por cercania a Peru, quita basura y deduplica por
-    titular. Estable: a igual relevancia respeta el orden de entrada.
+    Ordena la evidencia por cercania a Peru y frescura, quita basura y
+    deduplica por titular. Estable: a igual relevancia respeta el orden de
+    entrada.
     """
+    now = now or datetime.now(timezone.utc)
     limpios, vistos = [], set()
     for n in items or []:
         if is_junk(n):
@@ -175,8 +188,52 @@ def rank_news(items, limit=5):
             continue
         vistos.add(clave)
         limpios.append(tag_origin(dict(n)))
-    limpios.sort(key=_relevancia, reverse=True)
+    limpios.sort(key=lambda n: _relevancia(n, now), reverse=True)
     return limpios[:limit]
+
+
+def parse_dt(s):
+    """
+    Parsea un published_at ISO/RFC a datetime UTC aware, o None.
+
+    Movido aca desde alerting.py (2026-08-25) para que scoring.py tambien
+    pueda medir frescura de evidencia sin crear un import circular
+    (alerting.py YA importa `scoring`, asi que scoring no puede importar de
+    vuelta de alerting). evidence.py no depende de ninguno de los dos.
+    """
+    if not s:
+        return None
+    txt = str(s).strip()
+    try:
+        dt = datetime.fromisoformat(txt.replace("Z", "+00:00"))
+        return (dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)).astimezone(timezone.utc)
+    except ValueError:
+        pass
+    try:
+        from email.utils import parsedate_to_datetime
+        dt = parsedate_to_datetime(txt)
+        if not dt:
+            return None
+        return (dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)).astimezone(timezone.utc)
+    except (TypeError, ValueError):
+        return None
+
+
+def recency_weight(published_at, now):
+    """Frescura 0.1-1.0 de una noticia. Desconocida = 0.5 (ver parse_dt)."""
+    dt = parse_dt(published_at)
+    if not dt:
+        return 0.5
+    hours = (now - dt).total_seconds() / 3600.0
+    if hours <= 6:
+        return 1.0
+    if hours <= 12:
+        return 0.8
+    if hours <= 24:
+        return 0.5
+    if hours <= 48:
+        return 0.3
+    return 0.1
 
 
 def trend_origin(news):
