@@ -29,6 +29,16 @@ export async function POST(req: NextRequest) {
     return error(`Solo pueden ingresar correos @${ALLOWED_DOMAIN}.`, 400)
   }
 
+  // Solo los NOMBRES de lo que falta, nunca los valores: sirve para leer en
+  // los logs de Vercel qué variable no llegó a este entorno (Preview vs
+  // Production es la confusión típica).
+  const faltan = ["SUPABASE_SERVICE_ROLE_KEY", "GMAIL_USER", "GMAIL_APP_PASSWORD", "NEXTAUTH_SECRET"]
+    .filter((k) => !process.env[k])
+  if (faltan.length) {
+    console.error(`[request-code] faltan variables en ${process.env.VERCEL_ENV ?? "?"}: ${faltan.join(", ")}`)
+    return error("El acceso por correo no está configurado todavía.", 503)
+  }
+
   let db: ReturnType<typeof supabaseAdmin>
   try { db = supabaseAdmin() } catch {
     return error("El acceso por correo no está configurado todavía.", 503)
