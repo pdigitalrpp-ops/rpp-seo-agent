@@ -19,13 +19,26 @@ export const MAX_CODES_PER_HOUR = 60    // global: protege la cuota de Gmail (~5
 
 let admin: SupabaseClient | null = null
 
-/** Cliente con service_role, creado a demanda (el build no tiene la key). */
+/**
+ * Cliente con service_role, creado a demanda (el build no tiene la key).
+ *
+ * Todas sus consultas van con `cache: "no-store"`. Sin eso, Next 14 guarda la
+ * respuesta en su Data Cache SIN vencimiento cuando la llama una página con
+ * `dynamic = "force-dynamic"` (force-dynamic re-renderiza la página, pero no
+ * apaga la caché de fetch) — y esa caché sobrevive a los deploys. Pasó en
+ * /admin: la RPC de estadísticas quedó congelada en su primera respuesta y el
+ * panel mostró 1 usuario con 3 en la base (2026-09-23). Son datos de acceso y
+ * de escritura: nunca deben salir de una caché.
+ */
 export function supabaseAdmin(): SupabaseClient {
   if (admin) return admin
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!url || !key) throw new Error("Falta SUPABASE_SERVICE_ROLE_KEY en Vercel")
-  admin = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
+  admin = createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { fetch: (input, init) => fetch(input, { ...init, cache: "no-store" }) },
+  })
   return admin
 }
 

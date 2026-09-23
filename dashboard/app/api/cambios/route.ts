@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { revalidatePath } from "next/cache"
 import { getToken } from "next-auth/jwt"
 import { isAllowedEmail, isSessionFresh } from "@/lib/access"
 import { supabaseAdmin } from "@/lib/accessServer"
@@ -20,6 +21,11 @@ type Body = { entity?: string; action?: string; id?: string; data?: Record<strin
 
 const TABLAS = { tema: "watch_keywords", medio: "competitor_sources", hallazgo: "watch_hits" } as const
 type Entidad = keyof typeof TABLAS
+
+// Pestaña que muestra cada tabla. Tras un cambio se regenera al momento: con
+// el ISR de 60 s, quien agregaba un tema y recargaba no lo veía, creía que
+// había fallado y lo volvía a agregar ("Ya está en la lista").
+const PESTANA: Record<Entidad, string> = { tema: "/radar", medio: "/competencia", hallazgo: "/radar" }
 
 // Campos que el panel puede escribir en cada tabla. Todo lo demás se ignora:
 // el cliente no decide ids, fechas ni columnas que maneja el agente.
@@ -117,6 +123,7 @@ export async function POST(req: NextRequest) {
     return err("No se pudo guardar. Intenta de nuevo.", 500)
   }
   if (action !== "borrar") despues = (res.data as Record<string, unknown>) ?? null
+  revalidatePath(PESTANA[entity])
 
   // El historial no debe tumbar el cambio: si falla, se avisa en los logs.
   const { error: errLog } = await db.from("dashboard_change_log").insert({
