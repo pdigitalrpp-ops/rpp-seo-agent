@@ -35,6 +35,25 @@ export function isSessionFresh(loginAt: unknown, now: number = Date.now()): bool
   return typeof loginAt === "number" && now - loginAt >= 0 && now - loginAt < SESSION_MS
 }
 
+/**
+ * Pestañas restringidas a correos concretos (2026-09-23, pedido del usuario:
+ * Búsqueda & Discover y Auditoría solo para él). El middleware BLOQUEA la ruta
+ * y el menú la OCULTA; lo que decide es el middleware, ocultar es cortesía.
+ * Para dar acceso a alguien más, agregar su correo a la lista.
+ */
+export const RESTRICTED_ROUTES: { prefix: string; emails: string[] }[] = [
+  { prefix: "/busqueda",  emails: ["flozano@gruporpp.com.pe"] },
+  { prefix: "/auditoria", emails: ["flozano@gruporpp.com.pe"] },
+]
+
+/** ¿Puede este correo ver esta ruta? Las rutas no listadas son para todos. */
+export function canAccessPath(pathname: string, email: unknown): boolean {
+  const e = normalizeEmail(email)
+  return RESTRICTED_ROUTES.every((r) =>
+    !(pathname === r.prefix || pathname.indexOf(r.prefix + "/") === 0) || r.emails.indexOf(e) >= 0
+  )
+}
+
 /** Destino tras ingresar: solo rutas internas, para no abrir una redirección a otro sitio. */
 export function safeCallback(raw: string | null | undefined): string {
   if (!raw || raw.charAt(0) !== "/" || raw.charAt(1) === "/" || raw.charAt(1) === "\\") return "/"

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getToken } from "next-auth/jwt"
-import { isAllowedEmail, isSessionFresh } from "@/lib/access"
+import { canAccessPath, isAllowedEmail, isSessionFresh } from "@/lib/access"
 
 /**
  * Candado del dashboard (2026-09-23). Toda página y API exige una sesión de un
@@ -15,6 +15,13 @@ import { isAllowedEmail, isSessionFresh } from "@/lib/access"
 export async function middleware(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
   if (token && isAllowedEmail(token.email) && isSessionFresh(token.loginAt)) {
+    // Con sesión, pero pestaña restringida a otros correos: al Resumen.
+    if (!canAccessPath(req.nextUrl.pathname, token.email)) {
+      const home = req.nextUrl.clone()
+      home.pathname = "/"
+      home.search = ""
+      return NextResponse.redirect(home)
+    }
     return NextResponse.next()
   }
 
