@@ -13,6 +13,21 @@ dashboard web.
 
 **Fecha último avance:** 2026-09-23
 
+**2026-09-23 — Categorías de competencia en caché: solo se pagan las notas
+nuevas.** Cada corrida re-clasificaba con el LLM TODOS los titulares de la
+ventana (~240-470, ~70% del gasto de OpenAI) aunque casi todos se hubieran
+clasificado 15 min antes. Con el radar pasando de ~30 a ~76 corridas/día eso
+llevaba el costo de ~$9 a ~$23/mes. Ahora `competitor_articles.category_source`
+('llm'|'rules', migración aplicada) marca de dónde salió la categoría y
+`get_llm_categories()` devuelve las del LLM de los últimos 2 días por URL;
+`provider.categorize_articles(..., known=)` solo manda al modelo el resto y
+devuelve `(nuevas, reusadas)`. Una categoría 'rules' (corrida con el LLM caído)
+NO se congela: se reintenta en la siguiente. **Decisión del usuario:** una nota
+ya clasificada no se reclasifica aunque cambie el prompt — las notas de
+competencia quedan obsoletas en horas. La primera corrida tras el deploy
+clasifica todo (filas viejas sin category_source); desde la segunda, el log
+dice cuántas reusó.
+
 **2026-09-23 — /radar: editar un tema sin borrarlo + Next 14.2.35 (rama
 radar-editar-tema, verificada en preview antes de mergear):**
 - Botón ✎ por tema: reusa el formulario de alta precargado y hace UPDATE, así

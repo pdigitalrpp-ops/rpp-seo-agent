@@ -218,6 +218,9 @@ def save_competitor_articles(articles):
             "url":          a.get("url"),
             "published_at": a.get("published_at"),
             "category":     a.get("category"),
+            # "llm" | "rules": solo las del LLM se reusan en la corrida
+            # siguiente (ver get_llm_categories).
+            "category_source": a.get("category_source") or "rules",
         }
         # Cobertura RPP: solo se escribe si se calculó en esta corrida (la clave
         # existe en el dict). Así una corrida sin feed propio no pisa con NULL
@@ -238,6 +241,29 @@ def save_competitor_articles(articles):
     # (y más precisa, gracias al LLM).
     sb.table("competitor_articles").upsert(rows, on_conflict="url").execute()
     logger.info(f"Guardados {len(rows)} artículos de competencia")
+
+
+def get_llm_categories(days=2):
+    """
+    {url: categoría} de las notas de competencia que el LLM YA clasificó en
+    los últimos `days` días, para no volver a pagarlas en cada corrida (ver
+    provider.categorize_articles). Se filtra por fecha y no por la lista de
+    URLs de la corrida: ~470 URLs largas en un `in` no caben en la URL del GET
+    de PostgREST. Paginado con .range() porque PostgREST corta a ~1000 filas.
+    """
+    sb = _get_client()
+    cutoff = str(date.today() - timedelta(days=days))
+    out, start, page = {}, 0, 1000
+    while True:
+        rows = (sb.table("competitor_articles").select("url,category")
+                .eq("category_source", "llm").gte("fetched_date", cutoff)
+                .order("url").range(start, start + page - 1).execute().data or [])
+        for r in rows:
+            if r.get("url") and r.get("category"):
+                out[r["url"]] = r["category"]
+        if len(rows) < page:
+            return out
+        start += page
 
 
 def save_recommendations(recs, run_date):

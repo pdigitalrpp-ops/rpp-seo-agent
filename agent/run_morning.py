@@ -21,6 +21,7 @@ from collectors.rpp_articles import parse_article
 from analyzers import decay, onpage_audit, opportunities, freshness
 from llm import provider as llm
 from writers.supabase_writer import (
+    get_llm_categories,
     save_run_log, save_traffic, save_traffic_channels, save_gsc_data,
     save_competitor_articles, save_decay, save_daily_insights,
     save_scoring_weights, save_onpage_audits, save_serp_opportunities, save_traffic_totals,
@@ -180,9 +181,18 @@ def run():
     # Rules-first: si no hay proveedor o falla, quedan las categorías por reglas.
     if competitor_data:
         cats = list(dict.fromkeys(list(CATEGORY_KEYWORDS.keys()) + ["otros"]))
-        n_cat = llm.categorize_articles(competitor_data, cats)
+        # Solo se pagan las notas nuevas: las que el LLM ya clasificó en
+        # corridas anteriores reusan su categoría (ver get_llm_categories).
+        try:
+            known = get_llm_categories()
+        except Exception as e:
+            logger.warning(f"No se pudo leer las categorías ya guardadas ({e}); se clasifica todo")
+            known = {}
+        n_cat = llm.categorize_articles(competitor_data, cats, known=known)
         if n_cat is not None:
-            logger.info(f"✅ LLM categorizó {n_cat}/{len(competitor_data)} titulares de competencia")
+            nuevas, reusadas = n_cat
+            logger.info(f"✅ LLM categorizó {nuevas} titulares de competencia nuevos "
+                        f"y reusó {reusadas} ya clasificados (de {len(competitor_data)})")
 
     # Nota: la cobertura RPP (rpp_has_coverage) se calcula SOLO en el radar, no
     # aquí. El benchmark trae competencia de 24h pero el feed propio de RPP es de

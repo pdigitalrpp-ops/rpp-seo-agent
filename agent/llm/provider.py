@@ -117,35 +117,57 @@ def categorize_topics(keywords, categories):
 _ARTICLE_CHUNK = 40
 
 
-def categorize_articles(articles, categories):
+def categorize_articles(articles, categories, known=None):
     """
     Re-categoriza titulares (p.ej. de competencia) con el LLM, en lotes de
     _ARTICLE_CHUNK. MUTA article["category"] in-place solo donde el LLM
-    respondió con una categoría válida; el resto conserva la categoría por
-    reglas (rules-first). Devuelve cuántos artículos quedaron con categoría
-    del LLM, o None si no hay proveedor activo.
+    respondió con una categoría válida, y marca article["category_source"] =
+    "llm"; el resto conserva la categoría por reglas (rules-first).
+
+    `known` = {url: categoría} que el LLM YA asignó en corridas anteriores
+    (supabase_writer.get_llm_categories). Esas notas NO se vuelven a mandar:
+    antes el radar re-clasificaba los ~240-470 titulares de la ventana en CADA
+    corrida — el ~70% del gasto de OpenAI — aunque casi todos ya se hubieran
+    clasificado 15 min antes. Una nota ya clasificada no se reclasifica aunque
+    cambie el prompt: decisión del usuario (2026-09-23), las notas de
+    competencia quedan obsoletas en pocas horas.
+
+    Devuelve (nuevas, reusadas): cuántas clasificó el LLM en esta corrida y
+    cuántas tomaron la categoría guardada. None si no hay proveedor activo.
     """
     provider = _active_provider()
     if not provider or not articles:
         return None
 
+    known = known or {}
+    reusadas = 0
+    for a in articles:
+        cat = known.get(a.get("url"))
+        if cat in categories:
+            a["category"] = cat
+            a["category_source"] = "llm"
+            reusadas += 1
+
     # Títulos únicos (la competencia repite titulares entre feeds/corridas)
-    titles = list(dict.fromkeys(a.get("title") for a in articles if a.get("title")))
+    titles = list(dict.fromkeys(
+        a.get("title") for a in articles
+        if a.get("title") and a.get("category_source") != "llm"))
     mapping = {}
     for i in range(0, len(titles), _ARTICLE_CHUNK):
         result = provider.categorize_topics(titles[i:i + _ARTICLE_CHUNK], categories)
         if result:
             mapping.update(result)
-    if not mapping:
-        return None
 
-    updated = 0
+    nuevas = 0
     for a in articles:
+        if a.get("category_source") == "llm":
+            continue
         cat = mapping.get(a.get("title"))
         if cat:
             a["category"] = cat
-            updated += 1
-    return updated
+            a["category_source"] = "llm"
+            nuevas += 1
+    return nuevas, reusadas
 
 
 # Lote para clasificar vigencia de queries GSC (mismo motivo que _ARTICLE_CHUNK:

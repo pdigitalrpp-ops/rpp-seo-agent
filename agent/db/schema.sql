@@ -51,7 +51,10 @@ CREATE TABLE IF NOT EXISTS competitor_articles (
   rpp_has_coverage    boolean,
   rpp_matched_title   text,
   rpp_matched_url     text,
-  coverage_checked_at timestamptz
+  coverage_checked_at timestamptz,
+  -- 'llm' | 'rules' (2026-09-23): las de 'llm' se reusan entre corridas sin
+  -- volver a llamar al modelo (writers.get_llm_categories). Ya aplicada.
+  category_source     text
 );
 
 CREATE TABLE IF NOT EXISTS recommendations (

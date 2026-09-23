@@ -23,6 +23,7 @@ from analyzers import scoring, opportunities, coverage, alerting, evidence
 from llm import provider as llm
 from notifiers import notify
 from writers.supabase_writer import (
+    get_llm_categories,
     save_run_log, save_recommendations, save_alerts, save_trends,
     save_competitor_articles, get_scoring_weights, count_recent_alerts,
     get_recent_alerts, refresh_alert, get_trends_context,
@@ -76,9 +77,18 @@ def run():
     # Rules-first: si no hay proveedor o falla, quedan las categorías por reglas.
     if competitor_data:
         cats_articles = list(dict.fromkeys(list(CATEGORY_KEYWORDS.keys()) + ["otros"]))
-        n_cat = llm.categorize_articles(competitor_data, cats_articles)
+        # Solo se pagan las notas nuevas: las que el LLM ya clasificó en
+        # corridas anteriores reusan su categoría (ver get_llm_categories).
+        try:
+            known = get_llm_categories()
+        except Exception as e:
+            logger.warning(f"No se pudo leer las categorías ya guardadas ({e}); se clasifica todo")
+            known = {}
+        n_cat = llm.categorize_articles(competitor_data, cats_articles, known=known)
         if n_cat is not None:
-            logger.info(f"✅ LLM categorizó {n_cat}/{len(competitor_data)} titulares de competencia")
+            nuevas, reusadas = n_cat
+            logger.info(f"✅ LLM categorizó {nuevas} titulares de competencia nuevos "
+                        f"y reusó {reusadas} ya clasificados (de {len(competitor_data)})")
 
         # Cobertura: ¿RPP ya publicó lo que publicó la competencia? (rules-first
         # + refinamiento LLM). Marca rpp_has_coverage en cada artículo.
