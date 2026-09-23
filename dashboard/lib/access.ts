@@ -35,15 +35,25 @@ export function isSessionFresh(loginAt: unknown, now: number = Date.now()): bool
   return typeof loginAt === "number" && now - loginAt >= 0 && now - loginAt < SESSION_MS
 }
 
+/** Administradores: ven /admin y las pestañas restringidas. */
+export const ADMIN_EMAILS = ["flozano@gruporpp.com.pe"]
+
+export function isAdmin(email: unknown): boolean {
+  return ADMIN_EMAILS.indexOf(normalizeEmail(email)) >= 0
+}
+
 /**
  * Pestañas restringidas a correos concretos (2026-09-23, pedido del usuario:
- * Búsqueda & Discover y Auditoría solo para él). El middleware BLOQUEA la ruta
- * y el menú la OCULTA; lo que decide es el middleware, ocultar es cortesía.
- * Para dar acceso a alguien más, agregar su correo a la lista.
+ * Búsqueda & Discover y Auditoría solo para él, y el panel de admin). El
+ * middleware BLOQUEA la ruta y el menú la OCULTA; lo que decide es el
+ * middleware, ocultar es cortesía. Para abrir una pestaña a alguien más sin
+ * hacerlo admin, poner su correo en `emails` de esa ruta.
  */
 export const RESTRICTED_ROUTES: { prefix: string; emails: string[] }[] = [
-  { prefix: "/busqueda",  emails: ["flozano@gruporpp.com.pe"] },
-  { prefix: "/auditoria", emails: ["flozano@gruporpp.com.pe"] },
+  { prefix: "/busqueda",  emails: ADMIN_EMAILS },
+  { prefix: "/auditoria", emails: ADMIN_EMAILS },
+  { prefix: "/admin",     emails: ADMIN_EMAILS },
+  { prefix: "/api/admin", emails: ADMIN_EMAILS },
 ]
 
 /** ¿Puede este correo ver esta ruta? Las rutas no listadas son para todos. */
