@@ -38,8 +38,10 @@ con el correo real del usuario antes de mergear):**
   se re-emite al usarse.
 - **middleware.ts** protege todo salvo login, api/auth, api/access,
   api/run-agent (pg_cron la llama sin cookie: valida CRON_SECRET o sesión) y
-  estáticos. **Registra cada visita real** (no prefetch, no API) en
-  `dashboard_page_views` con `waitUntil` por REST de Supabase.
+  estáticos. Las visitas NO las registra el middleware (contaba las
+  precargas del menú: ráfagas de 10 "visitas" por segundo, 162 en 45 min para
+  una persona): las manda `components/PageViewTracker.tsx` desde el navegador
+  a `/api/visita` cuando la página se muestra de verdad.
 - **Roles:** `ADMIN_EMAILS` y `RESTRICTED_ROUTES` en `lib/access.ts`.
   Búsqueda & Discover, Auditoría, /admin y /api/admin: solo flozano. El
   middleware bloquea; el menú solo oculta.
@@ -49,6 +51,10 @@ con el correo real del usuario antes de mergear):**
   consulta la base en cada página, a propósito).
 - **Tablas** `dashboard_access_codes`, `dashboard_users`,
   `dashboard_page_views`: RLS SIN políticas, solo service_role.
+- **/admin: nunca `useState(props)` para datos del servidor.** React conserva
+  ese estado aunque lleguen props nuevas; el panel mostró 1 usuario con 3 en la
+  base. La lista sale de las props y solo el bloqueo cambiado se guarda local.
+  Además se auto-refresca una vez si los datos vienen de la caché del navegador.
 - **La sesión se lee en el NAVEGADOR** (UserMenu, NavPills con getSession):
   leerla en el layout con getServerSession volvería dinámicas todas las páginas
   y rompería el ISR.

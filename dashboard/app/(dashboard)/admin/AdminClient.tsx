@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
+import { useRouter } from "next/navigation"
 import { StatCard } from "@/components/ui/StatCard"
 import { InfoTooltip } from "@/components/ui/InfoTooltip"
 import { SESSION_DAYS, isAdmin } from "@/lib/access"
@@ -107,7 +108,29 @@ function estadoUsuario(u: AdminUser, now: number): { label: string; cls: string 
 
 export default function AdminClient({ stats, cambios }: { stats: AdminStats; cambios: CambioLog[] }) {
   const now = new Date(stats.generated_at).getTime()
-  const [users, setUsers] = useState(stats.users)
+  const router = useRouter()
+  // La lista SALE DE LAS PROPS en cada render; el estado local solo guarda los
+  // bloqueos que se cambiaron en esta pantalla. Antes era useState(stats.users):
+  // React conserva ese estado aunque lleguen props nuevas, y el panel seguía
+  // mostrando la lista del primer render — los usuarios que ingresaron después
+  // no aparecían (reportado el 2026-09-23 con 3 usuarios en la base y 1 en pantalla).
+  const [bloqueoLocal, setBloqueoLocal] = useState<Record<string, boolean>>({})
+  const users = stats.users.map((u) =>
+    u.email in bloqueoLocal ? { ...u, blocked: bloqueoLocal[u.email] } : u
+  )
+
+  // Si lo que se ve vino de la caché del navegador (volviste a la pestaña, o
+  // Next la precargó), pide los datos de nuevo: el panel debe estar al día.
+  // Una sola vez por visita: si el reloj del equipo va adelantado, la
+  // comparación daría "viejo" siempre y se refrescaría en bucle.
+  const refrescado = useRef(false)
+  useEffect(() => {
+    if (refrescado.current) return
+    if (Date.now() - new Date(stats.generated_at).getTime() > 20_000) {
+      refrescado.current = true
+      router.refresh()
+    }
+  }, [stats.generated_at, router])
   const [error, setError] = useState<string | null>(null)
 
   const activos7 = users.filter((u) => u.last_seen_at && now - new Date(u.last_seen_at).getTime() < 7 * DAY_MS).length
@@ -123,14 +146,14 @@ export default function AdminClient({ stats, cambios }: { stats: AdminStats; cam
     const next = !u.blocked
     if (next && !window.confirm(`¿Bloquear a ${u.email}? No podrá volver a ingresar; si ya tiene una sesión abierta, la conserva hasta que venza.`)) return
     setError(null)
-    setUsers((list) => list.map((x) => (x.email === u.email ? { ...x, blocked: next } : x)))
+    setBloqueoLocal((m) => ({ ...m, [u.email]: next }))
     const res = await fetch("/api/admin/block", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: u.email, blocked: next }),
     }).catch(() => null)
     if (!res || !res.ok) {
-      setUsers((list) => list.map((x) => (x.email === u.email ? { ...x, blocked: !next } : x)))
+      setBloqueoLocal((m) => ({ ...m, [u.email]: !next }))
       const body = res ? await res.json().catch(() => ({})) : {}
       setError(body.error ?? "No se pudo guardar el cambio.")
     }
@@ -152,6 +175,12 @@ export default function AdminClient({ stats, cambios }: { stats: AdminStats; cam
             Usuarios, accesos y uso de las pestañas · datos de {fechaHora(stats.generated_at)}
           </p>
         </div>
+        <button
+          onClick={() => router.refresh()}
+          className="text-sm font-medium px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition"
+        >
+          ↻ Actualizar datos
+        </button>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
