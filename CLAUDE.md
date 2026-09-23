@@ -13,6 +13,44 @@ dashboard web.
 
 **Fecha último avance:** 2026-09-23
 
+**2026-09-23 — Acceso solo con correo @gruporpp.com.pe + código, pestañas
+restringidas y panel /admin (rama acceso-correo-corporativo, probada en preview
+con el correo real del usuario antes de mergear):**
+- **Flujo:** /login muestra el panel borroso (sin datos) + tarjeta en 2 pasos.
+  `/api/access/request-code` valida dominio EXACTO (regex anclado), guarda el
+  HASH del código (sha256 con email + NEXTAUTH_SECRET) y lo manda por **Gmail
+  pdigitalrpp con contraseña de aplicación** (nodemailer 7; el SMTP de
+  Supabase ya solo envía a miembros del equipo). next-auth credentials
+  `email-code` lo verifica: 10 min, 5 intentos, un solo uso.
+- **Sesión: 30 días FIJOS desde el ingreso.** `token.loginAt` en el JWT y el
+  middleware lo compara; el maxAge de next-auth solo no basta porque la cookie
+  se re-emite al usarse.
+- **middleware.ts** protege todo salvo login, api/auth, api/access,
+  api/run-agent (pg_cron la llama sin cookie: valida CRON_SECRET o sesión) y
+  estáticos. **Registra cada visita real** (no prefetch, no API) en
+  `dashboard_page_views` con `waitUntil` por REST de Supabase.
+- **Roles:** `ADMIN_EMAILS` y `RESTRICTED_ROUTES` en `lib/access.ts`.
+  Búsqueda & Discover, Auditoría, /admin y /api/admin: solo flozano. El
+  middleware bloquea; el menú solo oculta.
+- **/admin:** una RPC `dashboard_admin_stats()` (agrega en SQL porque las
+  visitas pasan de 1000 filas). Bloquear (`dashboard_set_blocked`) impide el
+  PRÓXIMO ingreso; la sesión abierta dura hasta vencer (el middleware no
+  consulta la base en cada página, a propósito).
+- **Tablas** `dashboard_access_codes`, `dashboard_users`,
+  `dashboard_page_views`: RLS SIN políticas, solo service_role.
+- **La sesión se lee en el NAVEGADOR** (UserMenu, NavPills con getSession):
+  leerla en el layout con getServerSession volvería dinámicas todas las páginas
+  y rompería el ISR.
+- **Env en Vercel (Production + Preview):** SUPABASE_SERVICE_ROLE_KEY,
+  GMAIL_USER, GMAIL_APP_PASSWORD. Si falta alguna, request-code responde 503 y
+  registra en los logs de Vercel QUÉ nombre falta. Gotcha visto: cargarlas solo
+  en Production deja el preview roto, y un cambio de variables solo aplica al
+  SIGUIENTE deploy.
+- **Límite conocido:** el candado protege el dashboard, no la base — la anon
+  key sigue en el JS y Supabase REST es consultable con ella. Cerrarlo =
+  mover lecturas al servidor + RLS; proyecto aparte.
+- Se eliminó el login de 3 usuarios con contraseña compartida (PASS_*).
+
 **2026-09-23 — Categorías de competencia en caché: solo se pagan las notas
 nuevas.** Cada corrida re-clasificaba con el LLM TODOS los titulares de la
 ventana (~240-470, ~70% del gasto de OpenAI) aunque casi todos se hubieran
