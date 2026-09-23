@@ -13,6 +13,18 @@ dashboard web.
 
 **Fecha último avance:** 2026-09-23
 
+**2026-09-23 — /radar: editar un tema sin borrarlo + Next 14.2.35 (rama
+radar-editar-tema, verificada en preview antes de mergear):**
+- Botón ✎ por tema: reusa el formulario de alta precargado y hace UPDATE, así
+  el id se conserva y los hallazgos siguen colgando del tema (antes afinar una
+  query obligaba a borrar y recrear, y el CASCADE se llevaba los hallazgos).
+  Probado en preview contra la DB real: cambio de nombre y vuelta atrás, mismo
+  id, 375 hallazgos intactos. Cierra el pendiente consciente del 2026-08-21.
+- `next` 14.1.0 → **14.2.35** (y `eslint-config-next`): última de la rama 14,
+  con los parches de seguridad; subir a 15/16 sería otra migración (React 19,
+  APIs async). Build limpio, las 10 rutas en 200, sin errores de consola.
+  **No hay package-lock.json**: Vercel resuelve dependencias en cada build.
+
 **2026-09-23 — Alertas: el deporte extranjero sin vínculo peruano deja de
 alertar; `CRON_SECRET` cargado en Vercel.**
 - **MEDIDO antes de tocar:** 199 alertas del 9 al 22 de septiembre, **14,2/día**
