@@ -219,6 +219,39 @@ ALERT_SEVERITY_HIGH            = 68   # >= esto → severidad "alta", si no "med
 ALERT_MAX_PER_SECTION_PER_HOUR = 3    # anti-spam por sección/hora
 ALERT_DEDUP_HOURS              = 12   # no re-alertar el mismo evento en esta ventana
 
+# Vínculo peruano de una alerta DEPORTIVA (ver alerting.peruvian_sport_link).
+# MEDIDO el 2026-09-23 sobre 199 alertas reales (9-22 sep): el 42% eran
+# partidos extranjeros sin equipo peruano (Milan, Liverpool, Al Nassr, US
+# Open...). El volumen relativo al día no los separaba: los medios deportivos
+# peruanos cubren TODO el fútbol europeo, así que llegaban con evidencia
+# peruana completa y el techo de 65 igual que un Alianza-Universitario.
+# Decisión del usuario (2026-09-23): un deporte sin vínculo peruano solo alerta
+# si trae un hecho rompiendo (campeón, eliminado, muerte...).
+#
+# Dos listas porque el texto disponible no es igual de confiable:
+# - SOLO KEYWORD: términos que en los TITULARES de la competencia aparecen por
+#   todo — "perú" está en cada "horario en Perú y canal"; "utc" en las horas;
+#   "alianza"/"apertura" son palabras comunes.
+# - KEYWORD + TITULARES: nombres que solo aparecen si de verdad hay un club o
+#   jugador peruano de por medio. Ampliable a mano (criterio editorial; los
+#   ascensos y descensos de la Liga 1 la cambian una vez al año).
+PERU_SPORT_KEYWORD_ONLY = [
+    "peru", "alianza", "utc", "adt", "cusco", "moquegua", "clausura", "apertura",
+]
+PERU_SPORT_ENTITIES = [
+    # selección y torneo
+    "seleccion peruana", "bicolor", "blanquirroja", "liga 1", "liga1",
+    # clubes de la Liga 1
+    "alianza lima", "alianza atletico", "universitario", "sporting cristal", "cristal",
+    "cienciano", "melgar", "garcilaso", "sport boys", "los chankas", "chankas",
+    "juan pablo ii", "sport huancayo", "comerciantes unidos", "atletico grau",
+    "cusco fc", "cd moquegua", "mannucci", "ayacucho fc", "alianza universidad",
+    "binacional", "utc cajamarca",
+    # jugadores y técnicos que el feed ha traído (ampliable)
+    "paolo guerrero", "lapadula", "advincula", "andre carrillo", "succar",
+    "gareca", "hernan barcos", "hohberg",
+]
+
 # ---------------------------------------------------------------------------
 # Vigilancia de temas por keyword ("Google Alerts" propias) — 2026-08-20
 # Ver collectors/watchlist.py. Las keywords NO viven acá: se administran desde

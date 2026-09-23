@@ -225,8 +225,15 @@ def run():
     )
     try:
         already_alerted = get_recent_alerts(hours=ALERT_DEDUP_HOURS)
-    except Exception:
-        already_alerted = []
+    except Exception as e:
+        # Sin la lista de alertas previas NO se alerta en esta corrida. Antes
+        # se seguía con la lista vacía y el dedup quedaba ciego: el 15-sep a
+        # las 20:54 se repitieron las tres alertas de las 19:46 ("libertadores",
+        # "sismo perú", "boca vs"). Saltarse una corrida cuesta 15 min;
+        # repetir alertas cuesta la confianza del equipo en el panel.
+        logger.warning(f"No se pudo leer las alertas recientes ({e}); "
+                       f"se omiten las alertas de esta corrida")
+        candidate_alerts, already_alerted = [], []
 
     sent_alerts = []
     for alert in candidate_alerts:
@@ -242,11 +249,19 @@ def run():
             # porque se regeneró el contexto de la tendencia) se REFRESCA en
             # vez de dejar el texto viejo colgado, que era lo que pasaba antes.
             nueva_desc = alert.get("description")
-            if nueva_desc and nueva_desc != previa.get("description"):
+            # La severidad solo SUBE: un partido que alertó como "media" y
+            # horas después trae "campeón" pasa a "alta". Antes se refrescaba
+            # el score pero no la severidad, y el panel mostraba "libertadores
+            # 93/100 · media" — un número y una etiqueta que se contradecían.
+            sube = alert["severity"] == "high" and previa.get("severity") != "high"
+            if previa.get("id") and ((nueva_desc and nueva_desc != previa.get("description")) or sube):
                 try:
                     refresh_alert(previa["id"], description=nueva_desc,
-                                  url=alert.get("url"), score=alert.get("score"))
+                                  url=alert.get("url"), score=alert.get("score"),
+                                  severity="high" if sube else None)
                     previa["description"] = nueva_desc
+                    if sube:
+                        previa["severity"] = "high"
                     logger.info(f"Dedup: '{title_key}' ya alertado como "
                                 f"'{previa.get('title')}'; se refrescó su descripción")
                     continue
@@ -265,7 +280,8 @@ def run():
         notify.dispatch_alert(alert)   # a Teams/WhatsApp si hay responsable
         sent_alerts.append(alert)
         already_alerted.append({"id": None, "title": title_key,
-                                "description": alert.get("description")})
+                                "description": alert.get("description"),
+                                "severity": alert["severity"]})
         logger.info(
             f"🚨 Alerta [{alert['severity']}] {alert['score']}/100 · "
             f"'{title_key}' → {section} ({alert.get('_n_sources', 0)} fuentes)"

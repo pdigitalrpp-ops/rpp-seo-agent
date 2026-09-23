@@ -11,7 +11,38 @@ dashboard web.
 
 ## Estado actual
 
-**Fecha último avance:** 2026-08-21
+**Fecha último avance:** 2026-09-23
+
+**2026-09-23 — Alertas: el deporte extranjero sin vínculo peruano deja de
+alertar; `CRON_SECRET` cargado en Vercel.**
+- **MEDIDO antes de tocar:** 199 alertas del 9 al 22 de septiembre, **14,2/día**
+  (objetivo 4-6), **58% deportes**, y el **42% del total eran partidos
+  extranjeros sin equipo peruano** (Milan, Liverpool, Al Nassr, US Open...).
+  El 24-ago (11 alertas) fue un día bueno, no el nivel estable.
+- **Por qué el volumen no los separaba:** los medios deportivos peruanos
+  (Depor, Líbero) cubren TODO el fútbol europeo, así que llegaban con evidencia
+  peruana completa y el mismo techo de 65 que un Alianza-Universitario.
+- **Decisión del usuario:** un deporte sin vínculo peruano solo alerta si trae
+  un hecho rompiendo (campeón, eliminado, muerte...). `alerting.peruvian_sport_link`
+  + listas `PERU_SPORT_KEYWORD_ONLY` / `PERU_SPORT_ENTITIES` en config.py
+  (ampliables a mano; la Liga 1 cambia con ascensos y descensos). "perú",
+  "clausura", "apertura", "utc" y "alianza" se buscan SOLO en el keyword: en
+  los titulares aparecen por todo ("horario en Perú", Clausura argentino, horas UTC).
+  Simulado sobre los 14 días: ~8,5 alertas/día y deportes 29%.
+- **Bug de urgencia corregido:** el regex se armaba con términos normalizados
+  pero se aplicaba a texto solo en minúsculas → no veía "murió", "campeón",
+  "explosión" ni "temblor," pegado a un signo. Ahora `_urgency_strength`
+  normaliza. **Efecto esperado: algo más de alertas ALTAS** (las que ya
+  debían serlo). Medir junto con lo anterior.
+- **Dedup ciego corregido:** si `get_recent_alerts` fallaba se seguía con la
+  lista vacía y se repetían alertas (15-sep 20:54 repitió las tres de las
+  19:46). Ahora esa corrida no alerta.
+- **Severidad que no subía:** el refresco actualizaba score pero no severidad
+  ("libertadores 93/100 · media"). Ahora sube a alta si corresponde (nunca baja).
+- Test offline: scratchpad `test_alerting_peru.py` (25 casos, titulares reales).
+- **`CRON_SECRET` pegado en Vercel el 2026-09-23** y redeploy, para que entre
+  la cadencia de 15 min del radar (antes 45 min efectivos: 200-429-429). Se
+  verifica con `radar_cron_diagnostico()`: todo 200, ningún 429.
 
 **2026-08-21 — OpenAI pasa a ser el proveedor LLM PREFERIDO (key propia del
 usuario); los prompts se unifican en un modulo compartido:** pedido del

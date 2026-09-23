@@ -390,12 +390,12 @@ def get_recent_alerts(hours=12):
     """
     sb = _get_client()
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
-    result = (sb.table("alerts").select("id,title,description,url,score")
+    result = (sb.table("alerts").select("id,title,description,url,score,severity")
               .gte("created_at", cutoff).execute())
     return list(result.data or [])
 
 
-def refresh_alert(alert_id, description=None, url=None, score=None):
+def refresh_alert(alert_id, description=None, url=None, score=None, severity=None):
     """
     Actualiza una alerta ya emitida. Existe porque la alerta guarda una FOTO
     FIJA de la descripción y la URL: cuando el contexto de la tendencia se
@@ -405,7 +405,8 @@ def refresh_alert(alert_id, description=None, url=None, score=None):
     horas después de que /trends ya mostrara la explicación correcta.
     """
     campos = {k: v for k, v in
-              (("description", description), ("url", url), ("score", score))
+              (("description", description), ("url", url), ("score", score),
+               ("severity", severity))
               if v is not None}
     if not campos:
         return False

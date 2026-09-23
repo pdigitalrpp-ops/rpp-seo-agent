@@ -46,6 +46,7 @@ from analyzers import scoring, evidence
 from text_keys import normalize_text
 from config import (
     ALERT_WORTHINESS_THRESHOLD, ALERT_SEVERITY_HIGH,
+    PERU_SPORT_KEYWORD_ONLY, PERU_SPORT_ENTITIES,
 )
 
 logger = logging.getLogger(__name__)
@@ -102,12 +103,21 @@ def _normaliza(texto):
     return normalize_text(texto)
 
 
-# Se compila una sola vez.  no sirve con tildes en los limites, asi que la
-# comparacion se hace sobre texto YA normalizado (sin tildes ni puntuacion).
-_URGENCY_RE = re.compile(
-    r"(?:^|\s)(?:" + "|".join(
-        re.escape(normalize_text(t)).replace(r"\ ", r"\s+") for t in URGENCY_TERMS
-    ) + r")(?:\s|$)")
+def _terms_re(terms):
+    """
+    Regex que busca los términos como PALABRAS completas. `\b` no sirve con
+    tildes en los limites, asi que la comparacion se hace sobre texto YA
+    normalizado (sin tildes ni puntuacion) — quien busca debe normalizar antes.
+    """
+    return re.compile(
+        r"(?:^|\s)(?:" + "|".join(
+            re.escape(normalize_text(t)).replace(r"\ ", r"\s+") for t in terms
+        ) + r")(?:\s|$)")
+
+
+_URGENCY_RE = _terms_re(URGENCY_TERMS)
+_PE_KEYWORD_RE = _terms_re(PERU_SPORT_KEYWORD_ONLY)
+_PE_ENTITY_RE = _terms_re(PERU_SPORT_ENTITIES)
 
 
 def _domain(url):
@@ -228,7 +238,39 @@ def _urgency_strength(text):
     """
     if not text:
         return 0.0
-    return 1.0 if _URGENCY_RE.search(text) else 0.0
+    # Normalizar AQUI y no confiar en quien llama: hasta el 2026-09-23 se le
+    # pasaba el texto solo en minusculas, y el regex (armado con los terminos
+    # normalizados) no veia "murió", "campeón" ni "explosión" con tilde, ni un
+    # termino pegado a un signo ("temblor," / "sismo:"). La lista traia las dos
+    # variantes de tilde justamente para esto, y solo funcionaba la mitad.
+    return 1.0 if _URGENCY_RE.search(normalize_text(text)) else 0.0
+
+
+def _urgency_text(event):
+    """Texto donde se busca el hecho rompiendo: keyword + why + titulares."""
+    return " ".join([
+        event.get("keyword") or "",
+        event.get("why_trending") or "",
+        " ".join(n.get("title") or "" for n in (event.get("news") or [])),
+    ])
+
+
+def peruvian_sport_link(event):
+    """
+    ¿Una tendencia DEPORTIVA involucra a Perú (selección, Liga 1, un club o
+    jugador peruano)? Decisión editorial del 2026-09-23: el deporte extranjero
+    sin vínculo peruano no alerta salvo que traiga un hecho rompiendo — un
+    Alianza-Universitario sí, un Inter-Udinese no. El volumen no bastaba para
+    separarlos (ver PERU_SPORT_ENTITIES en config.py).
+
+    Los términos de SOLO KEYWORD no se buscan en los titulares: "perú" aparece
+    en todo "horario en Perú y dónde ver", y "clausura"/"apertura" también son
+    los torneos de Argentina y México.
+    """
+    keywords = normalize_text(" ".join(event.get("keywords") or [event.get("keyword") or ""]))
+    titulares = normalize_text(" ".join(n.get("title") or "" for n in (event.get("news") or [])))
+    return bool(_PE_KEYWORD_RE.search(keywords)
+                or _PE_ENTITY_RE.search(keywords + " " + titulares))
 
 
 def _news_key_urls(item):
@@ -309,12 +351,7 @@ def alert_worthiness(event, now, volumen_mediana=None):
     """
     news_n = _news_strength(event.get("news"), now)
     rank_n = _rank_strength(event.get("rank"))
-    urgency_text = " ".join([
-        event.get("keyword") or "",
-        event.get("why_trending") or "",
-        " ".join(n.get("title") or "" for n in (event.get("news") or [])),
-    ]).lower()
-    urgency_n = _urgency_strength(urgency_text)
+    urgency_n = _urgency_strength(_urgency_text(event))
 
     if volumen_mediana:
         volume_n = _volume_strength(event.get("approx_traffic"), volumen_mediana)
@@ -410,6 +447,14 @@ def build_alerts(enriched_trends, sections=None, now=None):
         event = _merge_cluster(cluster)
         worth = alert_worthiness(event, now, volumen_mediana=mediana)
         if worth < ALERT_WORTHINESS_THRESHOLD:
+            continue
+        # Deporte extranjero sin hecho rompiendo: no alerta aunque cruce el
+        # umbral (ver peruvian_sport_link). Va DESPUES del score a proposito:
+        # el umbral decide si el tema importa, esto decide si importa en Peru.
+        if (event.get("category") == "deportes"
+                and not _urgency_strength(_urgency_text(event))
+                and not peruvian_sport_link(event)):
+            logger.info(f"Sin vínculo peruano: '{event['keyword']}' ({worth}) no alerta")
             continue
 
         news = event.get("news") or []
