@@ -13,12 +13,14 @@
     "date-fns": "^3.2.0",
     "next": "14.2.35",
     "next-auth": "^4.24.5",
+    "nodemailer": "^7.0.13",
     "react": "^18",
     "react-dom": "^18",
     "recharts": "^2.10.3"
   },
   "devDependencies": {
     "@types/node": "^20",
+    "@types/nodemailer": "^7.0.12",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "autoprefixer": "^10.0.1",

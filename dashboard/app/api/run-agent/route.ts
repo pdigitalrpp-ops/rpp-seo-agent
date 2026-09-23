@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
 import { dentroDeVentanaRadar, limaHour } from "@/lib/dates"
+import { getToken } from "next-auth/jwt"
+import { isAllowedEmail, isSessionFresh } from "@/lib/access"
 
 /**
  * Dispara el workflow del radar en GitHub Actions. Dos llamadores:
@@ -60,6 +62,17 @@ export async function POST(req: NextRequest) {
   }
 
   const esCron = esCronAutorizado(req)
+
+  // El middleware NO cubre esta ruta (pg_cron la llama sin cookie), así que el
+  // botón se valida aquí: sin CRON_SECRET hace falta una sesión vigente de un
+  // correo corporativo. Era el "reponer el check de sesión cuando haya
+  // middleware" que quedó pendiente desde el 2026-07-13.
+  if (!esCron) {
+    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
+    if (!token || !isAllowedEmail(token.email) || !isSessionFresh(token.loginAt)) {
+      return NextResponse.json({ error: "Sesión vencida. Vuelve a ingresar." }, { status: 401 })
+    }
+  }
 
   // LA PAUSA DE MADRUGADA SE DEFIENDE AQUÍ, no solo en la configuración del
   // cron externo: si cron-job.org queda mal configurado o cambia de zona

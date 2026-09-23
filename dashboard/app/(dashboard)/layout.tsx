@@ -1,6 +1,7 @@
 import Image from "next/image"
 import Link from "next/link"
 import { NavPills } from "@/components/NavPills"
+import { UserMenu } from "@/components/UserMenu"
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -29,9 +30,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 </span>
               </span>
             </Link>
-            <span className="hidden sm:inline-flex items-center rounded-full bg-white/80 border border-rpp-ink/10 px-3 py-1 text-xs font-semibold text-rpp-ink/80 shrink-0">
-              Agente SEO · 2026
-            </span>
+            <UserMenu />
           </div>
           <div className="overflow-x-auto py-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <NavPills />
