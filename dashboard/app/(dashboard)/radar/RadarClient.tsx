@@ -222,6 +222,8 @@ export default function RadarClient({
   const [newLabel, setNewLabel] = useState("")
   const [newSection, setNewSection] = useState("")
   const [newFeeds, setNewFeeds] = useState("")
+  /** Tema que se está editando; null = el formulario da de alta uno nuevo. */
+  const [editingId, setEditingId] = useState<string | null>(null)
 
   // "NUEVO" = encontrado en la ÚLTIMA corrida del radar, no un plazo fijo
   // arbitrario. El margen de 10 min existe porque lastRun es el finished_at de
@@ -331,7 +333,38 @@ export default function RadarClient({
 
   // ── Mutaciones ───────────────────────────────────────────────────────────
 
-  async function addKeyword(e: FormEvent) {
+  function cerrarFormulario() {
+    setNewKeyword(""); setNewLabel(""); setNewSection(""); setNewFeeds("")
+    setEditingId(null)
+    setFormOpen(false)
+  }
+
+  function abrirAlta() {
+    setNewKeyword(""); setNewLabel(""); setNewSection(""); setNewFeeds("")
+    setEditingId(null)
+    setFormOpen(true)
+    setError(null)
+  }
+
+  /**
+   * Editar reusa el formulario de alta, precargado. Existe porque antes solo
+   * había alta/pausa/baja: afinar una query (añadir un `-excluir`, pasar a
+   * "frase exacta") obligaba a borrar y recrear el tema, y el ON DELETE
+   * CASCADE de watch_hits se llevaba todos sus hallazgos. Con UPDATE el id se
+   * conserva, así que los hallazgos anteriores siguen colgando del tema.
+   */
+  function abrirEdicion(kw: WatchKeyword) {
+    setNewKeyword(kw.keyword)
+    setNewLabel(kw.label ?? "")
+    setNewSection(kw.section ?? "")
+    setNewFeeds((kw.extra_feeds ?? []).join(" "))
+    setEditingId(kw.id)
+    setFormOpen(true)
+    setError(null)
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" })
+  }
+
+  async function saveKeyword(e: FormEvent) {
     e.preventDefault()
     const keyword = newKeyword.trim()
     if (!keyword || saving) return
@@ -343,16 +376,15 @@ export default function RadarClient({
       .map((f) => f.trim())
       .filter((f) => f.indexOf("http") === 0)
 
-    const { data, error: err } = await supabase
-      .from("watch_keywords")
-      .insert({
-        keyword,
-        label: newLabel.trim() || null,
-        section: newSection || null,
-        extra_feeds: feeds.length ? feeds : null,
-      })
-      .select()
-      .single()
+    const campos = {
+      keyword,
+      label: newLabel.trim() || null,
+      section: newSection || null,
+      extra_feeds: feeds.length ? feeds : null,
+    }
+    const { data, error: err } = editingId
+      ? await supabase.from("watch_keywords").update(campos).eq("id", editingId).select().single()
+      : await supabase.from("watch_keywords").insert(campos).select().single()
 
     setSaving(false)
     if (err || !data) {
@@ -364,9 +396,11 @@ export default function RadarClient({
       )
       return
     }
-    setKeywords((k) => k.concat(data as WatchKeyword))
-    setNewKeyword(""); setNewLabel(""); setNewSection(""); setNewFeeds("")
-    setFormOpen(false)
+    const guardado = data as WatchKeyword
+    setKeywords((list) =>
+      editingId ? list.map((k) => (k.id === guardado.id ? guardado : k)) : list.concat(guardado)
+    )
+    cerrarFormulario()
   }
 
   function toggleActive(kw: WatchKeyword) {
@@ -450,7 +484,7 @@ export default function RadarClient({
         <div className="flex flex-col items-end gap-2 shrink-0">
           <LastUpdated kind="radar" finishedAt={lastRun} />
           <button
-            onClick={() => { setFormOpen(!formOpen); setError(null) }}
+            onClick={() => (formOpen ? cerrarFormulario() : abrirAlta())}
             className="text-sm font-medium px-3 py-1.5 rounded-lg bg-rpp-teal text-white hover:opacity-90 transition"
           >
             {formOpen ? "Cancelar" : "+ Vigilar tema"}
@@ -492,9 +526,14 @@ export default function RadarClient({
         </div>
       )}
 
-      {/* Alta de tema — ancho completo, sobre las dos columnas */}
+      {/* Alta o edición de tema — ancho completo, sobre las dos columnas */}
       {formOpen && (
-        <form onSubmit={addKeyword} className="bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
+        <form onSubmit={saveKeyword} className="bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
+          {editingId && (
+            <p className="text-sm font-semibold text-gray-800">
+              Editando «{kwById[editingId]?.label || kwById[editingId]?.keyword}»
+            </p>
+          )}
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Qué vigilar</label>
             <input
@@ -560,10 +599,21 @@ export default function RadarClient({
               disabled={!newKeyword.trim() || saving}
               className="text-sm font-medium px-4 py-2 rounded-lg bg-rpp-teal text-white disabled:opacity-40 hover:opacity-90 transition"
             >
-              {saving ? "Guardando…" : "Empezar a vigilar"}
+              {saving ? "Guardando…" : editingId ? "Guardar cambios" : "Empezar a vigilar"}
             </button>
+            {editingId && (
+              <button
+                type="button"
+                onClick={cerrarFormulario}
+                className="text-sm font-medium px-4 py-2 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 transition"
+              >
+                Cancelar
+              </button>
+            )}
             <span className="text-xs text-gray-500">
-              Los primeros resultados llegan en la próxima corrida del radar (~10 min).
+              {editingId
+                ? "Los hallazgos que ya trajo se conservan; la búsqueda nueva se aplica desde la próxima corrida del radar (~15 min)."
+                : "Los primeros resultados llegan en la próxima corrida del radar (~15 min)."}
             </span>
           </div>
         </form>
@@ -591,7 +641,7 @@ export default function RadarClient({
             ))}
           </div>
           <button
-            onClick={() => setFormOpen(true)}
+            onClick={abrirAlta}
             className="mt-5 text-sm font-medium px-4 py-2 rounded-lg bg-rpp-teal text-white hover:opacity-90 transition"
           >
             + Vigilar mi primer tema
@@ -603,7 +653,7 @@ export default function RadarClient({
           <div className="space-y-4 self-start">
             <FilterCard
               title="Temas"
-              info="Filtra por tema vigilado. El número es cuántas publicaciones trajo en la ventana seleccionada y la barra compara su volumen con el resto. Pasa el cursor sobre un tema para pausarlo (⏸) o sacarlo del radar (×)."
+              info="Filtra por tema vigilado. El número es cuántas publicaciones trajo en la ventana seleccionada y la barra compara su volumen con el resto. Pasa el cursor sobre un tema para editar su búsqueda (✎), pausarlo (⏸) o sacarlo del radar (×)."
             >
               <FilterItem
                 label="Todos los temas"
@@ -624,6 +674,13 @@ export default function RadarClient({
                   action={
                     <>
                       <IconButton
+                        onClick={() => abrirEdicion(kw)}
+                        label="Editar tema"
+                        className="hover:text-rpp-teal"
+                      >
+                        ✎
+                      </IconButton>
+                      <IconButton
                         onClick={() => toggleActive(kw)}
                         label={kw.active ? "Pausar tema" : "Reanudar tema"}
                       >
@@ -642,7 +699,7 @@ export default function RadarClient({
               ))}
               <li className="pt-1">
                 <button
-                  onClick={() => { setFormOpen(true); setError(null) }}
+                  onClick={abrirAlta}
                   className="w-full rounded-lg px-2 py-1.5 text-left text-sm font-medium text-rpp-teal transition hover:bg-teal-50"
                 >
                   + Vigilar tema
