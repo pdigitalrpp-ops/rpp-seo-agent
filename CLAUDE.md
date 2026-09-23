@@ -13,6 +13,17 @@ dashboard web.
 
 **Fecha último avance:** 2026-09-23
 
+**2026-09-23 — Historial de cambios (rama registro-cambios):** decisión del
+usuario: TODOS pueden agregar/editar/pausar/quitar temas del Radar y medios de
+Competencia; lo que se pide es saber quién lo hizo. `/api/cambios` es la ÚNICA
+puerta de escritura para `watch_keywords`, `competitor_sources` y
+`watch_hits.dismissed`: verifica sesión, escribe con service_role solo campos
+permitidos y registra en `dashboard_change_log` (quién, qué, antes/después; al
+borrar un tema, cuántos hallazgos se fueron). /admin lo muestra con filtro por
+persona. Tras el deploy se QUITARON a la anon key los permisos de escritura
+(INSERT/UPDATE/DELETE) de esas tablas — no reponerlos: saltarían el registro.
+`audit_check_state` sigue con escritura anon (Auditoría es solo del admin).
+
 **2026-09-23 — Acceso solo con correo @gruporpp.com.pe + código, pestañas
 restringidas y panel /admin (rama acceso-correo-corporativo, probada en preview
 con el correo real del usuario antes de mergear):**
