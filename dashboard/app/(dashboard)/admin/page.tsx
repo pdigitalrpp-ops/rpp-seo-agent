@@ -7,6 +7,9 @@ import AdminClient, { type AdminStats, type CambioLog } from "./AdminClient"
  * todo sale de una sola llamada a dashboard_admin_stats() con service_role.
  */
 export const dynamic = "force-dynamic"
+// force-dynamic NO basta: sin esto Next guarda los fetch de la página en su
+// Data Cache sin vencimiento (ver supabaseAdmin en lib/accessServer.ts).
+export const fetchCache = "force-no-store"
 
 export default async function AdminPage() {
   let stats: AdminStats | null = null

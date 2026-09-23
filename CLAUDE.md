@@ -51,10 +51,18 @@ con el correo real del usuario antes de mergear):**
   consulta la base en cada página, a propósito).
 - **Tablas** `dashboard_access_codes`, `dashboard_users`,
   `dashboard_page_views`: RLS SIN políticas, solo service_role.
-- **/admin: nunca `useState(props)` para datos del servidor.** React conserva
-  ese estado aunque lleguen props nuevas; el panel mostró 1 usuario con 3 en la
-  base. La lista sale de las props y solo el bloqueo cambiado se guarda local.
-  Además se auto-refresca una vez si los datos vienen de la caché del navegador.
+- **/admin mostraba 1 usuario con 3 en la base — CAUSA REAL: la Data Cache
+  de Next 14.** `dynamic = "force-dynamic"` re-renderiza la página en cada
+  visita pero NO apaga la caché de fetch: en una página (no en route handlers
+  POST) el fetch de supabase-js cae en "auto cache" con vencimiento infinito,
+  aunque sea POST y lleve Authorization, y esa caché SOBREVIVE a los deploys.
+  La RPC quedó congelada en su primera respuesta (y el historial de cambios
+  también). Fix: `supabaseAdmin()` fuerza `cache: "no-store"` en todas sus
+  consultas + `fetchCache = "force-no-store"` en /admin. Los logs de Vercel
+  decían `cache=MISS` porque eso mide la caché de PÁGINA, no la de datos.
+  (Antes se culpó a `useState(props)`; también se corrigió, pero no era esto.)
+  Regla: toda página nueva que deba leer datos al instante → `fetchCache =
+  "force-no-store"` o `noStore()`, no solo force-dynamic.
 - **La sesión se lee en el NAVEGADOR** (UserMenu, NavPills con getSession):
   leerla en el layout con getServerSession volvería dinámicas todas las páginas
   y rompería el ISR.
