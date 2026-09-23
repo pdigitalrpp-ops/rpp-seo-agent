@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react"
-import { supabase } from "@/lib/supabase"
+import { cambio } from "@/lib/cambios"
 import { InfoTooltip } from "@/components/ui/InfoTooltip"
 import { LastUpdated } from "@/components/ui/LastUpdated"
 import { StatCard } from "@/components/ui/StatCard"
@@ -18,9 +18,9 @@ import type { WatchKeyword, WatchHit } from "./types"
  * un tema de nicho pero editorialmente valioso —un concierto, una empresa, un
  * vocero— solo puede aparecer acá.
  *
- * La lista de temas se administra desde el propio panel con la anon key (RLS
- * abierto, mismo criterio MVP que audit_check_state); el agente la lee en cada
- * corrida del radar (collectors/watchlist.py) y escribe en watch_hits.
+ * La lista de temas se administra desde el propio panel vía /api/cambios, que
+ * registra quién hizo cada cambio (dashboard_change_log); el agente la lee en
+ * cada corrida del radar (collectors/watchlist.py) y escribe en watch_hits.
  */
 
 // Misma taxonomía que KNOWN_SECTIONS_FALLBACK del agente (config.py).
@@ -382,18 +382,14 @@ export default function RadarClient({
       section: newSection || null,
       extra_feeds: feeds.length ? feeds : null,
     }
-    const { data, error: err } = editingId
-      ? await supabase.from("watch_keywords").update(campos).eq("id", editingId).select().single()
-      : await supabase.from("watch_keywords").insert(campos).select().single()
+    const { data, error: err, code } = editingId
+      ? await cambio<WatchKeyword>({ entity: "tema", action: "editar", id: editingId, data: campos })
+      : await cambio<WatchKeyword>({ entity: "tema", action: "crear", data: campos })
 
     setSaving(false)
     if (err || !data) {
       // 23505 = unique_violation: esa keyword ya se está vigilando.
-      setError(
-        err && err.code === "23505"
-          ? "Ese tema ya está en el radar."
-          : "No se pudo guardar. Revisa la conexión e intenta de nuevo."
-      )
+      setError(code === "23505" ? "Ese tema ya está en el radar." : err ?? "No se pudo guardar.")
       return
     }
     const guardado = data as WatchKeyword
@@ -406,10 +402,7 @@ export default function RadarClient({
   function toggleActive(kw: WatchKeyword) {
     const next = !kw.active
     setKeywords((list) => list.map((k) => (k.id === kw.id ? { ...k, active: next } : k)))
-    supabase
-      .from("watch_keywords")
-      .update({ active: next })
-      .eq("id", kw.id)
+    cambio({ entity: "tema", action: "activar", id: kw.id, data: { active: next } })
       .then(({ error: err }) => {
         if (err) {
           setKeywords((list) => list.map((k) => (k.id === kw.id ? { ...k, active: !next } : k)))
@@ -426,10 +419,7 @@ export default function RadarClient({
     setKeywords((list) => list.filter((k) => k.id !== kw.id))
     setHits((list) => list.filter((h) => h.keyword_id !== kw.id))
     if (tema === kw.id) setTema(TODOS)
-    supabase
-      .from("watch_keywords")
-      .delete()
-      .eq("id", kw.id)
+    cambio({ entity: "tema", action: "borrar", id: kw.id })
       .then(({ error: err }) => {
         if (err) {
           setKeywords(backupKeywords)
@@ -443,10 +433,7 @@ export default function RadarClient({
   function dismissHit(hit: WatchHit) {
     const backup = hits
     setHits((list) => list.filter((h) => h.id !== hit.id))
-    supabase
-      .from("watch_hits")
-      .update({ dismissed: true })
-      .eq("id", hit.id)
+    cambio({ entity: "hallazgo", action: "descartar", id: hit.id })
       .then(({ error: err }) => {
         if (err) {
           setHits(backup)

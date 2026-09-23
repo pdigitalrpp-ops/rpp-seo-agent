@@ -4,7 +4,7 @@ import { useMemo, useState, type FormEvent, type ReactNode } from "react"
 import { InfoTooltip } from "@/components/ui/InfoTooltip"
 import { LastUpdated } from "@/components/ui/LastUpdated"
 import { FilterCard, FilterChip, FilterItem } from "@/components/ui/FilterList"
-import { supabase } from "@/lib/supabase"
+import { cambio } from "@/lib/cambios"
 
 export type Article = {
   id: string
@@ -194,9 +194,9 @@ export default function CompetenciaClient({
   date: string
   lastRun: string | null
 }) {
-  // La lista de medios se administra desde este panel con la anon key (RLS
-  // abierto, mismo criterio MVP que watch_keywords). El agente la lee en cada
-  // corrida; los cambios se ven en la SIGUIENTE (no reprocesa lo ya traído).
+  // La lista de medios se administra desde este panel vía /api/cambios, que
+  // registra quién hizo cada cambio. El agente la lee en cada corrida; los
+  // cambios se ven en la SIGUIENTE (no reprocesa lo ya traído).
   const [sources, setSources] = useState<CompetitorSource[]>(initialSources)
   const [formOpen, setFormOpen] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -309,20 +309,14 @@ export default function CompetenciaClient({
     setError(null)
 
     const { rss, domain } = feedDesde(entrada)
-    const { data, error: err } = await supabase
-      .from("competitor_sources")
-      .insert({ name, rss, domain })
-      .select()
-      .single()
+    const { data, error: err, code } = await cambio<CompetitorSource>({
+      entity: "medio", action: "crear", data: { name, rss, domain },
+    })
 
     setSaving(false)
     if (err || !data) {
       // 23505 = unique_violation: ese medio ya esta en la lista.
-      setError(
-        err && err.code === "23505"
-          ? "Ese medio ya está en la lista."
-          : "No se pudo guardar. Revisa la conexión e intenta de nuevo."
-      )
+      setError(code === "23505" ? "Ese medio ya está en la lista." : err ?? "No se pudo guardar.")
       return
     }
     setSources((l) => l.concat(data as CompetitorSource))
@@ -334,10 +328,7 @@ export default function CompetenciaClient({
   function toggleSource(src: CompetitorSource) {
     const next = !src.active
     setSources((l) => l.map((x) => (x.id === src.id ? { ...x, active: next } : x)))
-    supabase
-      .from("competitor_sources")
-      .update({ active: next })
-      .eq("id", src.id)
+    cambio({ entity: "medio", action: "activar", id: src.id, data: { active: next } })
       .then(({ error: err }) => {
         if (err) {
           setSources((l) => l.map((x) => (x.id === src.id ? { ...x, active: !next } : x)))
@@ -356,10 +347,7 @@ Las notas suyas que ya se recolectaron NO se borran: ` +
     const backup = sources
     setSources((l) => l.filter((x) => x.id !== src.id))
     if (site === src.name) setSite(TODOS)
-    supabase
-      .from("competitor_sources")
-      .delete()
-      .eq("id", src.id)
+    cambio({ entity: "medio", action: "borrar", id: src.id })
       .then(({ error: err }) => {
         if (err) {
           setSources(backup)

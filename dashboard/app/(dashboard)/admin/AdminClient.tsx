@@ -33,6 +33,16 @@ export type AdminPending = {
   failed_attempts: number
   all_expired: boolean
 }
+export type CambioLog = {
+  id: number
+  created_at: string
+  email: string
+  entity: "tema" | "medio" | "hallazgo"
+  action: string
+  target: string | null
+  before: Record<string, unknown> | null
+  after: Record<string, unknown> | null
+}
 export type AdminStats = {
   generated_at: string
   users: AdminUser[]
@@ -95,7 +105,7 @@ function estadoUsuario(u: AdminUser, now: number): { label: string; cls: string 
   return { label: `Activo · ${restan} d`, cls: "bg-teal-50 text-teal-800 border-teal-200" }
 }
 
-export default function AdminClient({ stats }: { stats: AdminStats }) {
+export default function AdminClient({ stats, cambios }: { stats: AdminStats; cambios: CambioLog[] }) {
   const now = new Date(stats.generated_at).getTime()
   const [users, setUsers] = useState(stats.users)
   const [error, setError] = useState<string | null>(null)
@@ -247,6 +257,11 @@ export default function AdminClient({ stats }: { stats: AdminStats }) {
         </div>
       </Card>
 
+      {/* Historial de cambios */}
+      <Card title={`Historial de cambios (${cambios.length})`} info="Cada tema del Radar, medio de Competencia o hallazgo que alguien agregó, editó, pausó, borró o descartó desde el panel, con quién y cuándo. En las ediciones se muestra qué cambió; si algo se borró por error, aquí queda lo que había." flush>
+        <Historial cambios={cambios} now={now} />
+      </Card>
+
       {/* Pidieron código y no entraron */}
       <Card title={`Pidieron código y no entraron (${stats.pending.length})`} info="Correos corporativos que pidieron un código pero nunca completaron el ingreso. Varios pedidos del mismo correo suelen indicar que el código no le llega (no deseado o cuarentena de Microsoft); intentos fallidos, que lo copió mal." flush>
         {stats.pending.length === 0 ? (
@@ -377,6 +392,90 @@ function HourBars({ data }: { data: AdminStats["hours_30d"] }) {
       </div>
       <div className="mt-1 flex justify-between text-[10px] text-gray-400">
         <span>00 h</span><span>06 h</span><span>12 h</span><span>18 h</span><span>23 h</span>
+      </div>
+    </div>
+  )
+}
+
+// ── Historial ─────────────────────────────────────────────────────────────
+
+const ENTIDAD: Record<string, string> = { tema: "Tema del radar", medio: "Medio", hallazgo: "Hallazgo" }
+const ACCION: Record<string, { label: string; cls: string }> = {
+  crear:     { label: "Agregó",    cls: "bg-teal-50 text-teal-800 border-teal-200" },
+  editar:    { label: "Editó",     cls: "bg-blue-50 text-blue-800 border-blue-200" },
+  pausar:    { label: "Pausó",     cls: "bg-amber-50 text-amber-800 border-amber-200" },
+  reanudar:  { label: "Reanudó",   cls: "bg-teal-50 text-teal-800 border-teal-200" },
+  borrar:    { label: "Borró",     cls: "bg-red-50 text-red-700 border-red-200" },
+  descartar: { label: "Descartó",  cls: "bg-gray-100 text-gray-600 border-gray-200" },
+}
+const CAMPO: Record<string, string> = {
+  keyword: "búsqueda", label: "nombre", section: "sección", extra_feeds: "feeds",
+  name: "nombre", rss: "feed", domain: "dominio",
+}
+
+function valor(v: unknown): string {
+  if (v === null || v === undefined || v === "") return "—"
+  if (Array.isArray(v)) return v.length ? v.join(" ") : "—"
+  return String(v)
+}
+
+/** Qué cambió en una edición: solo los campos que el panel puede tocar. */
+function detalle(c: CambioLog): string {
+  if (c.action === "editar" && c.before && c.after) {
+    const partes = Object.keys(CAMPO)
+      .filter((k) => k in c.after! && valor(c.before![k]) !== valor(c.after![k]))
+      .map((k) => `${CAMPO[k]}: ${valor(c.before![k])} → ${valor(c.after![k])}`)
+    return partes.length ? partes.join(" · ") : "sin cambios visibles"
+  }
+  if (c.action === "borrar" && c.entity === "tema" && c.before) {
+    const n = Number(c.before.hallazgos_borrados ?? 0)
+    return `búsqueda: ${valor(c.before.keyword)} · se borraron ${n} hallazgo${n === 1 ? "" : "s"}`
+  }
+  if (c.entity === "tema") return `búsqueda: ${valor((c.after ?? c.before)?.keyword)}`
+  if (c.entity === "medio") return `dominio: ${valor((c.after ?? c.before)?.domain)}`
+  return valor((c.after ?? c.before)?.source)
+}
+
+function Historial({ cambios, now }: { cambios: CambioLog[]; now: number }) {
+  const [quien, setQuien] = useState("")
+  const personas = Array.from(new Set(cambios.map((c) => c.email))).sort()
+  const lista = quien ? cambios.filter((c) => c.email === quien) : cambios
+  if (cambios.length === 0) return <div className="p-4"><Vacio>Todavía no hay cambios registrados.</Vacio></div>
+  return (
+    <div>
+      {personas.length > 1 && (
+        <div className="flex items-center gap-2 border-b border-gray-100 px-4 py-2 text-xs">
+          <label htmlFor="quien" className="text-gray-500">Persona</label>
+          <select id="quien" value={quien} onChange={(e) => setQuien(e.target.value)}
+            className="rounded-lg border border-gray-300 bg-white px-2 py-1 text-xs">
+            <option value="">Todas</option>
+            {personas.map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+        </div>
+      )}
+      <div className="max-h-[28rem] overflow-auto">
+        <table className="w-full text-sm">
+          <thead className="sticky top-0 bg-gray-50 text-xs text-gray-500">
+            <tr><Th>Cuándo</Th><Th>Quién</Th><Th>Qué</Th><Th>Elemento</Th><Th>Detalle</Th></tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {lista.map((c) => {
+              const a = ACCION[c.action] ?? { label: c.action, cls: "bg-gray-100 text-gray-600 border-gray-200" }
+              return (
+                <tr key={c.id} className="align-top">
+                  <Td title={fechaHora(c.created_at)}>{hace(c.created_at, now)}</Td>
+                  <Td>{c.email.replace("@gruporpp.com.pe", "")}</Td>
+                  <Td>
+                    <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${a.cls}`}>{a.label}</span>
+                    <span className="ml-1.5 text-xs text-gray-500">{ENTIDAD[c.entity] ?? c.entity}</span>
+                  </Td>
+                  <td className="px-4 py-2.5 text-gray-800 max-w-[16rem] truncate" title={c.target ?? ""}>{c.target ?? "—"}</td>
+                  <td className="px-4 py-2.5 text-xs text-gray-500 max-w-[28rem] break-words">{detalle(c)}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   )
