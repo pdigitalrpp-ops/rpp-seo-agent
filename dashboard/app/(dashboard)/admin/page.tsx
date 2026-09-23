@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/accessServer"
-import AdminClient, { type AdminStats } from "./AdminClient"
+import AdminClient, { type AdminStats, type CambioLog } from "./AdminClient"
 
 /**
  * Panel de administración (solo ADMIN_EMAILS, lo impone el middleware).
@@ -10,11 +10,17 @@ export const dynamic = "force-dynamic"
 
 export default async function AdminPage() {
   let stats: AdminStats | null = null
+  let cambios: CambioLog[] = []
   let error: string | null = null
   try {
-    const { data, error: err } = await supabaseAdmin().rpc("dashboard_admin_stats")
-    if (err) error = err.message
-    else stats = data as AdminStats
+    const db = supabaseAdmin()
+    const [st, log] = await Promise.all([
+      db.rpc("dashboard_admin_stats"),
+      db.rpc("dashboard_change_log_recent", { p_limit: 200 }),
+    ])
+    if (st.error) error = st.error.message
+    else stats = st.data as AdminStats
+    cambios = (log.data as CambioLog[] | null) ?? []
   } catch (e) {
     error = e instanceof Error ? e.message : "Error desconocido"
   }
@@ -26,5 +32,5 @@ export default async function AdminPage() {
       </div>
     )
   }
-  return <AdminClient stats={stats} />
+  return <AdminClient stats={stats} cambios={cambios} />
 }
