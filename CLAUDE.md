@@ -20,7 +20,9 @@ puerta de escritura para `watch_keywords`, `competitor_sources` y
 `watch_hits.dismissed`: verifica sesión, escribe con service_role solo campos
 permitidos y registra en `dashboard_change_log` (quién, qué, antes/después; al
 borrar un tema, cuántos hallazgos se fueron). /admin lo muestra con filtro por
-persona. Tras el deploy se QUITARON a la anon key los permisos de escritura
+persona. Tras cada cambio hace `revalidatePath` de la pestaña afectada
+(/radar o /competencia): con el ISR de 60 s, quien agregaba un tema y
+recargaba no lo veía y lo volvía a agregar. Tras el deploy se QUITARON a la anon key los permisos de escritura
 (INSERT/UPDATE/DELETE) de esas tablas — no reponerlos: saltarían el registro.
 `audit_check_state` sigue con escritura anon (Auditoría es solo del admin).
 
