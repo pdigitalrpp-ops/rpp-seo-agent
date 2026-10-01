@@ -1339,6 +1339,33 @@ rpp-seo-agent/
 | `publishing_windows` | (reusable) | dashboard home |
 | `agent_runs` | ambos (con `kind`: "morning"\|"radar") | dashboard home (semáforo) + "última actualización" por pestaña |
 
+### Retención de datos (desde 2026-10-01)
+
+Tarea de pg_cron `purge-old-data`, diaria a las 07:30 UTC (02:30 Lima, en el hueco
+del radar). Llama a `public.purge_old_data()`, que deja en `data_retention_runs`
+cuántas filas borró de cada tabla. El SQL está en `agent/db/retention.sql`.
+
+| Tabla | Guarda | Por qué esa ventana |
+|---|---|---|
+| `competitor_articles` | 30 días | El dashboard lee hoy y la caché de categorías 2 días |
+| `gsc_daily`, `serp_opportunities` | 60 días | /busqueda lee el último día; Google guarda 16 meses |
+| `own_traffic*`, `agent_runs` | 90 días | El calendario de /trafico ofrece 90 días (sale de `agent_runs` morning) y content decay usa 90 |
+| `daily_trends`, `watch_hits`, `onpage_audits` | 60 días | Las pantallas usan horas o días; el resto sirve para medir |
+| `alerts` | 90 días | Sirve para recalibrar las alertas |
+| `dashboard_access_codes`, `comite_access_codes` | Hasta vencer +1 día | — |
+| `cron.job_run_details` | 14 días | pg_cron no lo limpia solo |
+
+**Si una pantalla o un análisis nuevo necesita más historia que estas ventanas,
+hay que ampliar la ventana en `purge_old_data()` ANTES de desplegarlo.** Si no, la
+tarea borra en silencio lo que la pantalla espera encontrar. Lo mismo si se sube
+el `.limit(90)` del calendario de /trafico.
+
+Medido al aplicarla: la base bajó de 161 a 88 MB. `competitor_articles` es la que
+más crece (~730 filas/día) y su índice por `url` pesa mucho, porque la mitad
+de las URLs son redirectores de `news.google.com` de ~380 caracteres. Un `DELETE` no
+devuelve espacio al disco; solo libera espacio para reusarlo. Para achicar el
+archivo hace falta `vacuum full` (bloquea la tabla unos segundos).
+
 ---
 
 ## Variables de entorno
