@@ -340,11 +340,19 @@ def collect_hits(keywords, competitor_articles=None, now=None):
         # la fuente primaria — que es lo más valioso y lo que llega antes.
 
         # 1. Feeds directos: nadie buscó nada, hay que filtrar por titular.
+        # Mismo conteo que los feeds primarios, y por el mismo motivo: un feed
+        # bloqueado desde el CI devuelve 0 items en silencio (paso con Joinnus)
+        # y sin este log se ve identico a un feed sin novedades.
         per_keyword_entries = []
         for feed_url in (row.get("extra_feeds") or []):
-            per_keyword_entries.extend(
-                _fetch_feed(feed_url, f"feed:{_domain(feed_url)}", _domain(feed_url))
-            )
+            entries = _fetch_feed(feed_url, f"feed:{_domain(feed_url)}", _domain(feed_url))
+            if entries:
+                logger.info(f"Feed del tema '{kw}': {_domain(feed_url)}={len(entries)}")
+            else:
+                logger.warning(
+                    f"Feed del tema '{kw}' no devolvió items — revisar {feed_url}"
+                )
+            per_keyword_entries.extend(entries)
         for hit in global_entries + per_keyword_entries:
             if matches(hit["title"], parsed):
                 add(hit)
