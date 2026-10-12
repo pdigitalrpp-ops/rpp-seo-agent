@@ -40,3 +40,16 @@ export async function sendAccessCode(email: string, code: string): Promise<void>
       </div>`,
   })
 }
+
+/**
+ * Envío genérico desde la misma cuenta (resumen matutino y alertas, ver
+ * lib/notificaciones.ts). Cuota de Gmail: ~500 correos al día para toda la
+ * cuenta, códigos de acceso incluidos.
+ */
+export async function sendMail(to: string, subject: string, html: string, text: string): Promise<void> {
+  const user = process.env.GMAIL_USER
+  const pass = (process.env.GMAIL_APP_PASSWORD ?? "").replace(/\s/g, "")
+  if (!user || !pass) throw new Error("Falta GMAIL_USER o GMAIL_APP_PASSWORD en Vercel")
+  const transport = nodemailer.createTransport({ service: "gmail", auth: { user, pass } })
+  await transport.sendMail({ from: `"RPP SEO Agent" <${user}>`, to, subject, html, text })
+}

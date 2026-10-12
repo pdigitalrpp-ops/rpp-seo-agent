@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase"
 import { dentroDeVentanaRadar, limaHour } from "@/lib/dates"
 import { getToken } from "next-auth/jwt"
 import { isAllowedEmail, isSessionFresh } from "@/lib/access"
+import { esCronAutorizado } from "@/lib/cronAuth"
 
 /**
  * Dispara el workflow del radar en GitHub Actions. Dos llamadores:
@@ -26,20 +27,6 @@ const REPO = "pdigitalrpp-ops/rpp-seo-agent"
 const WORKFLOW = "radar.yml"
 const COOLDOWN_MINUTES = 30        // botón del dashboard
 const COOLDOWN_CRON_MINUTES = 12   // cron externo cada 15 min, con holgura
-
-/** ¿La petición trae el secreto del cron? Acepta Bearer o cabecera propia. */
-function esCronAutorizado(req: NextRequest): boolean {
-  const esperado = process.env.CRON_SECRET
-  if (!esperado) return false
-  const auth = req.headers.get("authorization") ?? ""
-  const propia = req.headers.get("x-cron-secret") ?? ""
-  const recibido = auth.toLowerCase().startsWith("bearer ") ? auth.slice(7) : propia
-  // Comparación de longitud fija para no filtrar el secreto por tiempo.
-  if (!recibido || recibido.length !== esperado.length) return false
-  let dif = 0
-  for (let i = 0; i < esperado.length; i++) dif |= esperado.charCodeAt(i) ^ recibido.charCodeAt(i)
-  return dif === 0
-}
 
 async function githubFetch(path: string, init?: RequestInit) {
   return fetch(`https://api.github.com/repos/${REPO}${path}`, {
