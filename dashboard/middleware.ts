@@ -9,8 +9,9 @@ import { canAccessPath, isAllowedEmail, isSessionFresh } from "@/lib/access"
  *
  * Fuera del candado (ver `matcher`): el login, las rutas de next-auth y de
  * pedido de código (las usa quien aún no entró), los estáticos, y
- * /api/run-agent — a esa la llama también pg_cron desde Supabase, sin cookie,
- * así que valida ella misma: CRON_SECRET o sesión.
+ * /api/run-agent y /api/notificar — a esas las llama pg_cron desde Supabase,
+ * sin cookie, así que validan ellas mismas (CRON_SECRET; run-agent también
+ * acepta sesión).
  */
 export async function middleware(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
@@ -43,6 +44,6 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!login|api/auth|api/access|api/run-agent|_next/static|_next/image|favicon.ico|rpp-logo.png).*)",
+    "/((?!login|api/auth|api/access|api/run-agent|api/notificar|_next/static|_next/image|favicon.ico|rpp-logo.png).*)",
   ],
 }
