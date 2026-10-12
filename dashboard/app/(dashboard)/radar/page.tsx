@@ -3,7 +3,9 @@ import { getLastRunFinishedAt } from "@/lib/lastRun"
 import RadarClient from "./RadarClient"
 import type { WatchKeyword, WatchHit } from "./types"
 
-export const revalidate = 60
+// Se renderiza en CADA visita, sin caché de página ni de datos (ver lib/supabase.ts).
+export const dynamic = "force-dynamic"
+export const fetchCache = "force-no-store"
 
 /**
  * Se traen 7 DÍAS de hallazgos aunque la vista arranque en 48 h: el selector de

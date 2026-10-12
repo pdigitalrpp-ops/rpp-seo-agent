@@ -2,7 +2,9 @@ import { supabase } from "@/lib/supabase"
 import { getLastRunFinishedAt } from "@/lib/lastRun"
 import AuditoriaClient from "./AuditoriaClient"
 
-export const revalidate = 60
+// Se renderiza en CADA visita, sin caché de página ni de datos (ver lib/supabase.ts).
+export const dynamic = "force-dynamic"
+export const fetchCache = "force-no-store"
 
 export default async function AuditoriaPage() {
   // Solo la última semana: las auditorías viejas salen de la vista para que la

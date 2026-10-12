@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, type FormEvent, type ReactNode } from "react"
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react"
 import { InfoTooltip } from "@/components/ui/InfoTooltip"
 import { LastUpdated } from "@/components/ui/LastUpdated"
 import { FilterCard, FilterChip, FilterItem } from "@/components/ui/FilterList"
@@ -198,6 +198,9 @@ export default function CompetenciaClient({
   // registra quién hizo cada cambio. El agente la lee en cada corrida; los
   // cambios se ven en la SIGUIENTE (no reprocesa lo ya traído).
   const [sources, setSources] = useState<CompetitorSource[]>(initialSources)
+  // Estado local solo para los cambios optimistas; si el servidor manda la
+  // lista de nuevo (AutoRefresh), manda la del servidor.
+  useEffect(() => { setSources(initialSources) }, [initialSources])
   const [formOpen, setFormOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)

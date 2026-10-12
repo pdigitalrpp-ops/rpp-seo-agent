@@ -3,11 +3,13 @@ import Link from "next/link"
 import { NavPills } from "@/components/NavPills"
 import { UserMenu } from "@/components/UserMenu"
 import { PageViewTracker } from "@/components/PageViewTracker"
+import { AutoRefresh } from "@/components/AutoRefresh"
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-gray-50">
       <PageViewTracker />
+      <AutoRefresh />
       {/* Cabecera amarilla en dos niveles: marca arriba, navegación abajo.
           La fila de navegación scrollea horizontal en pantallas angostas en
           vez de partirse en varias líneas. */}

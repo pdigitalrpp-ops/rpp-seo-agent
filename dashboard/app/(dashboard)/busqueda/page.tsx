@@ -3,7 +3,9 @@ import { getLastRunFinishedAt } from "@/lib/lastRun"
 import BusquedaClient from "./BusquedaClient"
 import { todayInLima } from "@/lib/dates"
 
-export const revalidate = 60
+// Se renderiza en CADA visita, sin caché de página ni de datos (ver lib/supabase.ts).
+export const dynamic = "force-dynamic"
+export const fetchCache = "force-no-store"
 
 export default async function BusquedaPage() {
   // Cada corrida del benchmark guarda un SNAPSHOT completo (ventana de ~3 días

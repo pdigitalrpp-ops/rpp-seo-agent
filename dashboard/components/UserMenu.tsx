@@ -6,9 +6,9 @@ import { getSession, signOut } from "next-auth/react"
 /**
  * Correo con el que se entró + salir. Reemplaza al badge "Agente SEO · 2026".
  *
- * La sesión se lee desde el NAVEGADOR a propósito: si el layout la leyera en el
- * servidor (getServerSession usa cookies), todas las páginas dejarían de ser
- * ISR (revalidate = 60) y pasarían a renderizarse en cada visita.
+ * La sesión se lee desde el NAVEGADOR: así el layout no depende de cookies. (Las
+ * páginas ya se renderizan en cada visita desde el 2026-10-12, así que esto
+ * dejó de ser un requisito; se mantiene porque funciona y evita un salto.)
  */
 export function UserMenu() {
   const [email, setEmail] = useState<string | null>(null)

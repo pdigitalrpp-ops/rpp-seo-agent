@@ -11,7 +11,36 @@ dashboard web.
 
 ## Estado actual
 
-**Fecha último avance:** 2026-09-23
+**Fecha último avance:** 2026-10-12
+
+**2026-10-12 — El dashboard ya NO usa ISR: cada página se renderiza en cada
+visita (rama datos-siempre-frescos).** Reporte del usuario: /radar vacío y
+/alertas y /busqueda con datos de días atrás, con el agente y la base al día
+(verificado: `watch_hits`, `alerts` y `gsc_daily` tenían filas de esa misma
+mañana).
+- **Causa: ISR + poco tráfico.** Con `revalidate = 60` una página solo se
+  regenera cuando alguien la pide, y a ESE visitante le entrega la copia
+  anterior (stale-while-revalidate). `dashboard_page_views` mostraba 0 visitas
+  entre el 7 y el 12 de octubre: el primero en entrar recibió páginas de días
+  atrás. Y como el menú precarga todas las pestañas al cargar la primera, el
+  navegador guardó esas copias viejas ~5 min (Router Cache), así que recorrer
+  las pestañas tampoco las corregía.
+- **Por qué /radar salía VACÍO y no solo viejo:** la lista se filtra por una
+  ventana de 48 h contra el reloj del navegador; los hallazgos congelados de
+  hace días quedaban todos fuera.
+- **Fix:** las 10 páginas pasan a `dynamic = "force-dynamic"` +
+  `fetchCache = "force-no-store"`, y `lib/supabase.ts` fuerza
+  `cache: "no-store"` (mismo criterio que /admin). `components/AutoRefresh.tsx`
+  (en el layout) hace `router.refresh()` cada 5 min con la pestaña visible y al
+  volver a ella, para las pestañas que se quedan abiertas. `loading.tsx` da el
+  esqueleto mientras el servidor responde. RadarClient y CompetenciaClient
+  sincronizan su estado local con las props (si no, el refresh no se veía).
+- **No volver a poner `revalidate` en una página del panel** sin resolver esto:
+  con 3-6 usuarios, el costo de renderizar por visita es despreciable y el ISR
+  solo aportaba datos viejos. Las notas de más abajo que hablan de "ISR" y de
+  "forzar la regeneración" quedaron históricas.
+- De paso: /trafico calculaba "ayer" con `toISOString()` (UTC) como respaldo;
+  ahora usa `todayInLima()`.
 
 **2026-09-23 — Historial de cambios (rama registro-cambios):** decisión del
 usuario: TODOS pueden agregar/editar/pausar/quitar temas del Radar y medios de
