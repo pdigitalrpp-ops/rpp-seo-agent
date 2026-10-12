@@ -3,7 +3,9 @@ import { getLastRunFinishedAt } from "@/lib/lastRun"
 import { todayInLima } from "@/lib/dates"
 import AlertasClient, { Alert, DecayItem } from "./AlertasClient"
 
-export const revalidate = 60
+// Se renderiza en CADA visita, sin caché de página ni de datos (ver lib/supabase.ts).
+export const dynamic = "force-dynamic"
+export const fetchCache = "force-no-store"
 
 // Las alertas son señales de "tendencia AHORA": pasadas unas horas el tema ya
 // jugó/pasó y seguir mostrándolas como activas es engañoso (ver CLAUDE.md,

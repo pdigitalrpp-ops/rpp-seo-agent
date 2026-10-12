@@ -3,7 +3,9 @@ import { getLastRunFinishedAt } from "@/lib/lastRun"
 import TrendsClient, { Trend, TrendHistoryRow } from "./TrendsClient"
 import { todayInLima } from "@/lib/dates"
 
-export const revalidate = 60
+// Se renderiza en CADA visita, sin caché de página ni de datos (ver lib/supabase.ts).
+export const dynamic = "force-dynamic"
+export const fetchCache = "force-no-store"
 
 export default async function TrendsPage() {
   // Día de LIMA, no de UTC: el agente escribe sus fechas bajo TZ=America/Lima

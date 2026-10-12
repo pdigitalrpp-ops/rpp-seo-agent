@@ -2,7 +2,7 @@ import type { RunKind } from "@/lib/lastRun"
 
 /** Cadencia legible por tipo de corrida. "mixed" = pestañas que mezclan ambas. */
 const CADENCE: Record<RunKind | "mixed", string> = {
-  radar:   "Se actualiza cada ~10 min (5 a.m.–11 p.m.)",
+  radar:   "Se actualiza cada ~15 min (5 a.m.–11 p.m.)",
   morning: "Se actualiza 1 vez al día (~6 a.m.)",
   mixed:   "Se actualiza durante el día",
 }

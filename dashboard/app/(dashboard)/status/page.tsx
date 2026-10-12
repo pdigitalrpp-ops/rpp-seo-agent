@@ -3,7 +3,9 @@ import { InfoTooltip } from "@/components/ui/InfoTooltip"
 import { TagBadge } from "@/components/ui/Pill"
 import type { RunKind } from "@/lib/lastRun"
 
-export const revalidate = 60
+// Se renderiza en CADA visita, sin caché de página ni de datos (ver lib/supabase.ts).
+export const dynamic = "force-dynamic"
+export const fetchCache = "force-no-store"
 
 const KIND_LABEL: Record<RunKind, string> = {
   morning: "Benchmark de la mañana",

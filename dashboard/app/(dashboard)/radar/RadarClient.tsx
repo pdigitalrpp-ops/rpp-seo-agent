@@ -195,6 +195,12 @@ export default function RadarClient({
 }) {
   const [keywords, setKeywords] = useState<WatchKeyword[]>(initialKeywords)
   const [hits, setHits] = useState<WatchHit[]>(initialHits)
+  // El estado local existe para los cambios optimistas (pausar, borrar,
+  // descartar). Cuando el servidor manda datos nuevos (AutoRefresh), mandan
+  // ellos: sin esto la pestaña abierta se quedaba con los hallazgos del
+  // momento en que se cargó y, pasadas 48 h, la lista salía vacía.
+  useEffect(() => { setKeywords(initialKeywords) }, [initialKeywords])
+  useEffect(() => { setHits(initialHits) }, [initialHits])
 
   // Arranca con la hora del servidor (hidratacion sin desajuste) y recien
   // montado pasa al reloj del navegador, refrescandose cada minuto para que

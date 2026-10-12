@@ -1,10 +1,13 @@
 import { supabase } from "@/lib/supabase"
 import { getLastRunFinishedAt } from "@/lib/lastRun"
 import { isRealArticle } from "@/lib/articleFilter"
+import { todayInLima } from "@/lib/dates"
 import TraficoClient, { ChannelRow } from "./TraficoClient"
 import type { TrendChannelMeta, TrendPoint } from "./ChannelTrendChart"
 
-export const revalidate = 60
+// Se renderiza en CADA visita, sin caché de página ni de datos (ver lib/supabase.ts).
+export const dynamic = "force-dynamic"
+export const fetchCache = "force-no-store"
 
 const TREND_WINDOW_DAYS = 7
 const MAX_INDIVIDUAL_CHANNELS = 5
@@ -145,7 +148,7 @@ export default async function TraficoPage({
     new Set((runsData ?? []).map((r: any) => dataDayOf(r.run_date as string))),
   ).sort()
 
-  const yesterdayIso = addDaysIso(new Date().toISOString().slice(0, 10), -1)
+  const yesterdayIso = addDaysIso(todayInLima(), -1)
   const latestDataDay = availableDataDays[availableDataDays.length - 1] ?? yesterdayIso
   const requested = searchParams.date
   const selectedDay = requested && availableDataDays.includes(requested) ? requested : latestDataDay

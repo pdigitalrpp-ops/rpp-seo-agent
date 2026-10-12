@@ -8,7 +8,9 @@ import { LastUpdated } from "@/components/ui/LastUpdated"
 import { RunAgentButton } from "@/components/RunAgentButton"
 import { todayInLima } from "@/lib/dates"
 
-export const revalidate = 60
+// Se renderiza en CADA visita, sin caché de página ni de datos (ver lib/supabase.ts).
+export const dynamic = "force-dynamic"
+export const fetchCache = "force-no-store"
 
 const URGENCY_COLOR: Record<string, string> = {
   INMEDIATO:      "#DC2626",
