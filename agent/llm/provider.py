@@ -225,6 +225,20 @@ def suggest_headlines(items, title_max=70):
     return fn(items, title_max=title_max)
 
 
+def review_alerts(items):
+    """
+    Clasifica las candidatas a alerta con criterio de analista (ver
+    analyzers/alert_review.py). Devuelve {indice: {tipo, hecho, rpp, ev,
+    motivo}} o None si no hay proveedor o no implementa review_alerts — y en
+    ese caso quien llama NO emite alertas (falla cerrado).
+    """
+    provider = _active_provider()
+    fn = getattr(provider, "review_alerts", None) if provider else None
+    if not fn or not items:
+        return None
+    return fn(items)
+
+
 def rewrite_onpage_batch(items, **kwargs):
     provider = _active_provider()
     if not provider:

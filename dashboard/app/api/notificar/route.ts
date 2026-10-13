@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
       } else if (body.prueba === "alertas") {
         // Las últimas del día, aunque ya se hayan enviado: es para ver el formato.
         const { data } = await db.from("alerts")
-          .select("id, severity, section, score, title, description, url, created_at")
+          .select("id, type, severity, section, score, title, keyword, description, url, created_at")
           .eq("date", hoy).order("created_at", { ascending: false }).limit(3)
         if (!data || !data.length) return NextResponse.json({ ok: true, prueba: "alertas", enviado: 0, nota: "sin alertas hoy" })
         const c = armarAlertas(data)
@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
 
   // 2. Alertas recientes.
   const { data: alertas } = await db.from("alerts")
-    .select("id, severity, section, score, title, description, url, created_at")
+    .select("id, type, severity, section, score, title, keyword, description, url, created_at")
     .gte("created_at", desde).order("created_at", { ascending: false }).limit(30)
   if (alertas && alertas.length) {
     for (const d of destinatarios.filter((x) => x.alerts)) {

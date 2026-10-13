@@ -91,3 +91,7 @@ def match_coverage(competitor_titles, own_titles):
 
 def suggest_headlines(items, title_max=70):
     return openai_compat.suggest_headlines(_client, items, title_max=title_max)
+
+
+def review_alerts(items):
+    return openai_compat.review_alerts(_client, items)

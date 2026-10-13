@@ -475,6 +475,10 @@ def build_alerts(enriched_trends, sections=None, now=None):
             # metadatos para dedup/log (no se guardan en la tabla)
             "_keywords": event.get("keywords"),
             "_n_sources": n_sources,
+            # para el criterio de analista (analyzers/alert_review.py)
+            "_keyword": event["keyword"],
+            "_news": news,
+            "_why": event.get("why_trending"),
         })
 
     return sorted(alerts, key=lambda a: a["score"], reverse=True)

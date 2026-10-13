@@ -58,6 +58,7 @@ const TYPE_LABEL: Record<string, string> = {
   decay:          "Content decay",
   position_drop:  "Caída de posición",
   trending_topic: "Tema en tendencia",
+  coverage_gap: "Evento sin nota en RPP",
 }
 
 const TODAS = "__todas__"

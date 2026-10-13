@@ -10,8 +10,9 @@ Marcar con `[x]` lo terminado y anotar la fecha al lado.
 
 Sin esto no hay reemplazo.
 
-- [ ] Resumen matutino por correo *(en curso desde el 2026-10-12, prueba con flozano@gruporpp.com.pe)*
-- [ ] Alertas en el momento por correo *(en curso desde el 2026-10-12)*
+- [x] Resumen matutino por correo *(2026-10-12; por ahora solo a flozano@gruporpp.com.pe)*
+- [x] Alertas en el momento por correo *(2026-10-12; por ahora solo a flozano@gruporpp.com.pe)*
+- [ ] Revisar un día completo de correos y decidir a quién más se envían
 - [ ] Resumen matutino por sección (a cada editor, lo suyo)
 - [ ] Definir el responsable y el canal de cada sección (`SECTION_RESPONSIBLES`)
 - [ ] Envío por Teams o WhatsApp
@@ -46,7 +47,9 @@ Hoy el agente recomienda y no sabe qué pasó después.
 
 ## 5. Bajar el ruido y vigilarse
 
-- [ ] Cupo de alertas por franja horaria (hoy ~14,6 al día; objetivo 4-6)
+- [x] Criterio de analista: no alertar lo que RPP ya publicó, ni marcas, servicio o términos genéricos *(2026-10-13)*
+- [ ] Medir un día completo con el criterio nuevo (antes ~14,6 alertas al día; objetivo 4-6)
+- [ ] Cupo de alertas por franja horaria, si después de medir sigue haciendo falta
 - [ ] Cobertura limitada a los temas con demanda (hoy 715 de 833 titulares salen "pendiente")
 - [ ] Aviso cuando falle una fuente (Marfeel falla ~3 veces al día)
 - [ ] Aviso cuando se atrasen los datos

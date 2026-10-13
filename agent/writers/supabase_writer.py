@@ -302,6 +302,8 @@ def save_alerts(alerts):
         "url":         a.get("url"),
         "section":     a.get("section"),
         "score":       a.get("score"),
+        # La búsqueda de Trends que la disparó; `title` es el HECHO.
+        "keyword":     a.get("_keyword"),
     } for a in alerts]
     sb.table("alerts").insert(rows).execute()
     logger.info(f"Guardadas {len(rows)} alertas")
@@ -416,9 +418,28 @@ def get_recent_alerts(hours=12):
     """
     sb = _get_client()
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
-    result = (sb.table("alerts").select("id,title,description,url,score,severity")
+    result = (sb.table("alerts").select("id,title,keyword,description,url,score,severity")
               .gte("created_at", cutoff).execute())
     return list(result.data or [])
+
+
+def get_recent_alert_reviews(hours=3):
+    """
+    Keywords DESCARTADAS hace poco por el criterio de analista
+    (analyzers/alert_review.py), para no volver a juzgarlas en cada corrida.
+    """
+    sb = _get_client()
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+    result = (sb.table("alert_reviews").select("keyword,reason_code")
+              .eq("decision", "descartada").gte("created_at", cutoff).execute())
+    return list(result.data or [])
+
+
+def save_alert_reviews(decisiones):
+    """Registro de por qué cada candidata alertó o no. Sirve de caché y de auditoría."""
+    if not decisiones:
+        return
+    _get_client().table("alert_reviews").insert(decisiones).execute()
 
 
 def refresh_alert(alert_id, description=None, url=None, score=None, severity=None):
