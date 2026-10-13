@@ -48,7 +48,7 @@ from analyzers import evidence
 from collectors import trend_news
 from llm import provider as llm
 from text_keys import normalize_text
-from config import ALERT_MEDIA_BRANDS, ALERT_SERVICE_PATTERNS
+from config import ALERT_MEDIA_BRANDS, ALERT_SERVICE_PATTERNS, SEO_CONTENT_URL_PREFIXES
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +69,57 @@ def _keyword_base(keyword):
         prev = k
         k = _COLETILLAS_RE.sub("", k).strip()
     return k
+
+
+def _sin_protocolo(url):
+    u = (url or "").strip().lower()
+    for pre in ("https://", "http://"):
+        if u.startswith(pre):
+            u = u[len(pre):]
+    return u[4:] if u.startswith("www.") else u
+
+
+def seo_title_keys(articles):
+    """
+    Claves de titular de los artículos de secciones SEO, agrupadas por dominio:
+    {"gestion.pe": {"a que hora juega ...", ...}}. `articles` = dicts
+    {title, url} (de la corrida en memoria y de la base).
+    """
+    out = {}
+    for a in articles or []:
+        u = _sin_protocolo(a.get("url"))
+        for pref in SEO_CONTENT_URL_PREFIXES:
+            if u.startswith(pref):
+                clave = normalize_text(a.get("title"))
+                if clave:
+                    out.setdefault(pref.split("/")[0], set()).add(clave)
+    return out
+
+
+def is_seo_content(news_item, seo_keys=None):
+    """
+    ¿Esta noticia es de una sección de contenido SEO de otro medio?
+
+    Dos formas de saberlo, porque la ruta casi nunca viene: (1) la URL propia
+    del medio, cuando está (las noticias que asocia Google Trends la traen);
+    (2) el titular, cruzado contra los artículos de esa sección que el radar
+    ya recolectó del RSS del medio. Para los titulares se acepta que uno
+    empiece por el otro: Google News a veces los recorta.
+    """
+    for campo in ("source_url", "url"):
+        u = _sin_protocolo(news_item.get(campo))
+        if any(u.startswith(pref) for pref in SEO_CONTENT_URL_PREFIXES):
+            return True
+    dom = evidence.domain_of(news_item)
+    claves = (seo_keys or {}).get(dom)
+    if not claves:
+        return False
+    t = normalize_text(news_item.get("title"))
+    if not t:
+        return False
+    if t in claves:
+        return True
+    return len(t) >= 30 and any(c.startswith(t) or t.startswith(c) for c in claves if len(c) >= 30)
 
 
 def rules_veto(alert):
@@ -138,11 +189,13 @@ def rpp_candidates(alert, own_articles, limit=8):
     return out[:limit + 4]
 
 
-def review(candidates, own_articles):
+def review(candidates, own_articles, seo_keys=None):
     """
     Aplica el criterio a las candidatas. Devuelve (aprobadas, decisiones):
     `aprobadas` son las alertas listas para emitir (ya tituladas con el hecho);
     `decisiones` es una fila por candidata para la tabla alert_reviews.
+    `seo_keys` viene de seo_title_keys(): titulares de secciones SEO de otros
+    medios, que no pueden sostener ni enlazarse en una alerta.
     """
     aprobadas, decisiones = [], []
 
@@ -157,6 +210,19 @@ def review(candidates, own_articles):
     pendientes = []
     for alert in candidates:
         alert.setdefault("_keyword", alert.get("title"))
+        # Fuera la evidencia de secciones SEO de otros medios ANTES de todo lo
+        # demás: ni la ve el modelo ni puede quedar como enlace de la alerta.
+        news = alert.get("_news") or []
+        limpias = [n for n in news if not is_seo_content(n, seo_keys)]
+        if len(limpias) != len(news):
+            logger.info(f"'{alert['_keyword']}': {len(news) - len(limpias)} noticia(s) de "
+                        f"secciones SEO fuera de la evidencia")
+            alert["_news"] = limpias
+            alert["url"] = limpias[0].get("url") if limpias else None
+            if not limpias:
+                descartar(alert, "contenido_seo",
+                          "toda la evidencia viene de secciones de contenido SEO de otros medios")
+                continue
         veto = rules_veto(alert)
         if veto:
             descartar(alert, *veto)

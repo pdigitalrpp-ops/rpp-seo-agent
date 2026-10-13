@@ -229,6 +229,16 @@ ALERT_REVIEW_CACHE_HOURS = 3
 # simulacro o un partido se publican con un día de anticipación.
 ALERT_RPP_WINDOW_HOURS = 30
 
+# Secciones de OTROS medios que son contenido hecho para buscadores ("a qué
+# hora juega", loterías, "dónde ver"). Pedido del usuario el 2026-10-13 con
+# gestion.pe/mix/: se siguen MONITOREANDO en la pestaña Competencia (como
+# "Contenido SEO"), pero nada de ahí puede sostener ni enlazarse en una alerta.
+# Es "dominio/ruta/", sin protocolo ni www. Ampliable a mano; la copia para el
+# panel está en CompetenciaClient.tsx (SEO_URL_PREFIXES): mantener AMBAS.
+SEO_CONTENT_URL_PREFIXES = [
+    "gestion.pe/mix/",
+]
+
 # Búsquedas que son el NOMBRE de un medio, canal o plataforma. Nunca alertan:
 # "latina" es tendencia todas las noches porque la gente busca la señal en
 # vivo, no porque haya pasado algo. Se compara la keyword COMPLETA (sin

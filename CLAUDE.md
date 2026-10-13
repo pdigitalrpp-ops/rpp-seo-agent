@@ -42,6 +42,15 @@ RPP), "servicio geológico colombiano" (institución + página SEO de sismos),
   motivo. Es caché (una descartada no se vuelve a juzgar en
   `ALERT_REVIEW_CACHE_HOURS` = 3 h) y es el registro para calibrar: **ante un
   "¿por qué (no) alertó X?", mirar ahí primero.**
+- **Secciones SEO de otros medios (`SEO_CONTENT_URL_PREFIXES`, hoy solo
+  `gestion.pe/mix/`):** pedido del usuario el mismo dia. Nada de ahi puede
+  sostener ni enlazarse en una alerta; en Competencia se sigue viendo, como
+  "Contenido SEO" (copia de la lista en `CompetenciaClient.tsx`). La ruta
+  casi nunca viene en la evidencia (Google News entrega un redirector), asi
+  que se reconoce por TITULAR contra lo que el RSS del medio ya trajo
+  (`alert_review.is_seo_content`). Funciona con Gestion porque llega por RSS
+  propio con URL real; un medio que llegue solo por Google News no se podria
+  bloquear por ruta.
 - Test offline con los 7 casos reales + contraejemplos: scratchpad
   `test_alert_review.py`. La capa LLM solo se puede verificar en una corrida
   de GitHub Actions (api.openai.com bloqueado desde la red de RPP).

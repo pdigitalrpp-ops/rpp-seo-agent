@@ -70,6 +70,16 @@ function stripAccents(s: string): string {
   return s.normalize("NFD").replace(/[̀-ͯ]/g, "")
 }
 
+// Secciones de otros medios que son contenido SEO completo, se titule como se
+// titule (pedido del 2026-10-13 con gestion.pe/mix/). Copia de
+// SEO_CONTENT_URL_PREFIXES de agent/config.py: mantener AMBAS.
+const SEO_URL_PREFIXES = ["gestion.pe/mix/"]
+
+function isSeoUrl(url: string | null | undefined): boolean {
+  const u = (url ?? "").toLowerCase().replace(/^https?:\/\/(www\.)?/, "")
+  return SEO_URL_PREFIXES.some((p) => u.indexOf(p) === 0)
+}
+
 function isSeoContent(title: string): boolean {
   const t = stripAccents(title.toLowerCase())
   return SEO_PATTERNS.some((re) => re.test(t)) || SEO_PATTERNS_CS.some((re) => re.test(title))
@@ -214,9 +224,9 @@ export default function CompetenciaClient({
 
   // Split contenido de valor vs contenido SEO: todo el tablero (categorías,
   // medios, notas, cobertura) opera sobre el grupo seleccionado. Default: valor.
-  const seoTotal = useMemo(() => articles.filter((a) => isSeoContent(a.title)).length, [articles])
+  const seoTotal = useMemo(() => articles.filter((a) => isSeoContent(a.title) || isSeoUrl(a.url)).length, [articles])
   const pool = useMemo(
-    () => articles.filter((a) => isSeoContent(a.title) === (contentType === "seo")),
+    () => articles.filter((a) => (isSeoContent(a.title) || isSeoUrl(a.url)) === (contentType === "seo")),
     [articles, contentType],
   )
 

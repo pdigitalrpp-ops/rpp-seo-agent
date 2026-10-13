@@ -17,7 +17,7 @@ load_dotenv()
 from config import (
     KNOWN_SECTIONS_FALLBACK, ALERT_MAX_PER_SECTION_PER_HOUR, ALERT_DEDUP_HOURS,
     CATEGORY_KEYWORDS, WATCH_MAX_ACTIVE_KEYWORDS,
-    ALERT_REVIEW_CACHE_HOURS, ALERT_RPP_WINDOW_HOURS,
+    ALERT_REVIEW_CACHE_HOURS, ALERT_RPP_WINDOW_HOURS, SEO_CONTENT_URL_PREFIXES,
 )
 from collectors import marfeel, trends, competitors, rpp_own_feed, trend_news, watchlist
 from analyzers import scoring, opportunities, coverage, alerting, evidence, alert_review
@@ -29,7 +29,7 @@ from writers.supabase_writer import (
     save_run_log, save_recommendations, save_alerts, save_trends,
     save_competitor_articles, get_scoring_weights, count_recent_alerts,
     get_recent_alerts, refresh_alert, get_trends_context,
-    get_recent_alert_reviews, save_alert_reviews,
+    get_recent_alert_reviews, save_alert_reviews, get_seo_content_titles,
     get_watch_keywords, save_watch_hits, get_competitor_sources,
 )
 
@@ -277,7 +277,17 @@ def run():
                 for k in (a.get("_keywords") or [a.get("_keyword")]))]
             own_recent_alertas = (rpp_own_feed.fetch_recent_articles(
                 window_hours=ALERT_RPP_WINDOW_HOURS) if por_juzgar else [])
-            aprobadas, decisiones = alert_review.review(por_juzgar, own_recent_alertas)
+            # Titulares de secciones SEO de otros medios (gestion.pe/mix/...):
+            # los de esta corrida más los de 48 h en la base, porque la
+            # tendencia puede apoyarse en una nota de ayer.
+            seo_arts = list(competitor_data or [])
+            if por_juzgar:
+                try:
+                    seo_arts += get_seo_content_titles(SEO_CONTENT_URL_PREFIXES)
+                except Exception as e:
+                    logger.warning(f"No se pudo leer los titulares de secciones SEO: {e}")
+            aprobadas, decisiones = alert_review.review(
+                por_juzgar, own_recent_alertas, seo_keys=alert_review.seo_title_keys(seo_arts))
             if decisiones:
                 try:
                     save_alert_reviews(decisiones)

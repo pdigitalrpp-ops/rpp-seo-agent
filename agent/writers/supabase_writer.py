@@ -435,6 +435,24 @@ def get_recent_alert_reviews(hours=3):
     return list(result.data or [])
 
 
+def get_seo_content_titles(prefixes, hours=48):
+    """
+    Titulares recientes de competencia cuya URL cae en una sección de contenido
+    SEO (config.SEO_CONTENT_URL_PREFIXES). Hace falta porque las noticias de
+    una tendencia suelen llegar con el redirector de Google News y sin la ruta:
+    el titular es lo único con lo que se puede reconocer que es de esa sección.
+    Devuelve lista de dicts {title, url}.
+    """
+    if not prefixes:
+        return []
+    sb = _get_client()
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+    filtro = ",".join(f"url.ilike.*{p}*" for p in prefixes)
+    result = (sb.table("competitor_articles").select("title,url")
+              .or_(filtro).gte("created_at", cutoff).limit(1000).execute())
+    return list(result.data or [])
+
+
 def save_alert_reviews(decisiones):
     """Registro de por qué cada candidata alertó o no. Sirve de caché y de auditoría."""
     if not decisiones:
