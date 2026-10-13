@@ -237,6 +237,9 @@ ALERT_RPP_WINDOW_HOURS = 30
 # panel está en CompetenciaClient.tsx (SEO_URL_PREFIXES): mantener AMBAS.
 SEO_CONTENT_URL_PREFIXES = [
     "gestion.pe/mix/",
+    # Añadidas el 2026-10-13: en 7 dias, 328 y 224 notas de El Comercio.
+    "elcomercio.pe/mag/",
+    "elcomercio.pe/respuestas/",
 ]
 
 # Búsquedas que son el NOMBRE de un medio, canal o plataforma. Nunca alertan:

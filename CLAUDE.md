@@ -42,8 +42,8 @@ RPP), "servicio geológico colombiano" (institución + página SEO de sismos),
   motivo. Es caché (una descartada no se vuelve a juzgar en
   `ALERT_REVIEW_CACHE_HOURS` = 3 h) y es el registro para calibrar: **ante un
   "¿por qué (no) alertó X?", mirar ahí primero.**
-- **Secciones SEO de otros medios (`SEO_CONTENT_URL_PREFIXES`, hoy solo
-  `gestion.pe/mix/`):** pedido del usuario el mismo dia. Nada de ahi puede
+- **Secciones SEO de otros medios (`SEO_CONTENT_URL_PREFIXES`: `gestion.pe/mix/`,
+  `elcomercio.pe/mag/`, `elcomercio.pe/respuestas/`):** pedido del usuario el mismo dia. Nada de ahi puede
   sostener ni enlazarse en una alerta; en Competencia se sigue viendo, como
   "Contenido SEO" (copia de la lista en `CompetenciaClient.tsx`). La ruta
   casi nunca viene en la evidencia (Google News entrega un redirector), asi

@@ -73,7 +73,7 @@ function stripAccents(s: string): string {
 // Secciones de otros medios que son contenido SEO completo, se titule como se
 // titule (pedido del 2026-10-13 con gestion.pe/mix/). Copia de
 // SEO_CONTENT_URL_PREFIXES de agent/config.py: mantener AMBAS.
-const SEO_URL_PREFIXES = ["gestion.pe/mix/"]
+const SEO_URL_PREFIXES = ["gestion.pe/mix/", "elcomercio.pe/mag/", "elcomercio.pe/respuestas/"]
 
 function isSeoUrl(url: string | null | undefined): boolean {
   const u = (url ?? "").toLowerCase().replace(/^https?:\/\/(www\.)?/, "")
