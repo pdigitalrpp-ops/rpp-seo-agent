@@ -17,9 +17,11 @@ load_dotenv()
 from config import (
     KNOWN_SECTIONS_FALLBACK, ALERT_MAX_PER_SECTION_PER_HOUR, ALERT_DEDUP_HOURS,
     CATEGORY_KEYWORDS, WATCH_MAX_ACTIVE_KEYWORDS,
+    ALERT_REVIEW_CACHE_HOURS, ALERT_RPP_WINDOW_HOURS, SEO_CONTENT_URL_PREFIXES,
 )
 from collectors import marfeel, trends, competitors, rpp_own_feed, trend_news, watchlist
-from analyzers import scoring, opportunities, coverage, alerting, evidence
+from analyzers import scoring, opportunities, coverage, alerting, evidence, alert_review
+from text_keys import normalize_text
 from llm import provider as llm
 from notifiers import notify
 from writers.supabase_writer import (
@@ -27,6 +29,7 @@ from writers.supabase_writer import (
     save_run_log, save_recommendations, save_alerts, save_trends,
     save_competitor_articles, get_scoring_weights, count_recent_alerts,
     get_recent_alerts, refresh_alert, get_trends_context,
+    get_recent_alert_reviews, save_alert_reviews, get_seo_content_titles,
     get_watch_keywords, save_watch_hits, get_competitor_sources,
 )
 
@@ -245,15 +248,65 @@ def run():
                        f"se omiten las alertas de esta corrida")
         candidate_alerts, already_alerted = [], []
 
+    def _alerta_previa(alert):
+        # Dedup por EVENTO, no por título exacto: Google Trends renombra el
+        # mismo hecho entre corridas y así se colaban tres alertas del mismo
+        # partido en un día (ver alerting.same_event). Desde el 2026-10-13 la
+        # alerta se titula con el HECHO y la búsqueda va en `keyword`, así que
+        # se compara por las dos claves de cada lado.
+        claves = [c for c in (alert.get("title"), alert.get("_keyword")) if c]
+        for a in already_alerted:
+            previas = [c for c in (a.get("title"), a.get("keyword")) if c]
+            if any(alerting.same_event(c, pc) for c in claves for pc in previas):
+                return a
+        return None
+
+    # --- CRITERIO DE ANALISTA (ver analyzers/alert_review.py) ---
+    # Solo pasan por aquí las candidatas NUEVAS: las que repiten un evento ya
+    # alertado siguen el camino de refresco de siempre. Y de las nuevas, las
+    # descartadas hace poco no se vuelven a juzgar (costaría una llamada al
+    # LLM cada 15 min por el mismo tema).
+    nuevas = [a for a in candidate_alerts if not _alerta_previa(a)]
+    if nuevas:
+        repetidas = [a for a in candidate_alerts if _alerta_previa(a)]
+        try:
+            ya_descartadas = {normalize_text(r.get("keyword"))
+                              for r in get_recent_alert_reviews(hours=ALERT_REVIEW_CACHE_HOURS)}
+            por_juzgar = [a for a in nuevas if not any(
+                normalize_text(k) in ya_descartadas
+                for k in (a.get("_keywords") or [a.get("_keyword")]))]
+            own_recent_alertas = (rpp_own_feed.fetch_recent_articles(
+                window_hours=ALERT_RPP_WINDOW_HOURS) if por_juzgar else [])
+            # Titulares de secciones SEO de otros medios (gestion.pe/mix/...):
+            # los de esta corrida más los de 48 h en la base, porque la
+            # tendencia puede apoyarse en una nota de ayer.
+            seo_arts = list(competitor_data or [])
+            if por_juzgar:
+                try:
+                    seo_arts += get_seo_content_titles(SEO_CONTENT_URL_PREFIXES)
+                except Exception as e:
+                    logger.warning(f"No se pudo leer los titulares de secciones SEO: {e}")
+            aprobadas, decisiones = alert_review.review(
+                por_juzgar, own_recent_alertas, seo_keys=alert_review.seo_title_keys(seo_arts))
+            if decisiones:
+                try:
+                    save_alert_reviews(decisiones)
+                except Exception as e:
+                    logger.warning(f"No se pudo guardar el registro de revisiones: {e}")
+            logger.info(f"🧐 Criterio de analista: {len(nuevas)} candidata(s) nueva(s), "
+                        f"{len(nuevas) - len(por_juzgar)} ya descartada(s) hace poco, "
+                        f"{len(aprobadas)} aprobada(s)")
+        except Exception as e:
+            # Falla cerrado: sin revisión no sale ninguna alerta nueva.
+            logger.warning(f"Falló la revisión de alertas ({e}); no se emiten alertas nuevas en esta corrida")
+            aprobadas = []
+        candidate_alerts = repetidas + aprobadas
+
     sent_alerts = []
     for alert in candidate_alerts:
         section = alert["section"]
         title_key = (alert.get("title") or "").lower().strip()
-        # Dedup por EVENTO, no por título exacto: Google Trends renombra el
-        # mismo hecho entre corridas y así se colaban tres alertas del mismo
-        # partido en un día (ver alerting.same_event).
-        previa = next((a for a in already_alerted
-                       if alerting.same_event(title_key, a.get("title"))), None)
+        previa = _alerta_previa(alert)
         if previa:
             # La alerta guarda una foto fija: si la descripción cambió (p.ej.
             # porque se regeneró el contexto de la tendencia) se REFRESCA en
@@ -290,6 +343,7 @@ def run():
         notify.dispatch_alert(alert)   # a Teams/WhatsApp si hay responsable
         sent_alerts.append(alert)
         already_alerted.append({"id": None, "title": title_key,
+                                "keyword": alert.get("_keyword"),
                                 "description": alert.get("description"),
                                 "severity": alert["severity"]})
         logger.info(

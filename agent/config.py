@@ -219,6 +219,52 @@ ALERT_SEVERITY_HIGH            = 68   # >= esto → severidad "alta", si no "med
 ALERT_MAX_PER_SECTION_PER_HOUR = 3    # anti-spam por sección/hora
 ALERT_DEDUP_HOURS              = 12   # no re-alertar el mismo evento en esta ventana
 
+# --- Criterio de analista (ver analyzers/alert_review.py) --------------------
+# Una candidata descartada no se vuelve a juzgar durante este plazo: sin esto
+# el radar le preguntaría lo mismo al LLM cada 15 min. Corto a propósito: un
+# tema descartado por "todavía no hay un hecho" puede volverse noticia en horas.
+ALERT_REVIEW_CACHE_HOURS = 3
+# Ventana del RSS propio que se cruza contra una candidata a alerta. Más larga
+# que RPP_OWN_WINDOW_HOURS (5 h, pensada para la pestaña Competencia): un
+# simulacro o un partido se publican con un día de anticipación.
+ALERT_RPP_WINDOW_HOURS = 30
+
+# Secciones de OTROS medios que son contenido hecho para buscadores ("a qué
+# hora juega", loterías, "dónde ver"). Pedido del usuario el 2026-10-13 con
+# gestion.pe/mix/: se siguen MONITOREANDO en la pestaña Competencia (como
+# "Contenido SEO"), pero nada de ahí puede sostener ni enlazarse en una alerta.
+# Es "dominio/ruta/", sin protocolo ni www. Ampliable a mano; la copia para el
+# panel está en CompetenciaClient.tsx (SEO_URL_PREFIXES): mantener AMBAS.
+SEO_CONTENT_URL_PREFIXES = [
+    "gestion.pe/mix/",
+]
+
+# Búsquedas que son el NOMBRE de un medio, canal o plataforma. Nunca alertan:
+# "latina" es tendencia todas las noches porque la gente busca la señal en
+# vivo, no porque haya pasado algo. Se compara la keyword COMPLETA (sin
+# coletillas tipo "en vivo"), no por subcadena: "america" sola es el canal,
+# "america vs cruz azul" es un partido. Ampliable a mano.
+ALERT_MEDIA_BRANDS = [
+    "latina", "latina tv", "latina noticias", "america tv", "america television",
+    "america noticias", "atv", "atv noticias", "panamericana", "panamericana tv",
+    "willax", "willax tv", "exitosa", "exitosa noticias", "tv peru", "tvperu",
+    "canal n", "rpp", "rpp noticias", "rpp tv", "el comercio", "la republica",
+    "peru21", "peru 21", "trome", "infobae", "gestion", "depor", "libero",
+    "ojo", "correo", "diario correo", "expreso", "el popular", "el bocon",
+    "movistar deportes", "gol peru", "golperu", "l1 max", "l1max", "espn",
+    "dsports", "directv", "disney plus", "disney+", "netflix", "youtube",
+    "tiktok", "facebook", "instagram", "whatsapp", "kick", "twitch",
+]
+
+# Contenido de SERVICIO recurrente: se busca todos los días y RPP ya tiene su
+# nota fija. Regex sobre la keyword normalizada (minúsculas, sin tildes).
+ALERT_SERVICE_PATTERNS = [
+    r"precio del? (dolar|euro)", r"^(dolar|euro)( hoy| peru| en peru| sunat| bcr)*$",
+    r"tipo de cambio", r"(^| )horoscopo( |$)",
+    r"(^| )(tinka|kabala|gana diario|ganagol)( |$)", r"^clima( |$)", r"^tiempo en ",
+    r"^temperatura( |$)", r"pico y placa", r"^que se celebra",
+]
+
 # Vínculo peruano de una alerta DEPORTIVA (ver alerting.peruvian_sport_link).
 # MEDIDO el 2026-09-23 sobre 199 alertas reales (9-22 sep): el 42% eran
 # partidos extranjeros sin equipo peruano (Milan, Liverpool, Al Nassr, US

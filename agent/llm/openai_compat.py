@@ -609,3 +609,119 @@ def suggest_headlines(client, items, title_max=70):
         if sug:
             out[items[idx]["keyword"]] = sug
     return out or None
+
+
+# ---------------------------------------------------------------------------
+# G) Criterio de analista: ¿esta tendencia amerita una alerta a la redacción?
+# ---------------------------------------------------------------------------
+
+_ALERT_TIPOS = ("rompiendo", "programado", "servicio", "marca", "generico")
+
+
+def review_alerts(client, items):
+    """
+    Clasifica candidatas a alerta. `items` = lista de dicts {keyword, why,
+    evidencia: [{titular, medio}], rpp: [titular, ...]}.
+
+    Devuelve {indice: {"tipo", "hecho", "rpp", "ev", "motivo"}} o None. El
+    modelo CLASIFICA; la decisión de alertar se toma en código
+    (analyzers/alert_review.py), para que "RPP ya lo publicó" sea una regla y
+    no una opinión del modelo.
+    """
+    if not client.is_enabled() or not items:
+        return None
+
+    payload = [{
+        "i":         i,
+        "busqueda":  it.get("keyword") or "",
+        "contexto":  it.get("why") or "",
+        "evidencia": [{"n": n, "titular": e.get("titular") or "", "medio": e.get("medio") or ""}
+                      for n, e in enumerate(it.get("evidencia") or [])],
+        "notas_rpp": [{"n": n, "titular": t} for n, t in enumerate(it.get("rpp") or [])],
+    } for i, it in enumerate(items)]
+
+    system = (
+        "Eres el analista SEO senior de la redacción web de RPP Noticias (Perú). "
+        "Decides si una búsqueda en tendencia en Google Perú merece que avises "
+        "AHORA a los editores. Eres exigente: una alerta interrumpe a la "
+        "redacción, así que solo vale cuando hay un hecho noticioso concreto "
+        "que RPP todavía no publicó. Avisar de algo que RPP ya tiene, de un "
+        "tema rutinario o de una palabra suelta te hace perder credibilidad. "
+        "Nunca inventes hechos que no estén en los titulares. Respondes "
+        "exclusivamente en JSON, sin texto adicional ni markdown."
+    )
+    prompt = (
+        "Para CADA búsqueda recibes: el contexto de por qué es tendencia, los "
+        "titulares de otros medios (evidencia) y las notas recientes de RPP que "
+        "podrían tratar de lo mismo (notas_rpp, puede venir vacía).\n\n"
+        "1) Clasifica el \"tipo\" en EXACTAMENTE uno de:\n"
+        "- \"rompiendo\": un hecho noticioso NUEVO e inesperado de las últimas "
+        "horas (muerte, sismo con daños o de magnitud relevante en Perú, "
+        "renuncia, captura, accidente, atentado, decisión oficial, resultado "
+        "que define un título o una clasificación).\n"
+        "- \"programado\": un evento previsto con anticipación (simulacro, "
+        "partido, feriado, estreno, cronograma de pagos, elección, concierto, "
+        "procesión). No es noticia que ocurra: se sabía.\n"
+        "- \"servicio\": contenido recurrente o hecho para posicionar en "
+        "buscadores (precio del dólar, clima, horóscopo, loterías, \"temblor "
+        "HOY EN VIVO: hora exacta, magnitud y epicentro\" de rutina, \"a qué "
+        "hora juega\", \"dónde ver\"). Si los titulares de la evidencia son "
+        "de ese estilo y no reportan daños ni un hecho excepcional, es servicio.\n"
+        "- \"marca\": la búsqueda es el nombre de un medio, canal de TV, "
+        "programa, institución o plataforma, y la evidencia no muestra un hecho "
+        "noticioso SOBRE ESA entidad (p.ej. \"latina\", \"servicio geológico "
+        "colombiano\", \"senamhi\" sin una alerta excepcional).\n"
+        "- \"generico\": una palabra o término genérico (\"víctima\", "
+        "\"elecciones\", \"epicentro\") cuyos titulares hablan de hechos "
+        "DISTINTOS entre sí, o no hay un único hecho claro que lo explique.\n"
+        "En la duda entre \"rompiendo\" y otro tipo, elige el otro.\n\n"
+        "2) \"hecho\": si el tipo es \"rompiendo\" o \"programado\", el "
+        "hecho en un titular informativo de máximo 12 palabras, con sujeto y "
+        "verbo, que se entienda sin conocer la búsqueda (p.ej. \"Sismo de "
+        "magnitud 5.1 sacude Arequipa\", no \"epicentro\"). Si un medio solo "
+        "cita a otro (\"según X\", \"dijo en X\"), atribuye a la fuente "
+        "original. En los demás tipos, null.\n\n"
+        "3) \"rpp\": el número n de la nota de notas_rpp que cubre ESE MISMO "
+        "hecho o evento, o -1 si ninguna. Para un hecho rompiendo debe ser el "
+        "mismo suceso (no basta la misma persona o tema). Para un evento "
+        "programado o un contenido de servicio basta con que RPP tenga una nota "
+        "sobre ese mismo evento. Si notas_rpp viene vacía, -1.\n\n"
+        "4) \"ev\": el número n del titular de evidencia que mejor reporta el "
+        "hecho, prefiriendo la fuente original; -1 si no aplica.\n\n"
+        "5) \"motivo\": una frase corta que justifique el tipo.\n\n"
+        f"Búsquedas (JSON):\n{json.dumps(payload, ensure_ascii=False)}\n\n"
+        'Responde SOLO un JSON: {"items": [{"i": <indice>, "tipo": "<tipo>", '
+        '"hecho": "<titular o null>", "rpp": <n o -1>, "ev": <n o -1>, "motivo": "<frase>"}]}'
+    )
+    data = client.generate_json(prompt, system=system, max_tokens=4000)
+    if not isinstance(data, dict) or not isinstance(data.get("items"), list):
+        if data is not None:
+            logger.warning(f"{client.label}: JSON de revisión de alertas con forma inesperada: {str(data)[:200]!r}")
+        return None
+
+    def _int(v):
+        try:
+            return int(v)
+        except (ValueError, TypeError):
+            return -1
+
+    out = {}
+    for entry in data["items"]:
+        if not isinstance(entry, dict):
+            continue
+        idx = _int(entry.get("i"))
+        if not (0 <= idx < len(items)):
+            continue
+        tipo = str(entry.get("tipo") or "").strip().lower()
+        if tipo not in _ALERT_TIPOS:
+            continue          # tipo desconocido = sin veredicto = no se emite
+        hecho = entry.get("hecho")
+        hecho = hecho.strip() if isinstance(hecho, str) and hecho.strip().lower() != "null" else ""
+        out[idx] = {
+            "tipo":   tipo,
+            "hecho":  hecho or None,
+            "rpp":    _int(entry.get("rpp")),
+            "ev":     _int(entry.get("ev")),
+            "motivo": str(entry.get("motivo") or "").strip()[:300],
+        }
+    return out or None

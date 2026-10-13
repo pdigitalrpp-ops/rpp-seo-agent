@@ -11,7 +11,65 @@ dashboard web.
 
 ## Estado actual
 
-**Fecha último avance:** 2026-10-12
+**Fecha último avance:** 2026-10-13
+
+**2026-10-13 — Alertas con CRITERIO DE ANALISTA (rama alertas-criterio-analista).**
+Primer día con las alertas llegando por correo; el usuario revisó siete y
+ninguna la habría mandado un analista SEO: "latina" (nombre de un canal),
+"precio del dólar" (servicio, y el enlace era la nota de RPP), "simulacro"
+(programado y ya cubierto por RPP), "víctima" (genérico, la noticia era de
+RPP), "servicio geológico colombiano" (institución + página SEO de sismos),
+"elecciones" (genérico, sin mirar si RPP lo tenía).
+- **Reglas que dejó, y que mandan sobre todo lo demás de alertas:**
+  (1) **NUNCA alertar de algo que RPP ya publicó**; (2) la alerta es un HECHO,
+  no una búsqueda; (3) no alertan nombres de medios, contenido de servicio ni
+  términos genéricos; (4) un evento PROGRAMADO solo alerta si RPP no tiene
+  nota (ahí la alerta es "falta esta cobertura", tipo `coverage_gap`, media).
+- **`analyzers/alert_review.py` (NUEVO)**, entre `build_alerts` y el envío.
+  Dos capas: reglas (`ALERT_MEDIA_BRANDS`, `ALERT_SERVICE_PATTERNS` en
+  config.py, y "RPP está entre las noticias de la evidencia") y luego el LLM
+  (`openai_compat.review_alerts`), que recibe la evidencia Y las notas
+  recientes de RPP sobre el tema (Google News `site:rpp.pe` + RSS propio de
+  30 h). **El modelo CLASIFICA (rompiendo|programado|servicio|marca|generico)
+  y dice qué nota de RPP lo cubre; la decisión se toma en código.**
+- **Falla CERRADO:** sin veredicto del LLM no sale ninguna alerta nueva. Es
+  una excepción deliberada al "rules-first, que nada se rompa" del proyecto:
+  aquí romperse es mandar un correo que no debía salir.
+- **La alerta se titula con el hecho** (lo escribe el modelo); la búsqueda de
+  Trends va en la columna nueva `alerts.keyword`. El dedup compara las dos
+  claves de cada lado.
+- **Tabla `alert_reviews`:** una fila por candidata con la decisión y el
+  motivo. Es caché (una descartada no se vuelve a juzgar en
+  `ALERT_REVIEW_CACHE_HOURS` = 3 h) y es el registro para calibrar: **ante un
+  "¿por qué (no) alertó X?", mirar ahí primero.**
+- **Secciones SEO de otros medios (`SEO_CONTENT_URL_PREFIXES`, hoy solo
+  `gestion.pe/mix/`):** pedido del usuario el mismo dia. Nada de ahi puede
+  sostener ni enlazarse en una alerta; en Competencia se sigue viendo, como
+  "Contenido SEO" (copia de la lista en `CompetenciaClient.tsx`). La ruta
+  casi nunca viene en la evidencia (Google News entrega un redirector), asi
+  que se reconoce por TITULAR contra lo que el RSS del medio ya trajo
+  (`alert_review.is_seo_content`). Funciona con Gestion porque llega por RSS
+  propio con URL real; un medio que llegue solo por Google News no se podria
+  bloquear por ruta.
+- Test offline con los 7 casos reales + contraejemplos: scratchpad
+  `test_alert_review.py`. La capa LLM solo se puede verificar en una corrida
+  de GitHub Actions (api.openai.com bloqueado desde la red de RPP).
+- **Pendiente de medir:** cuántas alertas quedan por día y si el modelo
+  descarta de más (riesgo aceptado por el usuario: prefiere perder una alerta
+  a mandar una vergonzosa).
+
+**2026-10-12 — Resumen matutino y alertas POR CORREO (en producción).**
+`pg_cron` (`notificar`, cada 5 min) → `notificar_cron_disparar()` → pg_net →
+`/api/notificar` del dashboard, con el mismo `CRON_SECRET` que el radar. La
+ruta envía por Gmail (las credenciales ya estaban en Vercel; por eso NO se
+envía desde el agente) el resumen del día cuando existe el benchmark de hoy y
+las alertas de las últimas 3 h, una vez por persona (`notification_log`, clave
+única tipo+ref+correo: reserva antes de enviar, libera si falla).
+Destinatarios en `notification_recipients` (por ahora solo flozano, por SQL).
+Contenido en `dashboard/lib/notificaciones.ts` (HTML con estilos en línea:
+Outlook ignora `<style>`). SQL en `agent/db/notifications.sql`. Para probar un
+correo: `select notificar_cron_disparar('{"prueba":"resumen","para":"..."}')`.
+Lo que falta para reemplazar al analista está en `ROADMAP.md`.
 
 **2026-10-12 — El dashboard ya NO usa ISR: cada página se renderiza en cada
 visita (rama datos-siempre-frescos).** Reporte del usuario: /radar vacío y

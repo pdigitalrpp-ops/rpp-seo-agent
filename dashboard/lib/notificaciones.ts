@@ -264,6 +264,7 @@ export function armarAlertas(alertas: Fila[]): Correo {
         ${sev.label}${a.section ? " · " + esc(String(a.section).toUpperCase()) : ""}${a.score != null ? ` · ${Math.round(a.score)}/100` : ""} · ${horaLima(a.created_at)}
       </div>
       <div style="font-size:17px;font-weight:800;margin:3px 0 4px">${esc(a.title)}</div>
+      ${a.keyword && a.keyword !== a.title ? `<div style="font-size:12px;color:#6b7280;margin:0 0 5px">${a.type === "coverage_gap" ? "Evento programado sin nota en RPP · " : ""}Búsqueda en tendencia: <b>${esc(a.keyword)}</b></div>` : ""}
       ${a.description ? `<div>${esc(recorta(a.description, 400))}</div>` : ""}
       ${a.url ? `<div style="margin-top:6px;font-size:13px">${link(a.url, "Ver la noticia que lo origina →")}</div>` : ""}
     </div>`
@@ -273,7 +274,7 @@ export function armarAlertas(alertas: Fila[]): Correo {
     ? `${hayAlta ? "🔴" : "🟠"} Alerta SEO ${(SEVERIDAD[primero.severity] ?? SEVERIDAD.low).label}: ${recorta(primero.title, 80)}`
     : `${hayAlta ? "🔴" : "🟠"} ${orden.length} alertas SEO: ${recorta(orden.map((a) => a.title).join(", "), 90)}`
 
-  const pie = `ALTA = hay un hecho rompiendo. MEDIA = evento grande con mucha búsqueda. ` +
+  const pie = `Solo se alerta de hechos que RPP aún no ha publicado. ALTA = hay un hecho rompiendo. MEDIA = evento con mucha búsqueda. ` +
     `<a href="${PANEL}/alertas" style="color:#0D9488">Ver todas las alertas de hoy</a>`
 
   return {
