@@ -11,7 +11,37 @@ dashboard web.
 
 ## Estado actual
 
-**Fecha último avance:** 2026-10-13
+**Fecha último avance:** 2026-10-14
+
+**2026-10-14 — Correo de TENDENCIAS (rama correo-tendencias).** Pedido de
+usuarios del panel que usan /trends. Decisiones del usuario: 3 envíos fijos
+(08:00, 13:00 y 18:00 Lima), correo APARTE del resumen, solo tendencias de
+Google (sin Search Console ni Radar de temas, por ahora), primero solo a
+flozano (`notification_recipients.trends`; `trend_categories` filtra por
+persona).
+- **Dos límites de la fuente, medidos:** el RSS de Google Trends entrega SOLO
+  el top 10 del momento e ignora `category=` y `hours=` (probado); y
+  `daily_trends` guarda solo ese top 10 porque `save_trends` reemplaza el día
+  en cada corrida. **Por eso la base no tenía historia del día.**
+- **`trend_sightings` (NUEVA):** una fila por tendencia y día, con primera y
+  última vez vista, mejor rank, pico de volumen, categoría y nota de RPP. El
+  upsert es la función SQL `upsert_trend_sightings` (uno de PostgREST pisaría
+  lo acumulado). La llena `analyzers/trend_digest.py` en cada corrida.
+- **Categorías del correo (`TREND_EMAIL_CATEGORIES`)**, distintas de
+  `CATEGORY_KEYWORDS` (scoring, secciones y competencia NO se tocaron).
+  Incluyen "Economía y finanzas personales" y "Clima y desastres". Las decide
+  el LLM (`enrich_trends`) con la noticia que explica la tendencia: "bono"
+  sin contexto salía entretenimiento. En 14 días, 0 tendencias cayeron en
+  economía: el top 10 nacional es 72% deportes; la categoría puede seguir
+  vacía muchos días y es correcto.
+- **"¿RPP ya tiene nota?"** por tendencia, con la misma búsqueda de notas
+  propias que las alertas; una pendiente se revisa como mucho cada 60 min.
+- El envío lo hace `/api/notificar` (`lib/tendenciasCorreo.ts`), con margen de
+  3 h tras cada horario; sin tendencias registradas no reserva y reintenta.
+  Prueba: `select notificar_cron_disparar('{"prueba":"tendencias","para":"..."}')`.
+- **Pendiente:** /trends del panel sigue mostrando solo el top 10 vigente; con
+  `trend_sightings` ya podría mostrar el día completo. Y `trend_sightings` no
+  está en `purge_old_data()` (~20-40 filas/día).
 
 **2026-10-13 — Alertas con CRITERIO DE ANALISTA (rama alertas-criterio-analista).**
 Primer día con las alertas llegando por correo; el usuario revisó siete y

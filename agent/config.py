@@ -219,6 +219,29 @@ ALERT_SEVERITY_HIGH            = 68   # >= esto → severidad "alta", si no "med
 ALERT_MAX_PER_SECTION_PER_HOUR = 3    # anti-spam por sección/hora
 ALERT_DEDUP_HOURS              = 12   # no re-alertar el mismo evento en esta ventana
 
+# --- Correo de tendencias (2026-10-14) ---------------------------------------
+# Categorías del CORREO de tendencias, distintas de CATEGORY_KEYWORDS (que usan
+# el scoring, las secciones y la competencia, y no se tocaron). Las asigna el
+# LLM mirando la noticia que explica la tendencia, no solo la palabra: "bono"
+# sin contexto salía "entretenimiento". Clave -> nombre visible.
+TREND_EMAIL_CATEGORIES = {
+    "economia":        "Economía y finanzas personales",
+    "politica":        "Política",
+    "deportes":        "Deportes",
+    "actualidad":      "Actualidad y policiales",
+    "clima":           "Clima y desastres",
+    "entretenimiento": "Entretenimiento",
+    "mundo":           "Mundo",
+    "tecnologia":      "Tecnología",
+    "salud":           "Salud",
+    "otros":           "Otros",
+}
+# Cada cuánto se vuelve a revisar si RPP ya publicó una tendencia que seguía
+# pendiente. Cuesta una búsqueda en Google News por tendencia y una llamada al
+# LLM por corrida para todas juntas.
+TREND_RPP_RECHECK_MINUTES = 60
+TREND_ENRICH_MAX_PER_RUN = 12
+
 # --- Criterio de analista (ver analyzers/alert_review.py) --------------------
 # Una candidata descartada no se vuelve a juzgar durante este plazo: sin esto
 # el radar le preguntaría lo mismo al LLM cada 15 min. Corto a propósito: un

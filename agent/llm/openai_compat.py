@@ -725,3 +725,69 @@ def review_alerts(client, items):
             "motivo": str(entry.get("motivo") or "").strip()[:300],
         }
     return out or None
+
+
+# ---------------------------------------------------------------------------
+# H) Tendencias para el correo: categoría con contexto + ¿RPP ya lo publicó?
+# ---------------------------------------------------------------------------
+
+def enrich_trends(client, items, categories):
+    """
+    `items` = [{keyword, why, titulares: [str], rpp: [str]}]; `categories` =
+    {clave: nombre}. Devuelve {indice: {"categoria": clave, "rpp": n | -1}}
+    o None. Una sola llamada para todas.
+    """
+    if not client.is_enabled() or not items:
+        return None
+
+    payload = [{
+        "i":         i,
+        "busqueda":  it.get("keyword") or "",
+        "contexto":  it.get("why") or "",
+        "titulares": [t for t in (it.get("titulares") or []) if t][:4],
+        "notas_rpp": [{"n": n, "titular": t} for n, t in enumerate(it.get("rpp") or [])],
+    } for i, it in enumerate(items)]
+    cats = "; ".join(f"{k} = {v}" for k, v in categories.items())
+
+    system = (
+        "Eres editor de RPP Noticias (Perú). Ordenas las búsquedas en tendencia "
+        "en Google Perú para un correo a la redacción. Respondes exclusivamente "
+        "en JSON, sin texto adicional ni markdown."
+    )
+    prompt = (
+        "Para CADA búsqueda:\n"
+        f"1) \"categoria\": EXACTAMENTE una clave de esta lista: {cats}. "
+        "Decide por el HECHO que explica la búsqueda (contexto y titulares), no "
+        "por la palabra suelta: \"bono\" por un pago del Estado es economia; un "
+        "sismo, lluvias, friaje o huaicos son clima; crímenes, accidentes y "
+        "trámites (DNI, Reniec) son actualidad; un partido de fútbol es "
+        "deportes aunque se juegue en otro país.\n"
+        "2) \"rpp\": el número n de la nota de notas_rpp que cubre ESE MISMO "
+        "hecho o evento, o -1 si ninguna (que comparta una palabra o una "
+        "persona no basta). Si notas_rpp viene vacía, -1.\n\n"
+        f"Búsquedas (JSON):\n{json.dumps(payload, ensure_ascii=False)}\n\n"
+        'Responde SOLO un JSON: {"items": [{"i": <indice>, "categoria": "<clave>", "rpp": <n o -1>}]}'
+    )
+    data = client.generate_json(prompt, system=system, max_tokens=3000)
+    if not isinstance(data, dict) or not isinstance(data.get("items"), list):
+        if data is not None:
+            logger.warning(f"{client.label}: JSON de tendencias para correo con forma inesperada: {str(data)[:200]!r}")
+        return None
+
+    out = {}
+    for entry in data["items"]:
+        if not isinstance(entry, dict):
+            continue
+        try:
+            idx = int(entry.get("i"))
+        except (ValueError, TypeError):
+            continue
+        if not (0 <= idx < len(items)):
+            continue
+        cat = str(entry.get("categoria") or "").strip().lower()
+        try:
+            rpp = int(entry.get("rpp"))
+        except (ValueError, TypeError):
+            rpp = -1
+        out[idx] = {"categoria": cat if cat in categories else None, "rpp": rpp}
+    return out or None
