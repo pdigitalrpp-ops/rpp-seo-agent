@@ -39,6 +39,12 @@ persona).
 - El envío lo hace `/api/notificar` (`lib/tendenciasCorreo.ts`), con margen de
   3 h tras cada horario; sin tendencias registradas no reserva y reintenta.
   Prueba: `select notificar_cron_disparar('{"prueba":"tendencias","para":"..."}')`.
+- **Correo de TRÁFICO DE AYER por sección** (`lib/traficoCorreo.ts`), mismo
+  día: `notification_recipients.traffic` + `traffic_sections` (claves
+  normalizadas, p.ej. `{economia}`). Sale con el benchmark, como el resumen.
+  Total exacto de `own_traffic_sections`; canales y top 10 notas de las notas
+  de la sección dentro del top 500 del sitio. Primer destinatario: jpriale
+  (Economía; también recibe tendencias, no el resumen ni las alertas).
 - **Pendiente:** /trends del panel sigue mostrando solo el top 10 vigente; con
   `trend_sightings` ya podría mostrar el día completo. Y `trend_sightings` no
   está en `purge_old_data()` (~20-40 filas/día).
