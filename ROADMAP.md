@@ -13,6 +13,7 @@ Sin esto no hay reemplazo.
 - [x] Resumen matutino por correo *(2026-10-12; por ahora solo a flozano@gruporpp.com.pe)*
 - [x] Alertas en el momento por correo *(2026-10-12; por ahora solo a flozano@gruporpp.com.pe)*
 - [ ] Revisar un día completo de correos y decidir a quién más se envían
+- [ ] Correo de tendencias 08:00, 13:00 y 18:00, con categoría y "¿RPP ya tiene nota?" *(en curso desde el 2026-10-14, prueba con flozano@gruporpp.com.pe)*
 - [ ] Resumen matutino por sección (a cada editor, lo suyo)
 - [ ] Definir el responsable y el canal de cada sección (`SECTION_RESPONSIBLES`)
 - [ ] Envío por Teams o WhatsApp

@@ -20,7 +20,7 @@ from config import (
     ALERT_REVIEW_CACHE_HOURS, ALERT_RPP_WINDOW_HOURS, SEO_CONTENT_URL_PREFIXES,
 )
 from collectors import marfeel, trends, competitors, rpp_own_feed, trend_news, watchlist
-from analyzers import scoring, opportunities, coverage, alerting, evidence, alert_review
+from analyzers import scoring, opportunities, coverage, alerting, evidence, alert_review, trend_digest
 from text_keys import normalize_text
 from llm import provider as llm
 from notifiers import notify
@@ -228,6 +228,20 @@ def run():
 
     recs = opportunities.build_recommendations(scored, gsc_data=[], ga4_data=realtime or [])
 
+    # Titulares de secciones SEO de otros medios (gestion.pe/mix/...): los de
+    # esta corrida más los de 48 h en la base, porque una tendencia puede
+    # apoyarse en una nota de ayer. Los usan la historia de tendencias y las
+    # alertas, para no enlazar nunca esas notas.
+    seo_arts = list(competitor_data or [])
+    try:
+        seo_arts += get_seo_content_titles(SEO_CONTENT_URL_PREFIXES)
+    except Exception as e:
+        logger.warning(f"No se pudo leer los titulares de secciones SEO: {e}")
+    seo_keys = alert_review.seo_title_keys(seo_arts)
+
+    # --- HISTORIA DE TENDENCIAS (correo de tendencias, ver trend_digest.py) ---
+    trend_digest.track_and_enrich(trends_data, today, seo_keys=seo_keys)
+
     # --- ALERTAS (Etapa 3) ---
     # Se puntúa la ALERTABILIDAD sobre las tendencias enriquecidas (news +
     # why_trending + rank), NO sobre `scored`: el score de recomendación
@@ -277,17 +291,8 @@ def run():
                 for k in (a.get("_keywords") or [a.get("_keyword")]))]
             own_recent_alertas = (rpp_own_feed.fetch_recent_articles(
                 window_hours=ALERT_RPP_WINDOW_HOURS) if por_juzgar else [])
-            # Titulares de secciones SEO de otros medios (gestion.pe/mix/...):
-            # los de esta corrida más los de 48 h en la base, porque la
-            # tendencia puede apoyarse en una nota de ayer.
-            seo_arts = list(competitor_data or [])
-            if por_juzgar:
-                try:
-                    seo_arts += get_seo_content_titles(SEO_CONTENT_URL_PREFIXES)
-                except Exception as e:
-                    logger.warning(f"No se pudo leer los titulares de secciones SEO: {e}")
             aprobadas, decisiones = alert_review.review(
-                por_juzgar, own_recent_alertas, seo_keys=alert_review.seo_title_keys(seo_arts))
+                por_juzgar, own_recent_alertas, seo_keys=seo_keys)
             if decisiones:
                 try:
                     save_alert_reviews(decisiones)

@@ -2,9 +2,12 @@ import { NextRequest, NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/accessServer"
 import { esCronAutorizado } from "@/lib/cronAuth"
 import { isAllowedEmail, normalizeEmail } from "@/lib/access"
-import { todayInLima } from "@/lib/dates"
+import { limaHour, todayInLima } from "@/lib/dates"
 import { sendMail } from "@/lib/mailer"
 import { armarAlertas, armarResumen, NIVEL } from "@/lib/notificaciones"
+import {
+  ENVIOS_TENDENCIAS, MARGEN_ENVIO_HORAS, armarTendencias, desdeParaEnvio, leerTendencias,
+} from "@/lib/tendenciasCorreo"
 
 /**
  * Envía por correo lo que el agente dejó nuevo en la base. La llama pg_cron
@@ -19,6 +22,8 @@ import { armarAlertas, armarResumen, NIVEL } from "@/lib/notificaciones"
  *    06:40 y 09:06).
  *  - ALERTAS: las creadas en las últimas horas que esa persona aún no recibió,
  *    juntas en un solo correo por pasada.
+ *  - TENDENCIAS: 08:00, 13:00 y 18:00 hora de Lima (lib/tendenciasCorreo.ts),
+ *    solo a quien tiene `trends` activo, filtrado por sus `trend_categories`.
  *
  * QUE NO SE REPITA NI SE PIERDA. `notification_log` tiene una fila por
  * (tipo, referencia, correo) con clave única. Se RESERVA antes de enviar
@@ -26,7 +31,7 @@ import { armarAlertas, armarResumen, NIVEL } from "@/lib/notificaciones"
  * pasadas simultáneas no mandan dos veces. Si el envío falla, la reserva se
  * borra y la siguiente pasada reintenta.
  *
- * PRUEBAS. Con `{"prueba": "resumen" | "alertas", "para": "correo"}` manda ese
+ * PRUEBAS. Con `{"prueba": "resumen" | "alertas" | "tendencias", "para": "correo"}` manda ese
  * correo en el momento, sin mirar ni tocar el registro.
  */
 export const dynamic = "force-dynamic"
@@ -35,7 +40,10 @@ export const maxDuration = 60
 /** Una alerta más vieja que esto ya no es "ahora": no se manda con retraso. */
 const ALERTA_MAX_HORAS = 3
 
-type Destinatario = { email: string; digest: boolean; alerts: boolean; alert_min_severity: string }
+type Destinatario = {
+  email: string; digest: boolean; alerts: boolean; alert_min_severity: string
+  trends: boolean; trend_categories: string[] | null
+}
 type Body = { prueba?: string; para?: string }
 
 export async function POST(req: NextRequest) {
@@ -64,6 +72,14 @@ export async function POST(req: NextRequest) {
         if (!data || !data.length) return NextResponse.json({ ok: true, prueba: "alertas", enviado: 0, nota: "sin alertas hoy" })
         const c = armarAlertas(data)
         await sendMail(para, "[PRUEBA] " + c.subject, c.html, c.text)
+      } else if (body.prueba === "tendencias") {
+        const filas = await leerTendencias(db, hoy)
+        if (!filas) return NextResponse.json({ ok: true, prueba: "tendencias", enviado: 0, nota: "sin tendencias hoy" })
+        const h = limaHour()
+        const slot = ENVIOS_TENDENCIAS.filter((x) => x <= h).pop() ?? ENVIOS_TENDENCIAS[0]
+        const c = armarTendencias(filas, slot, desdeParaEnvio(hoy, slot), null)
+        if (!c) return NextResponse.json({ ok: true, prueba: "tendencias", enviado: 0 })
+        await sendMail(para, "[PRUEBA] " + c.subject, c.html, c.text)
       } else {
         return NextResponse.json({ error: "Prueba desconocida." }, { status: 400 })
       }
@@ -76,7 +92,7 @@ export async function POST(req: NextRequest) {
 
   // --- Envío normal ---------------------------------------------------------
   const { data: dest, error: errDest } = await db.from("notification_recipients")
-    .select("email, digest, alerts, alert_min_severity").eq("active", true)
+    .select("email, digest, alerts, alert_min_severity, trends, trend_categories").eq("active", true)
   if (errDest) {
     console.error("[notificar] no se pudo leer destinatarios:", errDest.message)
     return NextResponse.json({ error: "Sin destinatarios." }, { status: 500 })
@@ -84,7 +100,7 @@ export async function POST(req: NextRequest) {
   const destinatarios = ((dest ?? []) as Destinatario[]).filter((d) => isAllowedEmail(d.email))
   if (!destinatarios.length) return NextResponse.json({ ok: true, resumen: 0, alertas: 0, nota: "sin destinatarios" })
 
-  const resultado = { resumen: 0, alertas: 0, fallos: 0 }
+  const resultado = { resumen: 0, alertas: 0, tendencias: 0, fallos: 0 }
 
   /** Reserva (tipo, ref) para un correo; devuelve las refs que quedaron a su nombre. */
   async function reservar(kind: string, refs: string[], email: string): Promise<string[]> {
@@ -114,6 +130,36 @@ export async function POST(req: NextRequest) {
         console.error("[notificar] fallo el resumen:", e instanceof Error ? e.message : e)
         await liberar("resumen", mias, d.email)
         resultado.fallos++
+      }
+    }
+  }
+
+  // 3. Tendencias: el envío del horario vigente, si todavía está en su margen.
+  const hora = limaHour()
+  const slot = ENVIOS_TENDENCIAS.filter((x) => x <= hora && hora < x + MARGEN_ENVIO_HORAS).pop()
+  const suscritos = destinatarios.filter((d) => d.trends)
+  if (slot !== undefined && suscritos.length) {
+    let filas: Awaited<ReturnType<typeof leerTendencias>> = null
+    try { filas = await leerTendencias(db, hoy) } catch (e) {
+      console.error("[notificar] no se pudo leer tendencias:", e instanceof Error ? e.message : e)
+    }
+    // Sin tendencias registradas todavía no se reserva nada: la siguiente
+    // pasada vuelve a intentarlo dentro del margen.
+    if (filas) {
+      const ref = `${hoy}@${slot}`
+      for (const d of suscritos) {
+        const correo = armarTendencias(filas, slot, desdeParaEnvio(hoy, slot), d.trend_categories)
+        if (!correo) continue
+        const mias = await reservar("tendencias", [ref], d.email)
+        if (!mias.length) continue
+        try {
+          await sendMail(d.email, correo.subject, correo.html, correo.text)
+          resultado.tendencias++
+        } catch (e) {
+          console.error("[notificar] fallo el correo de tendencias:", e instanceof Error ? e.message : e)
+          await liberar("tendencias", mias, d.email)
+          resultado.fallos++
+        }
       }
     }
   }

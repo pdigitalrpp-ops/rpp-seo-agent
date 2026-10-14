@@ -95,3 +95,7 @@ def suggest_headlines(items, title_max=70):
 
 def review_alerts(items):
     return openai_compat.review_alerts(_client, items)
+
+
+def enrich_trends(items, categories):
+    return openai_compat.enrich_trends(_client, items, categories)

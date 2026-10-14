@@ -435,6 +435,42 @@ def get_recent_alert_reviews(hours=3):
     return list(result.data or [])
 
 
+def save_trend_sightings(trends_list, run_date, key_fn):
+    """
+    Acumula las tendencias del día en trend_sightings (primera y última vez
+    vista, mejor rank, pico de volumen). daily_trends NO sirve para esto: cada
+    corrida lo reemplaza con el top 10 vigente. El upsert lo hace una función
+    SQL porque uno de PostgREST pisaría lo acumulado con la última corrida.
+    """
+    if not trends_list:
+        return 0
+    rows = [{
+        "date":         str(run_date),
+        "keyword_key":  key_fn(t["keyword"]),
+        "keyword":      t["keyword"],
+        "rank":         t.get("rank"),
+        "volume":       t.get("approx_traffic"),
+        "why_trending": t.get("why_trending"),
+        "news":         [{k: n.get(k) for k in ("title", "source", "source_url", "url", "published_at")}
+                         for n in (t.get("news") or [])[:5]],
+    } for t in trends_list if key_fn(t["keyword"])]
+    res = _get_client().rpc("upsert_trend_sightings", {"p_rows": rows}).execute()
+    return res.data
+
+
+def get_trend_sightings(run_date):
+    """Tendencias acumuladas del día, con su categoría y estado de cobertura."""
+    res = (_get_client().table("trend_sightings")
+           .select("keyword_key,keyword,categoria,rpp_url,rpp_checked_at,last_seen")
+           .eq("date", str(run_date)).execute())
+    return list(res.data or [])
+
+
+def update_trend_sighting(run_date, keyword_key, **campos):
+    (_get_client().table("trend_sightings").update(campos)
+     .eq("date", str(run_date)).eq("keyword_key", keyword_key).execute())
+
+
 def get_seo_content_titles(prefixes, hours=48):
     """
     Titulares recientes de competencia cuya URL cae en una sección de contenido

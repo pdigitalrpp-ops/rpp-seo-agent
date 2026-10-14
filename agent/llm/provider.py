@@ -225,6 +225,18 @@ def suggest_headlines(items, title_max=70):
     return fn(items, title_max=title_max)
 
 
+def enrich_trends(items, categories):
+    """
+    Categoría (con contexto) y cobertura de RPP para las tendencias del correo.
+    Devuelve {indice: {"categoria", "rpp"}} o None si no hay proveedor.
+    """
+    provider = _active_provider()
+    fn = getattr(provider, "enrich_trends", None) if provider else None
+    if not fn or not items:
+        return None
+    return fn(items, categories)
+
+
 def review_alerts(items):
     """
     Clasifica las candidatas a alerta con criterio de analista (ver
