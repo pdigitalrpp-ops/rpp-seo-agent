@@ -8,6 +8,7 @@ import { armarAlertas, armarResumen, NIVEL } from "@/lib/notificaciones"
 import {
   ENVIOS_TENDENCIAS, MARGEN_ENVIO_HORAS, armarTendencias, desdeParaEnvio, leerTendencias,
 } from "@/lib/tendenciasCorreo"
+import { armarTrafico, leerTrafico } from "@/lib/traficoCorreo"
 
 /**
  * Envía por correo lo que el agente dejó nuevo en la base. La llama pg_cron
@@ -24,6 +25,8 @@ import {
  *    juntas en un solo correo por pasada.
  *  - TENDENCIAS: 08:00, 13:00 y 18:00 hora de Lima (lib/tendenciasCorreo.ts),
  *    solo a quien tiene `trends` activo, filtrado por sus `trend_categories`.
+ *  - TRÁFICO DE AYER por sección (lib/traficoCorreo.ts): una vez al día con el
+ *    benchmark, a quien tiene `traffic` activo, solo sus `traffic_sections`.
  *
  * QUE NO SE REPITA NI SE PIERDA. `notification_log` tiene una fila por
  * (tipo, referencia, correo) con clave única. Se RESERVA antes de enviar
@@ -31,7 +34,7 @@ import {
  * pasadas simultáneas no mandan dos veces. Si el envío falla, la reserva se
  * borra y la siguiente pasada reintenta.
  *
- * PRUEBAS. Con `{"prueba": "resumen" | "alertas" | "tendencias", "para": "correo"}` manda ese
+ * PRUEBAS. Con `{"prueba": "resumen" | "alertas" | "tendencias" | "trafico", "para": "correo"}` manda ese
  * correo en el momento, sin mirar ni tocar el registro.
  */
 export const dynamic = "force-dynamic"
@@ -43,6 +46,7 @@ const ALERTA_MAX_HORAS = 3
 type Destinatario = {
   email: string; digest: boolean; alerts: boolean; alert_min_severity: string
   trends: boolean; trend_categories: string[] | null
+  traffic: boolean; traffic_sections: string[] | null
 }
 type Body = { prueba?: string; para?: string }
 
@@ -80,6 +84,11 @@ export async function POST(req: NextRequest) {
         const c = armarTendencias(filas, slot, desdeParaEnvio(hoy, slot), null)
         if (!c) return NextResponse.json({ ok: true, prueba: "tendencias", enviado: 0 })
         await sendMail(para, "[PRUEBA] " + c.subject, c.html, c.text)
+      } else if (body.prueba === "trafico") {
+        const datos = await leerTrafico(db, hoy)
+        const c = datos ? armarTrafico(datos, ["economia"]) : null
+        if (!c) return NextResponse.json({ ok: true, prueba: "trafico", enviado: 0, nota: "sin tráfico de ayer todavía" })
+        await sendMail(para, "[PRUEBA] " + c.subject, c.html, c.text)
       } else {
         return NextResponse.json({ error: "Prueba desconocida." }, { status: 400 })
       }
@@ -92,7 +101,7 @@ export async function POST(req: NextRequest) {
 
   // --- Envío normal ---------------------------------------------------------
   const { data: dest, error: errDest } = await db.from("notification_recipients")
-    .select("email, digest, alerts, alert_min_severity, trends, trend_categories").eq("active", true)
+    .select("email, digest, alerts, alert_min_severity, trends, trend_categories, traffic, traffic_sections").eq("active", true)
   if (errDest) {
     console.error("[notificar] no se pudo leer destinatarios:", errDest.message)
     return NextResponse.json({ error: "Sin destinatarios." }, { status: 500 })
@@ -100,7 +109,7 @@ export async function POST(req: NextRequest) {
   const destinatarios = ((dest ?? []) as Destinatario[]).filter((d) => isAllowedEmail(d.email))
   if (!destinatarios.length) return NextResponse.json({ ok: true, resumen: 0, alertas: 0, nota: "sin destinatarios" })
 
-  const resultado = { resumen: 0, alertas: 0, tendencias: 0, fallos: 0 }
+  const resultado = { resumen: 0, alertas: 0, tendencias: 0, trafico: 0, fallos: 0 }
 
   /** Reserva (tipo, ref) para un correo; devuelve las refs que quedaron a su nombre. */
   async function reservar(kind: string, refs: string[], email: string): Promise<string[]> {
@@ -130,6 +139,31 @@ export async function POST(req: NextRequest) {
         console.error("[notificar] fallo el resumen:", e instanceof Error ? e.message : e)
         await liberar("resumen", mias, d.email)
         resultado.fallos++
+      }
+    }
+  }
+
+  // 4. Tráfico de ayer por sección: con el benchmark de hoy, como el resumen.
+  const conTrafico = destinatarios.filter((d) => d.traffic && d.traffic_sections && d.traffic_sections.length)
+  if (morning && conTrafico.length) {
+    let datos: Awaited<ReturnType<typeof leerTrafico>> = null
+    try { datos = await leerTrafico(db, hoy) } catch (e) {
+      console.error("[notificar] no se pudo leer el tráfico:", e instanceof Error ? e.message : e)
+    }
+    if (datos) {
+      for (const d of conTrafico) {
+        const correo = armarTrafico(datos, d.traffic_sections as string[])
+        if (!correo) continue
+        const mias = await reservar("trafico", [hoy], d.email)
+        if (!mias.length) continue
+        try {
+          await sendMail(d.email, correo.subject, correo.html, correo.text)
+          resultado.trafico++
+        } catch (e) {
+          console.error("[notificar] fallo el correo de tráfico:", e instanceof Error ? e.message : e)
+          await liberar("trafico", mias, d.email)
+          resultado.fallos++
+        }
       }
     }
   }
