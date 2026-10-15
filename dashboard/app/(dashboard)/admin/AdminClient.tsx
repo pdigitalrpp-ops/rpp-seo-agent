@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { StatCard } from "@/components/ui/StatCard"
 import { InfoTooltip } from "@/components/ui/InfoTooltip"
 import { SESSION_DAYS, isAdmin } from "@/lib/access"
+import { DestinatariosCard, type Destinatario, type OpcionSeccion, type UltimoEnvio } from "./DestinatariosCard"
 
 /**
  * Panel de administración: quién usa el dashboard, quién se quedó en el camino
@@ -38,7 +39,7 @@ export type CambioLog = {
   id: number
   created_at: string
   email: string
-  entity: "tema" | "medio" | "hallazgo"
+  entity: "tema" | "medio" | "hallazgo" | "destinatario"
   action: string
   target: string | null
   before: Record<string, unknown> | null
@@ -106,7 +107,16 @@ function estadoUsuario(u: AdminUser, now: number): { label: string; cls: string 
   return { label: `Activo · ${restan} d`, cls: "bg-teal-50 text-teal-800 border-teal-200" }
 }
 
-export default function AdminClient({ stats, cambios }: { stats: AdminStats; cambios: CambioLog[] }) {
+export default function AdminClient({
+  stats, cambios, destinatarios, envios, categorias, secciones,
+}: {
+  stats: AdminStats
+  cambios: CambioLog[]
+  destinatarios: Destinatario[]
+  envios: UltimoEnvio[]
+  categorias: [string, string][]
+  secciones: OpcionSeccion[]
+}) {
   const now = new Date(stats.generated_at).getTime()
   const router = useRouter()
   // La lista SALE DE LAS PROPS en cada render; el estado local solo guarda los
@@ -286,6 +296,11 @@ export default function AdminClient({ stats, cambios }: { stats: AdminStats; cam
         </div>
       </Card>
 
+      {/* Correos automáticos */}
+      <Card title={`Correos automáticos (${destinatarios.length})`} info="Quién recibe cada correo del agente: resumen matutino, alertas, tendencias (08:00, 13:00 y 18:00) y tráfico de ayer por sección. Se puede agregar, editar, pausar, quitar y mandar una prueba." flush>
+        <DestinatariosCard destinatarios={destinatarios} envios={envios} categorias={categorias} secciones={secciones} />
+      </Card>
+
       {/* Historial de cambios */}
       <Card title={`Historial de cambios (${cambios.length})`} info="Cada tema del Radar, medio de Competencia o hallazgo que alguien agregó, editó, pausó, borró o descartó desde el panel, con quién y cuándo. En las ediciones se muestra qué cambió; si algo se borró por error, aquí queda lo que había." flush>
         <Historial cambios={cambios} now={now} />
@@ -428,7 +443,7 @@ function HourBars({ data }: { data: AdminStats["hours_30d"] }) {
 
 // ── Historial ─────────────────────────────────────────────────────────────
 
-const ENTIDAD: Record<string, string> = { tema: "Tema del radar", medio: "Medio", hallazgo: "Hallazgo" }
+const ENTIDAD: Record<string, string> = { tema: "Tema del radar", medio: "Medio", hallazgo: "Hallazgo", destinatario: "Destinatario de correos" }
 const ACCION: Record<string, { label: string; cls: string }> = {
   crear:     { label: "Agregó",    cls: "bg-teal-50 text-teal-800 border-teal-200" },
   editar:    { label: "Editó",     cls: "bg-blue-50 text-blue-800 border-blue-200" },
@@ -440,10 +455,13 @@ const ACCION: Record<string, { label: string; cls: string }> = {
 const CAMPO: Record<string, string> = {
   keyword: "búsqueda", label: "nombre", section: "sección", extra_feeds: "feeds",
   name: "nombre", rss: "feed", domain: "dominio",
+  active: "activo", digest: "resumen", alerts: "alertas", alert_min_severity: "severidad",
+  trends: "tendencias", trend_categories: "categorías", traffic: "tráfico", traffic_sections: "secciones",
 }
 
 function valor(v: unknown): string {
   if (v === null || v === undefined || v === "") return "—"
+  if (typeof v === "boolean") return v ? "sí" : "no"
   if (Array.isArray(v)) return v.length ? v.join(" ") : "—"
   return String(v)
 }
@@ -462,6 +480,7 @@ function detalle(c: CambioLog): string {
   }
   if (c.entity === "tema") return `búsqueda: ${valor((c.after ?? c.before)?.keyword)}`
   if (c.entity === "medio") return `dominio: ${valor((c.after ?? c.before)?.domain)}`
+  if (c.entity === "destinatario") return c.action === "borrar" ? "dejó de recibir correos" : "configuración de correos"
   return valor((c.after ?? c.before)?.source)
 }
 

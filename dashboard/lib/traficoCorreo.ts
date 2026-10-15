@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { TZ_LIMA } from "./dates"
-import { isRealArticle, sectionKey, sectionOf } from "./articleFilter"
+import { isRealArticle, sectionGroup, sectionOf } from "./articleFilter"
 import type { Correo } from "./notificaciones"
 
 /**
@@ -17,6 +17,7 @@ import type { Correo } from "./notificaciones"
  *    nota × canal del sitio, así que es una muestra grande, no el total);
  *  - notas: own_traffic (top 500 notas del sitio).
  * La sección se cruza normalizando: Marfeel dice "Economía", la URL /economia/.
+ * Deportes es un grupo (fútbol, vóley, tenis...), igual que en /trafico.
  */
 
 const PANEL = "https://rpp-seo-agent.vercel.app"
@@ -71,16 +72,18 @@ export function armarTrafico(datos: NonNullable<Awaited<ReturnType<typeof leerTr
 
   const bloques: string[] = []
   const texto: string[] = []
+  const titulos: string[] = []
   for (const clave of seccionesPedidas) {
     const de = (fecha: string) => datos.secciones
-      .filter((r: Fila) => r.date === fecha && sectionKey(r.section) === clave)
+      .filter((r: Fila) => r.date === fecha && sectionGroup(r.section) === clave)
       .reduce((s: number, r: Fila) => s + (r.page_views ?? 0), 0)
     const pv = de(hoy)
     const previo = de(ayer)
-    const nombre = datos.secciones.filter((r: Fila) => sectionKey(r.section) === clave)[0]?.section ?? clave
+    const nombre = clave === "deportes" ? "Deportes" : datos.secciones.filter((r: Fila) => sectionGroup(r.section) === clave)[0]?.section ?? clave
     if (!pv) continue
+    titulos.push(String(nombre))
 
-    const enSeccion = (url: string) => sectionKey(sectionOf(url)) === clave
+    const enSeccion = (url: string) => sectionGroup(sectionOf(url)) === clave
     const notas = datos.notas.filter((r: Fila) => isRealArticle(r.page_path) && enSeccion(r.page_path)).slice(0, 10)
     const porCanal: Record<string, number> = {}
     datos.canales.filter((r: Fila) => enSeccion(r.page_path)).forEach((r: Fila) => {
@@ -112,9 +115,8 @@ export function armarTrafico(datos: NonNullable<Awaited<ReturnType<typeof leerTr
   }
   if (!bloques.length) return null
 
-  const nombres = seccionesPedidas.join(", ")
   return {
-    subject: `Tráfico de ayer en ${nombres === "economia" ? "Economía" : nombres}, ${fechaLarga(ayer)}`,
+    subject: `Tráfico de ayer en ${titulos.join(", ")}, ${fechaLarga(ayer)}`,
     html: `
 <div style="font-family:Arial,Helvetica,sans-serif;max-width:640px;margin:0 auto;color:#111827;font-size:14px;line-height:1.45">
   <div style="background:#F5D414;padding:16px 20px;border-radius:12px 12px 0 0">

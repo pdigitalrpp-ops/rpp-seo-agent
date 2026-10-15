@@ -48,7 +48,7 @@ type Destinatario = {
   trends: boolean; trend_categories: string[] | null
   traffic: boolean; traffic_sections: string[] | null
 }
-type Body = { prueba?: string; para?: string }
+type Body = { prueba?: string; para?: string; secciones?: string[] | null; categorias?: string[] | null }
 
 export async function POST(req: NextRequest) {
   if (!esCronAutorizado(req)) return NextResponse.json({ error: "No autorizado." }, { status: 401 })
@@ -81,12 +81,12 @@ export async function POST(req: NextRequest) {
         if (!filas) return NextResponse.json({ ok: true, prueba: "tendencias", enviado: 0, nota: "sin tendencias hoy" })
         const h = limaHour()
         const slot = ENVIOS_TENDENCIAS.filter((x) => x <= h).pop() ?? ENVIOS_TENDENCIAS[0]
-        const c = armarTendencias(filas, slot, desdeParaEnvio(hoy, slot), null)
+        const c = armarTendencias(filas, slot, desdeParaEnvio(hoy, slot), body.categorias ?? null)
         if (!c) return NextResponse.json({ ok: true, prueba: "tendencias", enviado: 0 })
         await sendMail(para, "[PRUEBA] " + c.subject, c.html, c.text)
       } else if (body.prueba === "trafico") {
         const datos = await leerTrafico(db, hoy)
-        const c = datos ? armarTrafico(datos, ["economia"]) : null
+        const c = datos ? armarTrafico(datos, body.secciones && body.secciones.length ? body.secciones : ["economia"]) : null
         if (!c) return NextResponse.json({ ok: true, prueba: "trafico", enviado: 0, nota: "sin tráfico de ayer todavía" })
         await sendMail(para, "[PRUEBA] " + c.subject, c.html, c.text)
       } else {
