@@ -40,6 +40,12 @@ frecuencias: al momento, por horarios (08:00, 13:00, 18:00) o una al día.
   recibe ese lote en un correo (con tope de 12 notas por tema).
 - **Pendiente:** `notification_log` no está en `purge_old_data()` y ahora
   crece con una fila por hallazgo avisado.
+- **Mismo día — tráfico de TODO EL SITIO por correo:** clave especial
+  `sitio` en `traffic_sections` (`TRAFICO_SITIO` en `lib/traficoCorreo.ts`):
+  total de `own_traffic_totals` (portadas incluidas), secciones que más
+  aportaron, canales y top 10 notas de rpp.pe. Elegible en /admin como
+  "Todo el sitio". Primer destinatario: jortizr (también tendencias y el tema
+  "Papa León XIV" por horarios; sin resumen ni alertas).
 
 **2026-10-14 — Correo de TENDENCIAS (rama correo-tendencias).** Pedido de
 usuarios del panel que usan /trends. Decisiones del usuario: 3 envíos fijos
