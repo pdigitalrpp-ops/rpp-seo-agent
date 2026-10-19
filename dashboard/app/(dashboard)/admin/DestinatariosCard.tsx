@@ -261,7 +261,7 @@ function Formulario({
         </Bloque>
 
         <Bloque titulo="Tráfico de ayer" activo={valor.traffic} onActivo={(v) => set({ traffic: v })}
-          ayuda="Total, canales y notas más leídas de las secciones elegidas (al menos una).">
+          ayuda="Total, canales y notas más leídas de las secciones elegidas (al menos una). «Todo el sitio» da el total de rpp.pe y sus notas más leídas.">
           <Chips opciones={secciones.map((s) => ({ key: s.key, label: s.label }))} elegidas={valor.traffic_sections}
             onAlternar={(k) => set({ traffic_sections: alternar(valor.traffic_sections, k) })} />
           {faltaSeccion && <p className="mt-1 text-xs text-red-600">Elige al menos una sección.</p>}
