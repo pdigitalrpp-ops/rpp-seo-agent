@@ -77,7 +77,7 @@ function via(v: string | null): string {
 /** "14:05" si es de hoy; "17/10 14:05" si no. */
 function cuando(iso: string): string {
   const hoy = limaDayOf(Date.now())
-  if (limaDayOf(iso) === hoy) return horaLima(iso)
+  if (limaDayOf(new Date(iso)) === hoy) return horaLima(iso)
   const dia = new Date(iso).toLocaleDateString("es-PE", { timeZone: TZ_LIMA, day: "2-digit", month: "2-digit" })
   return `${dia} ${horaLima(iso)}`
 }
