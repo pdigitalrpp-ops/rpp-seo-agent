@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { StatCard } from "@/components/ui/StatCard"
 import { InfoTooltip } from "@/components/ui/InfoTooltip"
 import { SESSION_DAYS, isAdmin } from "@/lib/access"
+import { FRECUENCIA_INFO, type Frecuencia } from "@/lib/avisosTemas"
 import { DestinatariosCard, type Destinatario, type OpcionSeccion, type UltimoEnvio } from "./DestinatariosCard"
 
 /**
@@ -39,7 +40,7 @@ export type CambioLog = {
   id: number
   created_at: string
   email: string
-  entity: "tema" | "medio" | "hallazgo" | "destinatario"
+  entity: "tema" | "medio" | "hallazgo" | "destinatario" | "suscripcion"
   action: string
   target: string | null
   before: Record<string, unknown> | null
@@ -443,7 +444,7 @@ function HourBars({ data }: { data: AdminStats["hours_30d"] }) {
 
 // ── Historial ─────────────────────────────────────────────────────────────
 
-const ENTIDAD: Record<string, string> = { tema: "Tema del radar", medio: "Medio", hallazgo: "Hallazgo", destinatario: "Destinatario de correos" }
+const ENTIDAD: Record<string, string> = { tema: "Tema del radar", medio: "Medio", hallazgo: "Hallazgo", destinatario: "Destinatario de correos", suscripcion: "Aviso de tema por correo" }
 const ACCION: Record<string, { label: string; cls: string }> = {
   crear:     { label: "Agregó",    cls: "bg-teal-50 text-teal-800 border-teal-200" },
   editar:    { label: "Editó",     cls: "bg-blue-50 text-blue-800 border-blue-200" },
@@ -457,6 +458,7 @@ const CAMPO: Record<string, string> = {
   name: "nombre", rss: "feed", domain: "dominio",
   active: "activo", digest: "resumen", alerts: "alertas", alert_min_severity: "severidad",
   trends: "tendencias", trend_categories: "categorías", traffic: "tráfico", traffic_sections: "secciones",
+  frequency: "frecuencia",
 }
 
 function valor(v: unknown): string {
@@ -481,6 +483,7 @@ function detalle(c: CambioLog): string {
   if (c.entity === "tema") return `búsqueda: ${valor((c.after ?? c.before)?.keyword)}`
   if (c.entity === "medio") return `dominio: ${valor((c.after ?? c.before)?.domain)}`
   if (c.entity === "destinatario") return c.action === "borrar" ? "dejó de recibir correos" : "configuración de correos"
+  if (c.entity === "suscripcion") return c.action === "borrar" ? "dejó de recibir avisos" : `avisos: ${FRECUENCIA_INFO[String(c.after?.frequency) as Frecuencia]?.label ?? valor(c.after?.frequency)}`
   return valor((c.after ?? c.before)?.source)
 }
 

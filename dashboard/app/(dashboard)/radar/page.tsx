@@ -1,4 +1,9 @@
+import { getServerSession } from "next-auth"
 import { supabase } from "@/lib/supabase"
+import { authOptions } from "@/lib/auth"
+import { isAllowedEmail, normalizeEmail } from "@/lib/access"
+import { supabaseAdmin } from "@/lib/accessServer"
+import { esFrecuencia, type Frecuencia } from "@/lib/avisosTemas"
 import { getLastRunFinishedAt } from "@/lib/lastRun"
 import RadarClient from "./RadarClient"
 import type { WatchKeyword, WatchHit } from "./types"
@@ -22,7 +27,15 @@ export default async function RadarPage() {
     Date.now() - FETCH_WINDOW_DAYS * 24 * 60 * 60 * 1000
   ).toISOString()
 
-  const [{ data: keywords }, { data: hits }, lastRun] = await Promise.all([
+  // Avisos por correo de QUIEN MIRA: la tabla es solo de service_role, así
+  // que se leen aquí y al navegador llega únicamente lo suyo.
+  const session = await getServerSession(authOptions)
+  const correo = normalizeEmail(session?.user?.email)
+  const avisosQuery = isAllowedEmail(correo)
+    ? supabaseAdmin().from("watch_subscriptions").select("keyword_id, frequency").eq("email", correo)
+    : Promise.resolve({ data: [] as { keyword_id: string; frequency: string }[] })
+
+  const [{ data: keywords }, { data: hits }, lastRun, { data: avisosData }] = await Promise.all([
     // Incluye las pausadas (active=false): el panel deja reanudarlas.
     supabase
       .from("watch_keywords")
@@ -41,13 +54,22 @@ export default async function RadarPage() {
       .limit(500),
 
     getLastRunFinishedAt("radar"),
+
+    avisosQuery,
   ])
+
+  const avisos: Record<string, Frecuencia> = {}
+  ;((avisosData ?? []) as { keyword_id: string; frequency: string }[]).forEach((a) => {
+    if (esFrecuencia(a.frequency)) avisos[a.keyword_id] = a.frequency
+  })
 
   return (
     <RadarClient
       keywords={(keywords as WatchKeyword[]) ?? []}
       hits={(hits as WatchHit[]) ?? []}
       lastRun={lastRun}
+      avisos={avisos}
+      correo={isAllowedEmail(correo) ? correo : null}
       // La hora la fija el SERVIDOR y el cliente la reusa en su primer render.
       // Sin esto hay error de hidratacion (#425/#418/#423, visto en el preview):
       // esta pestaña deriva de la hora casi todo lo que pinta —la ventana, la

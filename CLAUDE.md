@@ -11,7 +11,35 @@ dashboard web.
 
 ## Estado actual
 
-**Fecha último avance:** 2026-10-14
+**Fecha último avance:** 2026-10-19
+
+**2026-10-19 — Avisos por correo de los temas del RADAR (rama radar-avisos-correo).**
+Pedido del usuario: que cualquier usuario del panel (solo @gruporpp.com.pe)
+pueda pedir las novedades de un tema de /radar por correo, con tres
+frecuencias: al momento, por horarios (08:00, 13:00, 18:00) o una al día.
+- **Tabla `watch_subscriptions`** (keyword_id, email, frequency
+  inmediato|horarios|diario, updated_at; única por tema+correo; CASCADE al
+  borrar el tema; RLS sin políticas). SQL en `agent/db/watch_subscriptions.sql`.
+- **Cada quien maneja solo los suyos:** `/api/radar/suscripcion` toma el
+  correo de la SESIÓN, nunca del cuerpo. /radar lee los avisos de quien mira
+  en el servidor (`getServerSession` + service_role) y solo esos llegan al
+  navegador. Cambios en `dashboard_change_log` (entity "suscripcion").
+- **UI:** campana 🔔 por tema (acciones del FilterItem) que abre
+  `radar/AvisoCorreo.tsx` (frecuencia, dejar de recibir, "enviarme una
+  muestra"); la campana también queda a la izquierda del tema cuando ya hay
+  aviso, y el formulario de alta/edición tiene "Avisarme por correo".
+- **Envío en `/api/notificar` → `lib/temasCorreo.ts`**, antes de leer
+  `notification_recipients` (no hace falta estar en esa lista).
+  Inmediato = un registro por hallazgo (`notification_log` kind 'tema', ref
+  hit.id), solo hallazgos posteriores a `updated_at` y de las últimas 3 h.
+  Horarios y diario usan ventanas CERRADAS (del envío anterior a este; el
+  diario = 24 h hasta las 08:00) y no mandan correo si no hubo nada.
+  Prueba: `select notificar_cron_disparar('{"prueba":"temas","para":"...","keyword_id":"..."}')`.
+- **Ojo con el primer barrido:** un tema NUEVO trae de golpe lo de las
+  últimas 24 h (ventana de Google News); quien lo crea con aviso al momento
+  recibe ese lote en un correo (con tope de 12 notas por tema).
+- **Pendiente:** `notification_log` no está en `purge_old_data()` y ahora
+  crece con una fila por hallazgo avisado.
 
 **2026-10-14 — Correo de TENDENCIAS (rama correo-tendencias).** Pedido de
 usuarios del panel que usan /trends. Decisiones del usuario: 3 envíos fijos

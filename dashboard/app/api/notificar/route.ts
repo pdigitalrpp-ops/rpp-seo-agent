@@ -9,6 +9,7 @@ import {
   ENVIOS_TENDENCIAS, MARGEN_ENVIO_HORAS, armarTendencias, desdeParaEnvio, leerTendencias,
 } from "@/lib/tendenciasCorreo"
 import { armarTrafico, leerTrafico } from "@/lib/traficoCorreo"
+import { armarPruebaTemas, enviarTemas } from "@/lib/temasCorreo"
 
 /**
  * Envía por correo lo que el agente dejó nuevo en la base. La llama pg_cron
@@ -27,6 +28,11 @@ import { armarTrafico, leerTrafico } from "@/lib/traficoCorreo"
  *    solo a quien tiene `trends` activo, filtrado por sus `trend_categories`.
  *  - TRÁFICO DE AYER por sección (lib/traficoCorreo.ts): una vez al día con el
  *    benchmark, a quien tiene `traffic` activo, solo sus `traffic_sections`.
+ *  - TEMAS DEL RADAR (lib/temasCorreo.ts): a quien sigue un tema desde /radar
+ *    (`watch_subscriptions`), al momento, por horarios o una vez al día.
+ *
+ * Prueba de temas: `{"prueba": "temas", "para": "...", "keyword_id": "..."}`
+ * (sin keyword_id, los temas que sigue esa persona).
  *
  * QUE NO SE REPITA NI SE PIERDA. `notification_log` tiene una fila por
  * (tipo, referencia, correo) con clave única. Se RESERVA antes de enviar
@@ -48,7 +54,9 @@ type Destinatario = {
   trends: boolean; trend_categories: string[] | null
   traffic: boolean; traffic_sections: string[] | null
 }
-type Body = { prueba?: string; para?: string; secciones?: string[] | null; categorias?: string[] | null }
+type Body = {
+  prueba?: string; para?: string; secciones?: string[] | null; categorias?: string[] | null; keyword_id?: string | null
+}
 
 export async function POST(req: NextRequest) {
   if (!esCronAutorizado(req)) return NextResponse.json({ error: "No autorizado." }, { status: 401 })
@@ -89,6 +97,10 @@ export async function POST(req: NextRequest) {
         const c = datos ? armarTrafico(datos, body.secciones && body.secciones.length ? body.secciones : ["economia"]) : null
         if (!c) return NextResponse.json({ ok: true, prueba: "trafico", enviado: 0, nota: "sin tráfico de ayer todavía" })
         await sendMail(para, "[PRUEBA] " + c.subject, c.html, c.text)
+      } else if (body.prueba === "temas") {
+        const c = await armarPruebaTemas(db, para, body.keyword_id)
+        if (!c) return NextResponse.json({ ok: true, prueba: "temas", enviado: 0, nota: "ese tema no trajo publicaciones en las últimas 24 h" })
+        await sendMail(para, "[PRUEBA] " + c.subject, c.html, c.text)
       } else {
         return NextResponse.json({ error: "Prueba desconocida." }, { status: 400 })
       }
@@ -100,16 +112,7 @@ export async function POST(req: NextRequest) {
   }
 
   // --- Envío normal ---------------------------------------------------------
-  const { data: dest, error: errDest } = await db.from("notification_recipients")
-    .select("email, digest, alerts, alert_min_severity, trends, trend_categories, traffic, traffic_sections").eq("active", true)
-  if (errDest) {
-    console.error("[notificar] no se pudo leer destinatarios:", errDest.message)
-    return NextResponse.json({ error: "Sin destinatarios." }, { status: 500 })
-  }
-  const destinatarios = ((dest ?? []) as Destinatario[]).filter((d) => isAllowedEmail(d.email))
-  if (!destinatarios.length) return NextResponse.json({ ok: true, resumen: 0, alertas: 0, nota: "sin destinatarios" })
-
-  const resultado = { resumen: 0, alertas: 0, tendencias: 0, trafico: 0, fallos: 0 }
+  const resultado = { resumen: 0, alertas: 0, tendencias: 0, trafico: 0, temas: 0, fallos: 0 }
 
   /** Reserva (tipo, ref) para un correo; devuelve las refs que quedaron a su nombre. */
   async function reservar(kind: string, refs: string[], email: string): Promise<string[]> {
@@ -122,6 +125,28 @@ export async function POST(req: NextRequest) {
   async function liberar(kind: string, refs: string[], email: string) {
     await db.from("notification_log").delete().eq("kind", kind).eq("email", email).in("ref", refs)
   }
+
+  // 0. Avisos de los temas del Radar. Van ANTES de leer notification_recipients:
+  //    quien sigue un tema no necesita estar en esa lista.
+  try {
+    const t = await enviarTemas(db, {
+      hoy, hora: limaHour(), reservar, liberar,
+      enviar: (para, c) => sendMail(para, c.subject, c.html, c.text),
+    })
+    resultado.temas = t.enviados
+    resultado.fallos += t.fallos
+  } catch (e) {
+    console.error("[notificar] fallaron los avisos de temas:", e instanceof Error ? e.message : e)
+  }
+
+  const { data: dest, error: errDest } = await db.from("notification_recipients")
+    .select("email, digest, alerts, alert_min_severity, trends, trend_categories, traffic, traffic_sections").eq("active", true)
+  if (errDest) {
+    console.error("[notificar] no se pudo leer destinatarios:", errDest.message)
+    return NextResponse.json({ error: "Sin destinatarios.", ...resultado }, { status: 500 })
+  }
+  const destinatarios = ((dest ?? []) as Destinatario[]).filter((d) => isAllowedEmail(d.email))
+  if (!destinatarios.length) return NextResponse.json({ ok: true, ...resultado, nota: "sin destinatarios" })
 
   // 1. Resumen matutino: solo si el benchmark de HOY ya terminó.
   const { data: morning } = await db.from("agent_runs").select("id")

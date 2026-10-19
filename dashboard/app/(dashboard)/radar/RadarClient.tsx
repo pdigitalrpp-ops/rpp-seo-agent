@@ -7,7 +7,9 @@ import { LastUpdated } from "@/components/ui/LastUpdated"
 import { StatCard } from "@/components/ui/StatCard"
 import { FilterCard, FilterItem, FilterChip } from "@/components/ui/FilterList"
 import { Pill } from "@/components/ui/Pill"
+import { FRECUENCIA_INFO, type Frecuencia } from "@/lib/avisosTemas"
 import type { WatchKeyword, WatchHit } from "./types"
+import { AvisoCorreoDialog, OpcionesAviso, guardarAviso } from "./AvisoCorreo"
 
 /**
  * Radar de temas — las "Google Alerts" propias del equipo.
@@ -21,6 +23,10 @@ import type { WatchKeyword, WatchHit } from "./types"
  * La lista de temas se administra desde el propio panel vía /api/cambios, que
  * registra quién hizo cada cambio (dashboard_change_log); el agente la lee en
  * cada corrida del radar (collectors/watchlist.py) y escribe en watch_hits.
+ *
+ * Avisos por correo (2026-10-19): la campana 🔔 de cada tema deja que quien
+ * mira reciba sus publicaciones nuevas al momento, por horarios o una vez al
+ * día (AvisoCorreo.tsx → /api/radar/suscripcion; los envía /api/notificar).
  */
 
 // Misma taxonomía que KNOWN_SECTIONS_FALLBACK del agente (config.py).
@@ -186,10 +192,16 @@ export default function RadarClient({
   hits: initialHits,
   lastRun,
   serverNow,
+  avisos: initialAvisos,
+  correo,
 }: {
   keywords: WatchKeyword[]
   hits: WatchHit[]
   lastRun: string | null
+  /** Avisos por correo de quien mira: id del tema → frecuencia. */
+  avisos: Record<string, Frecuencia>
+  /** Correo de la sesión, para decir a dónde llegan los avisos. */
+  correo: string | null
   /** Hora fijada por el servidor; ver el comentario en page.tsx. */
   serverNow: number
 }) {
@@ -201,6 +213,10 @@ export default function RadarClient({
   // momento en que se cargó y, pasadas 48 h, la lista salía vacía.
   useEffect(() => { setKeywords(initialKeywords) }, [initialKeywords])
   useEffect(() => { setHits(initialHits) }, [initialHits])
+  const [avisos, setAvisos] = useState<Record<string, Frecuencia>>(initialAvisos)
+  useEffect(() => { setAvisos(initialAvisos) }, [initialAvisos])
+  /** Tema cuya ventana de avisos está abierta. */
+  const [avisoDe, setAvisoDe] = useState<string | null>(null)
 
   // Arranca con la hora del servidor (hidratacion sin desajuste) y recien
   // montado pasa al reloj del navegador, refrescandose cada minuto para que
@@ -228,6 +244,7 @@ export default function RadarClient({
   const [newLabel, setNewLabel] = useState("")
   const [newSection, setNewSection] = useState("")
   const [newFeeds, setNewFeeds] = useState("")
+  const [newAviso, setNewAviso] = useState<Frecuencia | null>(null)
   /** Tema que se está editando; null = el formulario da de alta uno nuevo. */
   const [editingId, setEditingId] = useState<string | null>(null)
 
@@ -346,7 +363,7 @@ export default function RadarClient({
   }
 
   function abrirAlta() {
-    setNewKeyword(""); setNewLabel(""); setNewSection(""); setNewFeeds("")
+    setNewKeyword(""); setNewLabel(""); setNewSection(""); setNewFeeds(""); setNewAviso(null)
     setEditingId(null)
     setFormOpen(true)
     setError(null)
@@ -364,6 +381,7 @@ export default function RadarClient({
     setNewLabel(kw.label ?? "")
     setNewSection(kw.section ?? "")
     setNewFeeds((kw.extra_feeds ?? []).join(" "))
+    setNewAviso(avisos[kw.id] ?? null)
     setEditingId(kw.id)
     setFormOpen(true)
     setError(null)
@@ -403,6 +421,13 @@ export default function RadarClient({
       editingId ? list.map((k) => (k.id === guardado.id ? guardado : k)) : list.concat(guardado)
     )
     cerrarFormulario()
+
+    // El aviso por correo va aparte: el tema ya quedó guardado aunque esto falle.
+    if (newAviso !== (avisos[guardado.id] ?? null)) {
+      const r = await guardarAviso(guardado.id, newAviso)
+      if (r.ok) setAvisos((m) => conAviso(m, guardado.id, newAviso))
+      else setError(`El tema se guardó, pero no se pudo cambiar el aviso por correo: ${r.error}`)
+    }
   }
 
   function toggleActive(kw: WatchKeyword) {
@@ -419,7 +444,7 @@ export default function RadarClient({
 
   function removeKeyword(kw: WatchKeyword) {
     const nombre = kw.label || kw.keyword
-    if (!window.confirm(`¿Sacar «${nombre}» del radar? Se borran también sus hallazgos.`)) return
+    if (!window.confirm(`¿Sacar «${nombre}» del radar? Se borran también sus hallazgos y se cancelan los avisos por correo de todos los que lo siguen.`)) return
     const backupKeywords = keywords
     const backupHits = hits
     setKeywords((list) => list.filter((k) => k.id !== kw.id))
@@ -448,12 +473,34 @@ export default function RadarClient({
       })
   }
 
+  /** Copia de `m` con el aviso del tema `id` puesto o quitado. */
+  function conAviso(m: Record<string, Frecuencia>, id: string, f: Frecuencia | null) {
+    const out = { ...m }
+    if (f) out[id] = f
+    else delete out[id]
+    return out
+  }
+
+  const temasConAviso = keywords.filter((k) => avisos[k.id]).length
+  const temaAviso = avisoDe ? kwById[avisoDe] : undefined
+
   // ── Render ───────────────────────────────────────────────────────────────
 
   const sinTemas = keywords.length === 0
 
   return (
     <div className="space-y-6">
+      {temaAviso && (
+        <AvisoCorreoDialog
+          keywordId={temaAviso.id}
+          nombre={temaAviso.label || temaAviso.keyword}
+          actual={avisos[temaAviso.id] ?? null}
+          correo={correo}
+          onClose={() => setAvisoDe(null)}
+          onSaved={(f) => setAvisos((m) => conAviso(m, temaAviso.id, f))}
+        />
+      )}
+
       {/* Encabezado */}
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="min-w-0">
@@ -473,6 +520,12 @@ export default function RadarClient({
             Lo que se publica sobre los temas que sigue el equipo, aunque no sean
             tendencia nacional.
           </p>
+          {temasConAviso > 0 && (
+            <p className="text-xs text-rpp-teal mt-1">
+              🔔 Recibes avisos por correo de {temasConAviso} tema{temasConAviso === 1 ? "" : "s"}
+              {correo ? ` en ${correo}` : ""}. Usa la campana de cada tema para cambiarlos.
+            </p>
+          )}
         </div>
         <div className="flex flex-col items-end gap-2 shrink-0">
           <LastUpdated kind="radar" finishedAt={lastRun} />
@@ -586,6 +639,12 @@ export default function RadarClient({
               Separa varias con espacios.
             </p>
           </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              Avisarme por correo <span className="text-gray-400">(solo a ti{correo ? `, a ${correo}` : ""})</span>
+            </label>
+            <OpcionesAviso valor={newAviso} onChange={setNewAviso} conNinguno name="aviso-formulario" />
+          </div>
           <div className="flex items-center gap-2 flex-wrap">
             <button
               type="submit"
@@ -646,7 +705,7 @@ export default function RadarClient({
           <div className="space-y-4 self-start">
             <FilterCard
               title="Temas"
-              info="Filtra por tema vigilado. El número es cuántas publicaciones trajo en la ventana seleccionada y la barra compara su volumen con el resto. Pasa el cursor sobre un tema para editar su búsqueda (✎), pausarlo (⏸) o sacarlo del radar (×)."
+              info="Filtra por tema vigilado. El número es cuántas publicaciones trajo en la ventana seleccionada y la barra compara su volumen con el resto. Pasa el cursor sobre un tema para recibir sus novedades por correo (🔔), editar su búsqueda (✎), pausarlo (⏸) o sacarlo del radar (×). La campana a la izquierda marca los temas de los que ya recibes avisos."
             >
               <FilterItem
                 label="Todos los temas"
@@ -664,8 +723,24 @@ export default function RadarClient({
                   active={tema === kw.id}
                   muted={!kw.active}
                   onClick={() => setTema(tema === kw.id ? TODOS : kw.id)}
+                  icon={avisos[kw.id] ? (
+                    <span
+                      className="w-4 shrink-0 text-[11px] leading-none"
+                      title={`Recibes avisos por correo: ${FRECUENCIA_INFO[avisos[kw.id]].label}`}
+                      aria-label="Con aviso por correo"
+                    >
+                      🔔
+                    </span>
+                  ) : undefined}
                   action={
                     <>
+                      <IconButton
+                        onClick={() => setAvisoDe(kw.id)}
+                        label={avisos[kw.id] ? `Avisos por correo: ${FRECUENCIA_INFO[avisos[kw.id]].corto}` : "Recibir avisos por correo"}
+                        className={avisos[kw.id] ? "text-rpp-teal hover:text-rpp-teal" : "hover:text-rpp-teal"}
+                      >
+                        🔔
+                      </IconButton>
                       <IconButton
                         onClick={() => abrirEdicion(kw)}
                         label="Editar tema"

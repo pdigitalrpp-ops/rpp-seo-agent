@@ -16,7 +16,7 @@ import { TZ_LIMA } from "./dates"
  * que usa la redacción) ignora <style>, flexbox y grid.
  */
 
-const PANEL = "https://rpp-seo-agent.vercel.app"
+export const PANEL = "https://rpp-seo-agent.vercel.app"
 
 export type Correo = { subject: string; html: string; text: string }
 
@@ -26,7 +26,7 @@ type Fila = Record<string, any>
 // Utilidades de formato
 // ---------------------------------------------------------------------------
 
-function esc(v: unknown): string {
+export function esc(v: unknown): string {
   return String(v ?? "")
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
 }
@@ -35,7 +35,7 @@ function num(n: unknown): string {
   return Math.round(Number(n) || 0).toLocaleString("es-PE")
 }
 
-function recorta(s: unknown, max: number): string {
+export function recorta(s: unknown, max: number): string {
   const t = String(s ?? "").trim()
   return t.length > max ? t.slice(0, max - 1).trimEnd() + "…" : t
 }
@@ -47,7 +47,7 @@ function fechaLarga(iso: string): string {
   })
 }
 
-function horaLima(iso: string): string {
+export function horaLima(iso: string): string {
   return new Date(iso).toLocaleTimeString("es-PE", {
     timeZone: TZ_LIMA, hour: "2-digit", minute: "2-digit", hour12: false,
   })
@@ -60,13 +60,13 @@ function diaAnterior(iso: string): string {
 }
 
 /** Enlace seguro: solo http(s); cualquier otra cosa se queda en texto. */
-function link(url: unknown, label: string, color = "#0D9488"): string {
+export function link(url: unknown, label: string, color = "#0D9488"): string {
   const u = String(url ?? "")
   if (u.indexOf("http://") !== 0 && u.indexOf("https://") !== 0) return esc(label)
   return `<a href="${esc(u)}" style="color:${color};text-decoration:none">${esc(label)}</a>`
 }
 
-function marco(titulo: string, subtitulo: string, cuerpo: string, pie: string): string {
+export function marco(titulo: string, subtitulo: string, cuerpo: string, pie: string): string {
   return `
 <div style="font-family:Arial,Helvetica,sans-serif;max-width:640px;margin:0 auto;color:#111827;font-size:14px;line-height:1.45">
   <div style="background:#F5D414;padding:16px 20px;border-radius:12px 12px 0 0">
