@@ -18,7 +18,15 @@ import type { Correo } from "./notificaciones"
  *  - notas: own_traffic (top 500 notas del sitio).
  * La sección se cruza normalizando: Marfeel dice "Economía", la URL /economia/.
  * Deportes es un grupo (fútbol, vóley, tenis...), igual que en /trafico.
+ *
+ * TODO EL SITIO (2026-10-19, primero jortizr): la clave especial `sitio` en
+ * `traffic_sections` da el total de la web (own_traffic_totals, portadas
+ * incluidas), las secciones que más aportaron y las notas más leídas de todo
+ * rpp.pe. Va siempre primero en el correo.
  */
+
+/** Clave de `traffic_sections` para el tráfico de toda la web. */
+export const TRAFICO_SITIO = "sitio"
 
 const PANEL = "https://rpp-seo-agent.vercel.app"
 
@@ -73,7 +81,18 @@ export function armarTrafico(datos: NonNullable<Awaited<ReturnType<typeof leerTr
   const bloques: string[] = []
   const texto: string[] = []
   const titulos: string[] = []
-  for (const clave of seccionesPedidas) {
+  const pedidas = seccionesPedidas.indexOf(TRAFICO_SITIO) >= 0
+    ? [TRAFICO_SITIO].concat(seccionesPedidas.filter((c) => c !== TRAFICO_SITIO))
+    : seccionesPedidas
+  for (const clave of pedidas) {
+    if (clave === TRAFICO_SITIO) {
+      const b = bloqueSitio(datos)
+      if (!b) continue
+      titulos.push("todo el sitio")
+      bloques.push(b.html)
+      texto.push(b.text)
+      continue
+    }
     const de = (fecha: string) => datos.secciones
       .filter((r: Fila) => r.date === fecha && sectionGroup(r.section) === clave)
       .reduce((s: number, r: Fila) => s + (r.page_views ?? 0), 0)
@@ -114,9 +133,12 @@ export function armarTrafico(datos: NonNullable<Awaited<ReturnType<typeof leerTr
       notas.map((r: Fila, i: number) => `${i + 1}. ${r.title || r.page_path} (${num(r.sessions)})`).join("\n"))
   }
   if (!bloques.length) return null
+  const asunto = titulos.length === 1 && titulos[0] === "todo el sitio"
+    ? `Tráfico de ayer en rpp.pe, ${fechaLarga(ayer)}`
+    : `Tráfico de ayer en ${titulos.join(", ")}, ${fechaLarga(ayer)}`
 
   return {
-    subject: `Tráfico de ayer en ${titulos.join(", ")}, ${fechaLarga(ayer)}`,
+    subject: asunto,
     html: `
 <div style="font-family:Arial,Helvetica,sans-serif;max-width:640px;margin:0 auto;color:#111827;font-size:14px;line-height:1.45">
   <div style="background:#F5D414;padding:16px 20px;border-radius:12px 12px 0 0">
@@ -133,4 +155,57 @@ export function armarTrafico(datos: NonNullable<Awaited<ReturnType<typeof leerTr
 </div>`,
     text: texto.join("\n\n") + `\n\nPanel: ${PANEL}/trafico`,
   }
+}
+
+/** Bloque "todo el sitio": total exacto, secciones que más aportaron, canales y top 10 notas. */
+function bloqueSitio(datos: NonNullable<Awaited<ReturnType<typeof leerTrafico>>>): { html: string; text: string } | null {
+  const { hoy, ayer } = datos
+  const total = (fecha: string) => datos.totales.filter((r: Fila) => r.date === fecha)[0]?.page_views ?? 0
+  const pv = total(hoy)
+  if (!pv) return null
+  const previo = total(ayer)
+
+  // Secciones agrupadas como en /trafico, sin "Unknown" (el cajón de Marfeel
+  // para portada y homes: es la mitad del sitio y aplastaría al resto).
+  const porSeccion: Record<string, { nombre: string; pv: number }> = {}
+  datos.secciones.filter((r: Fila) => r.date === hoy).forEach((r: Fila) => {
+    const k = sectionGroup(r.section)
+    if (!k || k === "unknown" || String(r.section).indexOf(",") >= 0) return
+    const o = porSeccion[k] ?? { nombre: k === "deportes" ? "Deportes" : String(r.section), pv: 0 }
+    o.pv += r.page_views ?? 0
+    porSeccion[k] = o
+  })
+  const secciones = Object.keys(porSeccion).map((k) => porSeccion[k]).sort((a, b) => b.pv - a.pv).slice(0, 8)
+
+  const porCanal: Record<string, number> = {}
+  datos.canales.forEach((r: Fila) => {
+    const c = r.channel || "otros"
+    porCanal[c] = (porCanal[c] ?? 0) + (r.pageviews ?? 0)
+  })
+  const canalesOrden = Object.keys(porCanal).sort((a, b) => porCanal[b] - porCanal[a])
+  const sumaCanales = canalesOrden.reduce((s, c) => s + porCanal[c], 0)
+  const notas = datos.notas.filter((r: Fila) => isRealArticle(r.page_path)).slice(0, 10)
+
+  const html = `
+      <h2 style="margin:22px 0 8px;font-size:16px;border-left:4px solid #0D9488;padding-left:8px">Todo el sitio</h2>
+      <p style="margin:0"><span style="font-size:26px;font-weight:800">${num(pv)}</span>
+        <span style="color:#6b7280;font-size:12px">páginas vistas (portadas incluidas)</span>${delta(pv, previo || null)}</p>
+      ${secciones.length ? `
+        <p style="margin:12px 0 4px;font-size:13px;font-weight:700">Secciones que más aportaron</p>
+        <p style="margin:0;font-size:13px">${secciones.map((x) => `${esc(x.nombre)} <b>${num(x.pv)}</b>`).join(" · ")}</p>` : ""}
+      ${canalesOrden.length ? `
+        <p style="margin:12px 0 4px;font-size:13px;font-weight:700">De dónde llegaron (notas)</p>
+        <p style="margin:0;font-size:13px">${canalesOrden.slice(0, 6).map((c) =>
+          `${esc(c)} <b>${((porCanal[c] / sumaCanales) * 100).toFixed(0)}%</b>`).join(" · ")}</p>` : ""}
+      ${notas.length ? `
+        <p style="margin:14px 0 4px;font-size:13px;font-weight:700">Las ${notas.length} notas más leídas de rpp.pe</p>
+        <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse">${
+          notas.map((r: Fila, i: number) => `<tr><td style="padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:14px">
+            <b>${i + 1}.</b> <a href="${esc(r.page_path)}" style="color:#111827;text-decoration:none">${esc(recorta(r.title || r.page_path, 110))}</a>
+            <span style="color:#6b7280;font-size:12px">${num(r.sessions)} vistas</span></td></tr>`).join("")
+        }</table>` : ""}`
+  const text = `TODO EL SITIO: ${num(pv)} páginas vistas` + (previo ? ` (día anterior ${num(previo)})` : "") + "\n" +
+    (secciones.length ? "Secciones: " + secciones.map((x) => `${x.nombre} ${num(x.pv)}`).join(" · ") + "\n" : "") +
+    notas.map((r: Fila, i: number) => `${i + 1}. ${r.title || r.page_path} (${num(r.sessions)})`).join("\n")
+  return { html, text }
 }

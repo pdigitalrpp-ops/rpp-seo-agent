@@ -3,6 +3,7 @@ import AdminClient, { type AdminStats, type CambioLog } from "./AdminClient"
 import type { Destinatario, OpcionSeccion, UltimoEnvio } from "./DestinatariosCard"
 import { CATEGORIAS_TENDENCIAS } from "@/lib/tendenciasCorreo"
 import { sectionGroup } from "@/lib/articleFilter"
+import { TRAFICO_SITIO } from "@/lib/traficoCorreo"
 
 /**
  * Panel de administración (solo ADMIN_EMAILS, lo impone el middleware).
@@ -51,8 +52,9 @@ export default async function AdminPage() {
       o.page_views += r.page_views ?? 0
       porClave[key] = o
     })
-    secciones = Object.keys(porClave).map((k) => porClave[k])
-      .sort((a, b) => b.page_views - a.page_views).slice(0, 30)
+    secciones = [{ key: TRAFICO_SITIO, label: "Todo el sitio", page_views: 0 }].concat(
+      Object.keys(porClave).map((k) => porClave[k])
+        .sort((a, b) => b.page_views - a.page_views).slice(0, 30))
   } catch (e) {
     error = e instanceof Error ? e.message : "Error desconocido"
   }
