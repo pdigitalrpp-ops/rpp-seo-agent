@@ -46,6 +46,13 @@ export type CambioLog = {
   before: Record<string, unknown> | null
   after: Record<string, unknown> | null
 }
+/** Visitas al panel que llegaron por un enlace de los correos, últimos 30 días. */
+export type VisitasCorreo = { total: number; personas: number; porOrigen: [string, number][] }
+
+const ORIGEN_CORREO: Record<string, string> = {
+  resumen: "resumen", alertas: "alertas", tendencias: "tendencias", trafico: "tráfico", temas: "temas del radar",
+}
+
 export type AdminStats = {
   generated_at: string
   users: AdminUser[]
@@ -109,7 +116,7 @@ function estadoUsuario(u: AdminUser, now: number): { label: string; cls: string 
 }
 
 export default function AdminClient({
-  stats, cambios, destinatarios, envios, categorias, secciones,
+  stats, cambios, destinatarios, envios, categorias, secciones, visitasCorreo,
 }: {
   stats: AdminStats
   cambios: CambioLog[]
@@ -117,6 +124,7 @@ export default function AdminClient({
   envios: UltimoEnvio[]
   categorias: [string, string][]
   secciones: OpcionSeccion[]
+  visitasCorreo: VisitasCorreo
 }) {
   const now = new Date(stats.generated_at).getTime()
   const router = useRouter()
@@ -299,6 +307,13 @@ export default function AdminClient({
 
       {/* Correos automáticos */}
       <Card title={`Correos automáticos (${destinatarios.length})`} info="Quién recibe cada correo del agente: resumen matutino, alertas, tendencias (08:00, 13:00 y 18:00) y tráfico de ayer por sección. Se puede agregar, editar, pausar, quitar y mandar una prueba." flush>
+        <p className="border-b border-gray-100 px-4 py-2.5 text-sm text-gray-600">
+          <b className="text-gray-900">Visitas al panel desde los correos · 30 días:</b>{" "}
+          {visitasCorreo.total
+            ? <>{visitasCorreo.total} de {visitasCorreo.personas} persona{visitasCorreo.personas === 1 ? "" : "s"}
+                {" — "}{visitasCorreo.porOrigen.map(([k, n]) => `${ORIGEN_CORREO[k] ?? k} ${n}`).join(" · ")}</>
+            : "todavía ninguna (los enlaces de los correos se miden desde el 20-oct-2026)."}
+        </p>
         <DestinatariosCard destinatarios={destinatarios} envios={envios} categorias={categorias} secciones={secciones} />
       </Card>
 

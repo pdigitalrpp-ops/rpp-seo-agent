@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { isRealArticle } from "./articleFilter"
 import { TZ_LIMA } from "./dates"
+import { bloquePanel, enlaceCabecera, textoPanel, type OrigenCorreo } from "./correoCta"
 
 /**
  * Contenido de los correos del agente: resumen matutino y alertas.
@@ -66,15 +67,17 @@ export function link(url: unknown, label: string, color = "#0D9488"): string {
   return `<a href="${esc(u)}" style="color:${color};text-decoration:none">${esc(label)}</a>`
 }
 
-export function marco(titulo: string, subtitulo: string, cuerpo: string, pie: string): string {
+/** Marco común. Con `origen`, lleva el enlace al panel arriba y el bloque de exploración al final (lib/correoCta.ts). */
+export function marco(titulo: string, subtitulo: string, cuerpo: string, pie: string, origen?: OrigenCorreo): string {
   return `
 <div style="font-family:Arial,Helvetica,sans-serif;max-width:640px;margin:0 auto;color:#111827;font-size:14px;line-height:1.45">
   <div style="background:#F5D414;padding:16px 20px;border-radius:12px 12px 0 0">
     <div style="font-weight:800;font-size:18px">${esc(titulo)}</div>
-    <div style="font-size:12px;color:#374151;margin-top:2px">${esc(subtitulo)}</div>
+    <div style="font-size:12px;color:#374151;margin-top:2px">${esc(subtitulo)}${origen ? ` · ${enlaceCabecera(origen)}` : ""}</div>
   </div>
   <div style="border:1px solid #e5e7eb;border-top:0;padding:6px 20px 18px;border-radius:0 0 12px 12px">
     ${cuerpo}
+    ${origen ? bloquePanel(origen) : ""}
     <p style="margin:22px 0 0;padding-top:12px;border-top:1px solid #e5e7eb;font-size:12px;color:#6b7280">${pie}</p>
   </div>
 </div>`
@@ -233,8 +236,8 @@ export async function armarResumen(db: SupabaseClient, hoy: string): Promise<Cor
 
   return {
     subject: `Resumen SEO de hoy, ${fechaLarga(hoy)}`,
-    html: marco("Resumen SEO de la mañana", `RPP Noticias · ${fechaLarga(hoy)}`, partes.join(""), pie),
-    text: texto.join("\n\n") + `\n\nPanel: ${PANEL}`,
+    html: marco("Resumen SEO de la mañana", `RPP Noticias · ${fechaLarga(hoy)}`, partes.join(""), pie, "resumen"),
+    text: texto.join("\n\n") + `\n\n${textoPanel("resumen")}`,
   }
 }
 
@@ -280,8 +283,8 @@ export function armarAlertas(alertas: Fila[]): Correo {
   return {
     subject,
     html: marco(orden.length === 1 ? "Alerta SEO" : `${orden.length} alertas SEO`,
-      "RPP Noticias · tendencia en Google Perú ahora", bloques, pie),
+      "RPP Noticias · tendencia en Google Perú ahora", bloques, pie, "alertas"),
     text: orden.map((a) => `[${(SEVERIDAD[a.severity] ?? SEVERIDAD.low).label}] ${a.title}\n${a.description ?? ""}\n${a.url ?? ""}`).join("\n\n") +
-      `\n\nPanel: ${PANEL}/alertas`,
+      `\n\n${textoPanel("alertas")}`,
   }
 }

@@ -16,12 +16,18 @@ export async function POST(req: NextRequest) {
     return new NextResponse(null, { status: 204 })
   }
   let path = ""
-  try { path = String((await req.json()).path ?? "") } catch { /* vacío */ }
+  let via: string | null = null
+  try {
+    const body = await req.json()
+    path = String(body.path ?? "")
+    // Solo el formato de los enlaces de los correos (lib/correoCta.ts).
+    if (typeof body.via === "string" && /^correo-[a-z]{3,20}$/.test(body.via)) via = body.via
+  } catch { /* vacío */ }
   // Solo rutas internas y cortas: es un contador, no un campo libre.
   if (path.charAt(0) !== "/" || path.length > 120) return new NextResponse(null, { status: 204 })
 
   try {
-    await supabaseAdmin().from("dashboard_page_views").insert({ email: String(token.email), path })
+    await supabaseAdmin().from("dashboard_page_views").insert({ email: String(token.email), path, via })
   } catch {
     /* sin registro */
   }

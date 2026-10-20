@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { TZ_LIMA } from "./dates"
 import type { Correo } from "./notificaciones"
+import { bloquePanel, enlaceCabecera, textoPanel } from "./correoCta"
 
 /**
  * Correo de TENDENCIAS (2026-10-14): pedido de usuarios del panel que usan la
@@ -152,12 +153,13 @@ export function armarTendencias(
 <div style="font-family:Arial,Helvetica,sans-serif;max-width:640px;margin:0 auto;color:#111827;font-size:14px;line-height:1.45">
   <div style="background:#F5D414;padding:16px 20px;border-radius:12px 12px 0 0">
     <div style="font-weight:800;font-size:18px">Tendencias en Google Perú · ${horaSlot}</div>
-    <div style="font-size:12px;color:#374151;margin-top:2px">RPP Noticias · lo más buscado ahora, por tema</div>
+    <div style="font-size:12px;color:#374151;margin-top:2px">RPP Noticias · lo más buscado ahora, por tema · ${enlaceCabecera("tendencias")}</div>
   </div>
   <div style="border:1px solid #e5e7eb;border-top:0;padding:4px 20px 18px;border-radius:0 0 12px 12px">
     ${resumen}
     ${bloques || '<p style="margin:16px 0 0">No hay tendencias vigentes de tus categorías en este momento.</p>'}
     ${bloqueResto}
+    ${bloquePanel("tendencias")}
     <p style="margin:22px 0 0;padding-top:12px;border-top:1px solid #e5e7eb;font-size:12px;color:#6b7280">
       Google publica el volumen en escalones ("2 mil+"). La explicación la escribe el modelo a partir de las noticias:
       verificar antes de publicar. <a href="${PANEL}/trends" style="color:#0D9488">Abrir Tendencias en el panel</a>
@@ -170,7 +172,7 @@ export function armarTendencias(
     const deLa = vigentes.filter((f) => (f.categoria ?? "otros") === clave).sort(ordenar)
     return deLa.length ? `${nombre.toUpperCase()}\n` + deLa.map((f) =>
       `- ${f.keyword}${esNueva(f) ? " (NUEVA)" : ""} · ${volumen(f.peak_volume)} · ${f.rpp_url ? "RPP ya tiene nota" : "SIN NOTA EN RPP"}\n  ${f.why_trending ?? ""}`).join("\n") : ""
-  }).filter(Boolean).join("\n\n") + `\n\nPanel: ${PANEL}/trends`
+  }).filter(Boolean).join("\n\n") + `\n\n${textoPanel("tendencias")}`
 
   return {
     subject: `📈 Tendencias ${horaSlot}: ${recorta(top, 80)}${nuevas ? ` (${nuevas} nuevas)` : ""}`,
