@@ -46,7 +46,7 @@ export async function sendAccessCode(email: string, code: string): Promise<void>
  * lib/notificaciones.ts). Cuota de Gmail: ~500 correos al día para toda la
  * cuenta, códigos de acceso incluidos.
  */
-let transporte: ReturnType<typeof nodemailer.createTransport> | null = null
+let transporte: nodemailer.Transporter | null = null
 
 export async function sendMail(to: string, subject: string, html: string, text: string): Promise<void> {
   const user = process.env.GMAIL_USER
