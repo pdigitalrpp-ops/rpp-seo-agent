@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/accessServer"
-import AdminClient, { type AdminStats, type CambioLog } from "./AdminClient"
+import AdminClient, { type AdminStats, type CambioLog, type VisitasCorreo } from "./AdminClient"
 import type { Destinatario, OpcionSeccion, UltimoEnvio } from "./DestinatariosCard"
 import { CATEGORIAS_TENDENCIAS } from "@/lib/tendenciasCorreo"
 import { sectionGroup } from "@/lib/articleFilter"
@@ -21,10 +21,11 @@ export default async function AdminPage() {
   let destinatarios: Destinatario[] = []
   let envios: UltimoEnvio[] = []
   let secciones: OpcionSeccion[] = []
+  let visitasCorreo: VisitasCorreo = { total: 0, personas: 0, porOrigen: [] }
   let error: string | null = null
   try {
     const db = supabaseAdmin()
-    const [st, log, dest, env, secs] = await Promise.all([
+    const [st, log, dest, env, secs, vias] = await Promise.all([
       db.rpc("dashboard_admin_stats"),
       db.rpc("dashboard_change_log_recent", { p_limit: 200 }),
       db.from("notification_recipients").select("*").order("created_at", { ascending: true }),
@@ -33,7 +34,18 @@ export default async function AdminPage() {
         .order("sent_at", { ascending: false }).limit(1000),
       db.from("own_traffic_sections").select("date, section, page_views")
         .order("date", { ascending: false }).limit(400),
+      // Visitas que entraron por un enlace de los correos (lib/correoCta.ts).
+      db.from("dashboard_page_views").select("email, via").not("via", "is", null)
+        .gte("created_at", new Date(Date.now() - 30 * 86400000).toISOString()).limit(1000),
     ])
+    const filasVia = (vias.data ?? []) as { email: string; via: string }[]
+    const conteo: Record<string, number> = {}
+    filasVia.forEach((v) => { const k = v.via.replace(/^correo-/, ""); conteo[k] = (conteo[k] ?? 0) + 1 })
+    visitasCorreo = {
+      total: filasVia.length,
+      personas: new Set(filasVia.map((v) => v.email)).size,
+      porOrigen: Object.keys(conteo).map((k): [string, number] => [k, conteo[k]]).sort((a, b) => b[1] - a[1]),
+    }
     if (st.error) error = st.error.message
     else stats = st.data as AdminStats
     cambios = (log.data as CambioLog[] | null) ?? []
@@ -71,6 +83,7 @@ export default async function AdminPage() {
       stats={stats} cambios={cambios}
       destinatarios={destinatarios} envios={envios}
       categorias={CATEGORIAS_TENDENCIAS} secciones={secciones}
+      visitasCorreo={visitasCorreo}
     />
   )
 }

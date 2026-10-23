@@ -11,7 +11,20 @@ dashboard web.
 
 ## Estado actual
 
-**Fecha último avance:** 2026-10-19
+**Fecha último avance:** 2026-10-20
+
+**2026-10-20 — Todos los correos llevan al panel (rama correos-enlace-panel).**
+Pedido del usuario: un enlace al SEO Agent en cada correo para generar un loop
+de uso. `lib/correoCta.ts`: "Abrir en el SEO Agent →" en la cabecera amarilla
+y, al final, un bloque con el botón a la pestaña de ese correo y el resto de
+pestañas (sin las restringidas). Lo usan los cinco correos: el `marco()` de
+notificaciones.ts acepta `origen` y tendencias/tráfico lo insertan a mano.
+- **Medición:** los enlaces llevan `?desde=correo-<tipo>`; PageViewTracker lo
+  lee de `window.location` (no `useSearchParams`, que pediría Suspense en el
+  layout) y /api/visita lo guarda en la columna nueva
+  `dashboard_page_views.via` (ya aplicada). /admin, en "Correos automáticos",
+  muestra visitas y personas que trajo cada correo en 30 días. Sin sesión, el
+  login conserva la URL completa y la visita se cuenta al volver.
 
 **2026-10-19 — Avisos por correo de los temas del RADAR (rama radar-avisos-correo).**
 Pedido del usuario: que cualquier usuario del panel (solo @gruporpp.com.pe)

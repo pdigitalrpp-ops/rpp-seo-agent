@@ -3,6 +3,7 @@ import { isAllowedEmail } from "./access"
 import { HORARIOS_TEMAS, HORA_DIARIO_TEMAS, FRECUENCIA_INFO, type Frecuencia } from "./avisosTemas"
 import { TZ_LIMA, limaDayOf } from "./dates"
 import { PANEL, esc, recorta, horaLima, link, marco, type Correo } from "./notificaciones"
+import { textoPanel } from "./correoCta"
 
 /**
  * Avisos por correo de los temas del Radar (2026-10-19). Cada usuario elige,
@@ -139,9 +140,9 @@ export function armarTemas(grupos: Grupo[], modo: Modo): Correo | null {
     `${nombreTema(g.tema).toUpperCase()} (${g.hits.length})\n` +
     g.hits.slice().sort((a, b) => ts(b) - ts(a)).slice(0, MAX_POR_TEMA)
       .map((h) => `- ${h.title}${h.source ? ` (${h.source})` : ""}\n  ${h.url}`).join("\n")
-  ).join("\n\n") + `\n\nPanel: ${PANEL}/radar`
+  ).join("\n\n") + `\n\n${textoPanel("temas")}`
 
-  return { subject, html: marco(titulo, subtitulo, bloques, pie), text }
+  return { subject, html: marco(titulo, subtitulo, bloques, pie, "temas"), text }
 }
 
 /** Agrupa los hallazgos de una persona por tema, en el orden en que se suscribió. */

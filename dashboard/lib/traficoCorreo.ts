@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import { TZ_LIMA } from "./dates"
 import { isRealArticle, sectionGroup, sectionOf } from "./articleFilter"
 import type { Correo } from "./notificaciones"
+import { bloquePanel, enlaceCabecera, textoPanel } from "./correoCta"
 
 /**
  * Correo de TRÁFICO DEL DÍA ANTERIOR por sección (2026-10-14): para editores
@@ -143,17 +144,18 @@ export function armarTrafico(datos: NonNullable<Awaited<ReturnType<typeof leerTr
 <div style="font-family:Arial,Helvetica,sans-serif;max-width:640px;margin:0 auto;color:#111827;font-size:14px;line-height:1.45">
   <div style="background:#F5D414;padding:16px 20px;border-radius:12px 12px 0 0">
     <div style="font-weight:800;font-size:18px">Tráfico de ayer</div>
-    <div style="font-size:12px;color:#374151;margin-top:2px">RPP Noticias · ${esc(fechaLarga(ayer))} completo</div>
+    <div style="font-size:12px;color:#374151;margin-top:2px">RPP Noticias · ${esc(fechaLarga(ayer))} completo · ${enlaceCabecera("trafico")}</div>
   </div>
   <div style="border:1px solid #e5e7eb;border-top:0;padding:4px 20px 18px;border-radius:0 0 12px 12px">
     ${bloques.join("")}
+    ${bloquePanel("trafico")}
     <p style="margin:22px 0 0;padding-top:12px;border-top:1px solid #e5e7eb;font-size:12px;color:#6b7280">
       Fuente: Marfeel. El total es exacto; canales y notas salen del top 500 del sitio.
       <a href="${PANEL}/trafico" style="color:#0D9488">Abrir Tráfico en el panel</a>
     </p>
   </div>
 </div>`,
-    text: texto.join("\n\n") + `\n\nPanel: ${PANEL}/trafico`,
+    text: texto.join("\n\n") + `\n\n${textoPanel("trafico")}`,
   }
 }
 

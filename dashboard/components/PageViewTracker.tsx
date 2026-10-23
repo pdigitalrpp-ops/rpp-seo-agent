@@ -16,10 +16,15 @@ export function PageViewTracker() {
   const pathname = usePathname()
   useEffect(() => {
     if (!pathname) return
+    // `?desde=correo-<tipo>`: la visita viene de un enlace de los correos del
+    // agente (lib/correoCta.ts). Se lee de window y no con useSearchParams,
+    // que obligaría a envolver el layout en <Suspense>.
+    let via: string | null = null
+    try { via = new URLSearchParams(window.location.search).get("desde") } catch { /* sin via */ }
     fetch("/api/visita", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: pathname }),
+      body: JSON.stringify({ path: pathname, via }),
       keepalive: true,
     }).catch(() => {})
   }, [pathname])
