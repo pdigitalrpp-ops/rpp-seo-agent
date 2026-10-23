@@ -159,9 +159,14 @@ function agrupar(subs: Suscripcion[], temas: Record<string, Tema>, hits: Hallazg
  */
 export async function enviarTemas(
   db: SupabaseClient,
-  ctx: { hoy: string; hora: number; reservar: Reservar; liberar: Liberar; enviar: (para: string, c: Correo) => Promise<void> },
-): Promise<{ enviados: number; fallos: number }> {
-  const out = { enviados: 0, fallos: 0 }
+  ctx: {
+    hoy: string; hora: number; reservar: Reservar; liberar: Liberar
+    enviar: (para: string, c: Correo) => Promise<void>
+    /** false = se acabó el presupuesto de la pasada: lo que falta sale en la siguiente. */
+    hayTiempo: () => boolean
+  },
+): Promise<{ enviados: number; fallos: number; pendientes: boolean }> {
+  const out = { enviados: 0, fallos: 0, pendientes: false }
   const { data: s, error } = await db.from("watch_subscriptions").select("keyword_id, email, frequency, updated_at")
   if (error) { console.error("[notificar] no se pudo leer avisos de temas:", error.message); return out }
   const subs = ((s ?? []) as Suscripcion[]).filter((x) => isAllowedEmail(x.email))
@@ -173,6 +178,7 @@ export async function enviarTemas(
   ;((t ?? []) as Tema[]).forEach((x) => { temas[x.id] = x })
 
   async function despachar(email: string, kind: string, refs: string[], armar: (mias: string[]) => Correo | null) {
+    if (!ctx.hayTiempo()) { out.pendientes = true; return }
     const mias = await ctx.reservar(kind, refs, email)
     if (!mias.length) return
     const correo = armar(mias)

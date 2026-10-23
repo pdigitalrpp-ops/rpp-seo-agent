@@ -46,10 +46,31 @@ export async function sendAccessCode(email: string, code: string): Promise<void>
  * lib/notificaciones.ts). Cuota de Gmail: ~500 correos al día para toda la
  * cuenta, códigos de acceso incluidos.
  */
+let transporte: ReturnType<typeof nodemailer.createTransport> | null = null
+
 export async function sendMail(to: string, subject: string, html: string, text: string): Promise<void> {
   const user = process.env.GMAIL_USER
   const pass = (process.env.GMAIL_APP_PASSWORD ?? "").replace(/\s/g, "")
   if (!user || !pass) throw new Error("Falta GMAIL_USER o GMAIL_APP_PASSWORD en Vercel")
-  const transport = nodemailer.createTransport({ service: "gmail", auth: { user, pass } })
-  await transport.sendMail({ from: `"RPP SEO Agent" <${user}>`, to, subject, html, text })
+  // UNA conexión SMTP reutilizada (pool de 1) en vez de abrir otra por correo:
+  // conectar y autenticarse con Gmail se llevaba buena parte de los ~2 s de
+  // cada envío. Una sola conexión a la vez, porque Gmail limita las
+  // simultáneas. Si la instancia de Vercel se recicla, se abre otra sola.
+  if (!transporte) {
+    transporte = nodemailer.createTransport({
+      service: "gmail", auth: { user, pass }, pool: true, maxConnections: 1, maxMessages: 100,
+      // Sin esto un socket muerto colgaría el envío hasta 10 min (default).
+      connectionTimeout: 10_000, socketTimeout: 20_000,
+    })
+  }
+  await transporte.sendMail({ from: `"RPP SEO Agent" <${user}>`, to, subject, html, text })
+}
+
+/**
+ * Cierra la conexión al terminar una pasada de /api/notificar. Vercel congela
+ * la instancia entre llamadas y una conexión que sobrevive congelada puede
+ * quedar muerta del lado de Gmail: mejor abrir una limpia en la próxima.
+ */
+export function cerrarCorreo(): void {
+  if (transporte) { transporte.close(); transporte = null }
 }
