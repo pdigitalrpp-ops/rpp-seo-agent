@@ -11,7 +11,25 @@ dashboard web.
 
 ## Estado actual
 
-**Fecha último avance:** 2026-10-20
+**Fecha último avance:** 2026-10-23
+
+**2026-10-23 — Los correos se reparten en pasadas (rama correos-repartir-envio).**
+El 23-oct la pasada de las 08:00 de `/api/notificar` (1 tema + 7 tendencias)
+pasó los 30 s en que pg_net corta la llamada (~2 s por correo, en serie).
+Pedido del usuario: repartirlo ya, porque vienen más destinatarios.
+- **Presupuesto por pasada (`PRESUPUESTO_MS` = 18 s):** pasado ese tiempo no
+  se EMPIEZA ningún correo más; lo que falta sale en la pasada siguiente
+  (5 min). No se pierde nada: lo no enviado no queda reservado y todos los
+  envíos tienen margen (tendencias y temas 3 h; resumen y tráfico, el día).
+  La respuesta trae `pendientes: true` cuando se cortó.
+- **Orden por urgencia:** alertas → temas (al momento primero) → resumen →
+  tráfico → tendencias. Antes las alertas iban al final.
+- **Una conexión SMTP por pasada** (`lib/mailer.ts`, pool de 1, timeouts de
+  10/20 s) en vez de abrir otra por correo; `cerrarCorreo()` la cierra al
+  terminar la pasada (Vercel congela la instancia entre llamadas).
+- Ya no hay `return` temprano si `notification_recipients` está vacía.
+- Cuota de Gmail: ~500 correos/día para toda la cuenta (códigos incluidos).
+  Con 7 destinatarios se mandan ~35/día.
 
 **2026-10-20 — Todos los correos llevan al panel (rama correos-enlace-panel).**
 Pedido del usuario: un enlace al SEO Agent en cada correo para generar un loop
